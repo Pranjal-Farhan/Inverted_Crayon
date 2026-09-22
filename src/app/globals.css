@@ -1,0 +1,129 @@
+@import "tailwindcss";
+
+/* ============================================================
+   Inverted Crayon — design tokens
+   Source: Build Specification v1.0 · §02 Color · §03 Typography
+   · §04 Layout · Appendix A
+   ============================================================ */
+
+:root {
+  /* core palette */
+  --color-ic-ink: #0c0c0d;
+  --color-ic-panel: #151517;
+  --color-ic-panel-2: #1b1b1e;
+  --color-ic-line: #2a2a2e;
+  --color-ic-line-2: #3a3a3f;
+  --color-ic-white: #f4f4f1;
+  --color-ic-lime: #c3f53a;
+  --color-ic-pink: #ff2d84;
+  --color-ic-cyan: #26a7e6;
+  --color-ic-yellow: #ffd23b;
+  --color-ic-muted: #8f8f93;
+  --color-ic-muted-2: #5f5f64;
+  --color-ic-error: #ff4d4d;
+
+  --header-bar: 66px;
+}
+
+@theme inline {
+  --color-ink: var(--color-ic-ink);
+  --color-panel: var(--color-ic-panel);
+  --color-panel-2: var(--color-ic-panel-2);
+  --color-line: var(--color-ic-line);
+  --color-line-2: var(--color-ic-line-2);
+  --color-paper: var(--color-ic-white);
+  --color-lime: var(--color-ic-lime);
+  --color-pink: var(--color-ic-pink);
+  --color-cyan: var(--color-ic-cyan);
+  --color-yellow: var(--color-ic-yellow);
+  --color-muted: var(--color-ic-muted);
+  --color-muted-2: var(--color-ic-muted-2);
+  --color-error: var(--color-ic-error);
+
+  --font-impact: var(--font-anton), "Arial Narrow", sans-serif;
+  --font-scrawl: var(--font-marker), cursive;
+  --font-label: var(--font-bebas), "Arial Narrow", sans-serif;
+  --font-body: var(--font-archivo), "Helvetica Neue", Arial, sans-serif;
+
+  --breakpoint-desktop: 60rem; /* 960px — spec's desktop breakpoint */
+
+  --radius-none: 0px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: 90px; /* sticky header height + breathing room */
+}
+
+body {
+  background: var(--color-ic-ink);
+  color: var(--color-ic-white);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: var(--color-ic-lime);
+  color: var(--color-ic-ink);
+}
+
+a {
+  color: inherit;
+}
+
+/* 12-column grid container — max width 1320px, centered, responsive side padding (§04) */
+.wrap {
+  max-width: 1320px;
+  margin-inline: auto;
+  padding-inline: clamp(18px, 4vw, 48px);
+}
+
+button {
+  font-family: inherit;
+}
+
+/* Sharp corners everywhere by default; pills are opt-in via rounded-full */
+input,
+select,
+textarea,
+button {
+  border-radius: 0;
+}
+
+/* Brand tell: primary buttons carry a slight rotation + hand-drawn underline */
+.btn-primary {
+  transform: rotate(-1deg);
+}
+.btn-primary:hover {
+  transform: rotate(-1deg) translateY(-2px);
+}
+.btn-primary:active {
+  transform: rotate(-1deg) translateY(0);
+}
+
+.scrawl-underline {
+  position: relative;
+}
+.scrawl-underline::after {
+  content: "";
+  position: absolute;
+  left: -4%;
+  right: -4%;
+  bottom: -6px;
+  height: 3px;
+  background: currentColor;
+  opacity: 0.9;
+  transform: rotate(-1deg);
+}
+
+/* Prices always use the impact face */
+.price {
+  font-family: var(--font-impact);
+  letter-spacing: 0.5px;
+}
