@@ -82,19 +82,37 @@ export default async function AdminOrdersPage({ searchParams }: Props) {
           </thead>
           <tbody>
             {orders.map((o) => (
-              <tr key={o.id} className="border-b border-line">
-                <td className="px-4 py-2.5">
-                  <Link href={`/admin/orders/${o.id}`} className="hover:text-lime">
+              <tr key={o.id} className="group border-b border-line hover:bg-panel-2">
+                <td className="p-0">
+                  <Link href={`/admin/orders/${o.id}`} className="block px-4 py-2.5 group-hover:text-lime">
                     {o.number}
                   </Link>
                 </td>
-                <td className="px-4 py-2.5">{o.email}</td>
-                <td className="px-4 py-2.5">{formatTaka(toNumber(o.total))}</td>
-                <td className="px-4 py-2.5">{o.paymentMethod}</td>
-                <td className="px-4 py-2.5">
-                  <StatusBadge status={o.status} />
+                <td className="p-0">
+                  <Link href={`/admin/orders/${o.id}`} className="block px-4 py-2.5">
+                    {o.email}
+                  </Link>
                 </td>
-                <td className="px-4 py-2.5">{o.createdAt.toLocaleDateString("en-GB", { day: "2-digit", month: "short" })}</td>
+                <td className="p-0">
+                  <Link href={`/admin/orders/${o.id}`} className="block px-4 py-2.5">
+                    {formatTaka(toNumber(o.total))}
+                  </Link>
+                </td>
+                <td className="p-0">
+                  <Link href={`/admin/orders/${o.id}`} className="block px-4 py-2.5">
+                    {o.paymentMethod}
+                  </Link>
+                </td>
+                <td className="p-0">
+                  <Link href={`/admin/orders/${o.id}`} className="block px-4 py-2.5">
+                    <StatusBadge status={o.status} />
+                  </Link>
+                </td>
+                <td className="p-0">
+                  <Link href={`/admin/orders/${o.id}`} className="block px-4 py-2.5">
+                    {o.createdAt.toLocaleDateString("en-GB", { day: "2-digit", month: "short" })}
+                  </Link>
+                </td>
               </tr>
             ))}
             {orders.length === 0 && (

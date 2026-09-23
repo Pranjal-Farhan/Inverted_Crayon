@@ -15,9 +15,18 @@ export default async function AdminOrderDetailPage({ params }: Props) {
 
   return (
     <div>
-      <Link href="/admin/orders" className="text-cyan mb-3 inline-block text-sm">
-        ← Orders
-      </Link>
+      <div className="mb-3 flex items-center justify-between">
+        <Link href="/admin/orders" className="text-cyan text-sm">
+          ← Orders
+        </Link>
+        <Link
+          href={`/admin/orders/${order.id}/receipt`}
+          target="_blank"
+          className="border border-line-2 px-3 py-1.5 text-[13px] hover:border-lime"
+        >
+          View / print receipt →
+        </Link>
+      </div>
       <div className="grid gap-4.5 desktop:grid-cols-[1.6fr_1fr]">
         <Panel title={`Order #${order.number}`}>
           <table className="w-full text-sm">
