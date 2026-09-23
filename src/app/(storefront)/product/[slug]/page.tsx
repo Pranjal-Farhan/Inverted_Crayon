@@ -60,7 +60,7 @@ export default async function ProductPage({ params }: Props) {
   return (
     <section className="pg pb-16">
       <div className="grid gap-10 py-5.5 desktop:grid-cols-[1.05fr_1fr]">
-        <div className="grid min-w-0 grid-cols-[70px_1fr] items-start gap-3">
+        <div className="grid min-w-0 grid-cols-1 items-start gap-3 desktop:grid-cols-[70px_1fr]">
           <div className="hidden desktop:flex flex-col gap-2.5">
             {[0, 1, 2, 3].map((i) => (
               <div key={i} className="aspect-square border border-line">
