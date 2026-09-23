@@ -9,6 +9,7 @@ Streetwear storefront + admin, built from the [Build Specification v1.0](.) — 
 - **Styling**: Tailwind CSS v4, design tokens in `src/app/globals.css` matching Build Spec §02–§04
 - **Auth**: Signed JWT session cookies (`jose`) — separate admin and customer sessions, no third-party auth provider
 - **Payments**: Mocked (bKash / Nagad / SSLCommerz / COD are selectable at checkout; non-COD orders are marked paid immediately, no real gateway calls)
+- **Emails**: Mocked — every "send" writes to an `EmailLog` outbox (viewable at `/admin/emails`) instead of calling a real provider. See `src/lib/mail.ts`.
 
 ## Getting started
 
@@ -19,7 +20,7 @@ npm install
 cp .env.example .env
 
 npx prisma migrate dev   # creates tables
-npx prisma db seed       # seeds catalog, orders, admin/customer test accounts
+npx prisma db seed       # seeds catalog, orders, admin/customer test accounts, journal posts
 
 npm run dev              # http://localhost:3000
 ```
@@ -38,23 +39,24 @@ Admin panel: `/admin/login`. Customer account: `/account/login`.
 
 ```
 prisma/schema.prisma          data model (§10 of the spec, extended)
-prisma/seed.ts                catalog + orders + accounts seed
-src/app/(storefront)/         public site — home, PLP/PDP, cart, checkout, account, legal
-src/app/admin/                admin app — dashboard, orders, products, inventory, CRM, settings
-src/actions/                  server actions (checkout, admin CRUD, auth)
+prisma/seed.ts                catalog + orders + accounts + journal posts seed
+src/app/(storefront)/         public site — home, PLP/PDP, cart, checkout, account, journal, legal
+src/app/admin/                admin app — dashboard, orders, products, inventory, CRM, journal, emails, settings
+src/actions/                  server actions (checkout, admin CRUD, auth, mail-triggering events)
 src/components/                brand, ui, layout, storefront, admin component libraries
-src/lib/                      domain logic — tag/pricing derivation, cart, sessions, settings
+src/lib/                      domain logic — tag/pricing derivation, cart, sessions, settings, mail
 ```
 
 ## Build phases
 
-Both P1 (launch-critical) and P2 (fast-follow) from the spec's §13 checklist are implemented:
+Both P1 (launch-critical) and P2 (fast-follow) from the spec's §13 checklist are implemented in full, including every item originally listed but not elaborated on in the page-by-page spec (journal/blog, abandoned-checkout + lifecycle emails, staff roles management):
 
-- **P1**: design system, storefront browse/PDP, cart → guest checkout → confirmation → track order, admin dashboard/orders/products/inventory/categories/settings, all legal/utility pages.
-- **P2**: customer accounts (register/login/orders/returns/wishlist/back-in-stock — guest orders auto-claim on registration), drops/collections landing, lookbook, admin CRM/discounts/campaigns/content CMS/analytics/reviews.
+- **P1**: design system, storefront browse/PDP, cart → guest checkout → confirmation → track order, admin dashboard/orders/products/inventory/categories/settings (including Tax and Email-template tabs), all legal/utility pages.
+- **P2**: customer accounts (register/login/orders/returns/wishlist/back-in-stock — guest orders auto-claim on registration), reviews (customer-submitted from delivered orders → admin moderation → shown on PDP), drops/collections landing, lookbook, journal/blog, live search suggestions, a "recently viewed" rail, a swipeable multi-image PDP gallery, admin CRM/discounts/campaigns/content CMS/analytics/reviews/staff-roles CRUD, and the full lifecycle email set (order confirmed/shipped, back-in-stock, preorder ship-date changes, newsletter welcome, contact acknowledgement, abandoned-checkout reminders).
 
 ## Notes for further work
 
-- Product/model photography: every image is a styled placeholder (`PlaceholderFrame`) — swap in real assets at the same aspect ratios noted per page in the spec.
+- Product/model photography: every image is a styled placeholder (`PlaceholderFrame`) — swap in real assets at the same aspect ratios noted per page in the spec. Each product now seeds with 4 placeholder images so the gallery has real content to page through.
 - Payments are mocked; wiring real bKash/Nagad/SSLCommerz sandbox APIs would replace the payment-status logic in `src/actions/checkout.ts`.
-- Emails (order confirmation, shipping, back-in-stock, etc.) are not sent — the spec's §11 event list is a ready-made checklist for adding a transactional email provider.
+- Emails are mocked to an outbox table rather than actually sent — swap the body of `sendMail()` in `src/lib/mail.ts` for a real provider (SES/SendGrid/etc.) and every call site (order events, back-in-stock, abandoned checkout, newsletter, contact) keeps working unchanged.
+- Abandoned-checkout reminders are admin-triggered (`/admin/campaigns` → "Send all pending reminders") rather than on an automatic schedule — wire that button's action (`sendAllAbandonedReminders` in `src/actions/admin-marketing.ts`) into a cron job for real automation.
