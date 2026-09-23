@@ -22,7 +22,8 @@ export function AbandonedCheckoutPanel({ rows }: { rows: Row[] }) {
       <p className="mb-3 text-[13px] text-muted">
         Captured when a shopper enters their email at checkout but doesn&apos;t complete the order.
       </p>
-      <table className="w-full text-sm">
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-line-2 text-left text-muted">
             {["Email", "Bag", "Started", "Reminded", ""].map((h) => (
@@ -60,7 +61,8 @@ export function AbandonedCheckoutPanel({ rows }: { rows: Row[] }) {
             </tr>
           )}
         </tbody>
-      </table>
+        </table>
+      </div>
       {rows.some((r) => !r.remindedAt) && (
         <button
           disabled={pending}

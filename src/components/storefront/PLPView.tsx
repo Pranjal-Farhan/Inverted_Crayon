@@ -55,7 +55,7 @@ export async function PLPView({
         <h1 className="font-impact text-[clamp(40px,6vw,72px)] uppercase leading-[0.85] tracking-[1px]">{title}</h1>
       </div>
 
-      <div className="plp grid gap-7 py-6 desktop:grid-cols-[210px_1fr]">
+      <div className="plp grid grid-cols-1 gap-7 py-6 desktop:grid-cols-[210px_1fr]">
         <FilterDrawer>
           <FilterGroup title="Size">
             {results.availableSizes.map((s) => (

@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/lib/db";
+import { Prisma } from "@/generated/prisma/client";
 import { getCustomerSession } from "@/lib/session";
 
 const schema = z.object({
@@ -34,16 +35,27 @@ export async function submitReview(input: z.infer<typeof schema>): Promise<Revie
   const existing = await db.review.findFirst({ where: { productId: data.productId, customerId: session.customerId } });
   if (existing) return { ok: false, error: "You've already reviewed this product." };
 
-  await db.review.create({
-    data: {
-      productId: data.productId,
-      customerId: session.customerId,
-      authorName: session.name ?? "Customer",
-      rating: data.rating,
-      body: data.body,
-      status: "PENDING",
-    },
-  });
+  try {
+    await db.review.create({
+      data: {
+        productId: data.productId,
+        customerId: session.customerId,
+        authorName: session.name ?? "Customer",
+        rating: data.rating,
+        body: data.body,
+        status: "PENDING",
+      },
+    });
+  } catch (e) {
+    // The findFirst above is a courtesy check, not the real guard — a concurrent double-submit
+    // (double-click, two tabs) can race past it. The @@unique([productId, customerId]) constraint
+    // is what actually prevents duplicates; catch its violation and surface the same friendly error.
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+      return { ok: false, error: "You've already reviewed this product." };
+    }
+    console.error("submitReview failed", e);
+    return { ok: false, error: "That didn't go through. Try again in a moment." };
+  }
 
   revalidatePath(`/account/orders/${data.orderNumber}`);
   revalidatePath("/admin/reviews");

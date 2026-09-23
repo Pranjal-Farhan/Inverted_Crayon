@@ -16,7 +16,7 @@ export default async function JournalPage() {
         <h1 className="font-impact text-[clamp(40px,6vw,72px)] uppercase leading-[0.85] tracking-[1px]">Journal</h1>
       </div>
 
-      <div className="mt-5 grid gap-6 desktop:grid-cols-3">
+      <div className="mt-5 grid grid-cols-1 gap-6 desktop:grid-cols-3">
         {posts.map((p) => {
           const accent = pickAccent(p.id);
           return (

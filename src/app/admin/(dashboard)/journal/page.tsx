@@ -14,7 +14,8 @@ export default async function AdminJournalPage() {
         </Link>
       </div>
       <Panel className="!p-0">
-        <table className="w-full text-sm">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-line-2 text-left text-muted">
               {["Title", "Author", "Status", "Published", ""].map((h) => (
@@ -49,7 +50,8 @@ export default async function AdminJournalPage() {
               </tr>
             )}
           </tbody>
-        </table>
+          </table>
+        </div>
       </Panel>
     </div>
   );

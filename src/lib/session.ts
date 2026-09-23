@@ -2,9 +2,18 @@ import "server-only";
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
 
-const secret = new TextEncoder().encode(
-  process.env.SESSION_SECRET ?? "dev-only-insecure-secret-change-me",
-);
+const SESSION_SECRET_ENV = process.env.SESSION_SECRET;
+if (!SESSION_SECRET_ENV) {
+  if (process.env.NODE_ENV === "production") {
+    // A missing secret here would otherwise silently fall back to a value sitting in the public
+    // source tree, letting anyone forge admin/customer session cookies. Fail loud instead.
+    throw new Error("SESSION_SECRET must be set in production — refusing to start with an insecure default.");
+  }
+  console.warn(
+    "[session] SESSION_SECRET is not set — using an insecure development-only default. Set SESSION_SECRET before deploying.",
+  );
+}
+const secret = new TextEncoder().encode(SESSION_SECRET_ENV ?? "dev-only-insecure-secret-change-me");
 
 const ADMIN_COOKIE = "ic_admin_session";
 const CUSTOMER_COOKIE = "ic_customer_session";

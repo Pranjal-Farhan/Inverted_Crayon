@@ -13,7 +13,7 @@ export default async function AccountProtectedLayout({ children }: { children: R
           My <span className="text-lime">Account</span>
         </h1>
       </div>
-      <div className="grid gap-7 py-5.5 desktop:grid-cols-[200px_1fr]">
+      <div className="grid grid-cols-1 gap-7 py-5.5 desktop:grid-cols-[200px_1fr]">
         <AccountNav />
         <div className="min-w-0">{children}</div>
       </div>

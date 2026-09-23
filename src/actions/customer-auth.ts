@@ -5,6 +5,7 @@ import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { setCustomerSession, clearCustomerSession } from "@/lib/session";
+import { isLocked, lockoutMessage, nextLockoutState } from "@/lib/login-lockout";
 
 export async function customerLogin(
   _prev: { ok: boolean; error: string } | null,
@@ -14,8 +15,21 @@ export async function customerLogin(
   const password = String(formData.get("password") ?? "");
 
   const customer = await db.customer.findUnique({ where: { email } });
+
+  if (customer && isLocked(customer.lockedUntil)) {
+    return { ok: false, error: lockoutMessage(customer.lockedUntil!) };
+  }
+
   if (!customer || !customer.passwordHash || !(await bcrypt.compare(password, customer.passwordHash))) {
+    if (customer) {
+      const next = nextLockoutState(customer.failedLoginCount);
+      await db.customer.update({ where: { id: customer.id }, data: next });
+    }
     return { ok: false, error: "Invalid email or password." };
+  }
+
+  if (customer.failedLoginCount > 0) {
+    await db.customer.update({ where: { id: customer.id }, data: { failedLoginCount: 0, lockedUntil: null } });
   }
 
   await setCustomerSession({ customerId: customer.id, email: customer.email, name: customer.name });

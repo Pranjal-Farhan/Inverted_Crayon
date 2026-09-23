@@ -203,13 +203,15 @@ model ProductTag {
 // ---------- customers ----------
 
 model Customer {
-  id           String   @id @default(cuid())
-  email        String   @unique
-  passwordHash String?
-  name         String?
-  phone        String?
-  notes        String?
-  segmentTags  String[] @default([])
+  id               String    @id @default(cuid())
+  email            String    @unique
+  passwordHash     String?
+  name             String?
+  phone            String?
+  notes            String?
+  segmentTags      String[]  @default([])
+  failedLoginCount Int       @default(0)
+  lockedUntil      DateTime?
 
   addresses       Address[]
   orders          Order[]
@@ -366,6 +368,8 @@ model Review {
   status     ReviewStatus @default(PENDING)
   reply      String?
   createdAt  DateTime     @default(now())
+
+  @@unique([productId, customerId])
 }
 
 model WishlistItem {
@@ -409,12 +413,14 @@ model NewsletterSubscriber {
 // ---------- admin / CMS ----------
 
 model AdminUser {
-  id           String    @id @default(cuid())
-  email        String    @unique
-  passwordHash String
-  name         String
-  role         AdminRole @default(STAFF)
-  createdAt    DateTime  @default(now())
+  id               String    @id @default(cuid())
+  email            String    @unique
+  passwordHash     String
+  name             String
+  role             AdminRole @default(STAFF)
+  failedLoginCount Int       @default(0)
+  lockedUntil      DateTime?
+  createdAt        DateTime  @default(now())
 }
 
 // Freeform CMS blocks keyed by slot (home_hero, home_featured_drop, men_hero, ...)

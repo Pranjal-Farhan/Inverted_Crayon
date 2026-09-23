@@ -134,7 +134,7 @@ export function SettingsView({
             <input type="checkbox" checked={tax.inclusive} onChange={(e) => setTax((t) => ({ ...t, inclusive: e.target.checked }))} />
             Prices include tax
           </label>
-          <div className="grid gap-2.5 desktop:grid-cols-2">
+          <div className="grid grid-cols-1 gap-2.5 desktop:grid-cols-2">
             <div>
               <label className="font-label mb-1 block text-[12px] tracking-[1px] text-muted">Rate (%)</label>
               <input

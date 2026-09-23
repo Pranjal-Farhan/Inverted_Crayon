@@ -62,7 +62,7 @@ export default async function ProductPage({ params }: Props) {
   return (
     <section className="pg pb-16">
       <TrackRecentlyViewed productId={product.id} />
-      <div className="grid gap-10 py-5.5 desktop:grid-cols-[1.05fr_1fr]">
+      <div className="grid grid-cols-1 gap-10 py-5.5 desktop:grid-cols-[1.05fr_1fr]">
         <ProductGallery
           images={product.images.map((img) => ({ id: img.id, url: img.url || undefined, accentColor: img.accentColor, alt: img.alt }))}
           fallbackAccent={accent}

@@ -12,7 +12,7 @@ export function ProfileForm({ name, phone, email }: { name: string; phone: strin
   return (
     <div className="border border-line bg-panel p-4.5">
       <h3 className="font-impact mb-3.5 text-lg uppercase">Profile</h3>
-      <div className="grid gap-2.5 desktop:grid-cols-2">
+      <div className="grid grid-cols-1 gap-2.5 desktop:grid-cols-2">
         <div>
           <label className="font-label mb-1 block text-[12px] tracking-[1px] text-muted">Name</label>
           <input value={n} onChange={(e) => setN(e.target.value)} className="w-full border border-line-2 bg-ink px-2.5 py-2 text-sm" />

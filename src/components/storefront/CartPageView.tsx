@@ -22,7 +22,7 @@ export function CartPageView() {
         </h1>
       </div>
 
-      <div className="two grid gap-8 py-5 desktop:grid-cols-[1.5fr_1fr]">
+      <div className="two grid grid-cols-1 gap-8 py-5 desktop:grid-cols-[1.5fr_1fr]">
         <div>
           {cart.lines.length === 0 ? (
             <div className="flex flex-col items-center gap-4 py-16 text-center">

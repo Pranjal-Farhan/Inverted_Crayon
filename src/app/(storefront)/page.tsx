@@ -54,7 +54,7 @@ export default async function HomePage() {
   return (
     <>
       {/* HERO */}
-      <div className="grid gap-7 py-10 desktop:grid-cols-[1.05fr_1fr]">
+      <div className="grid grid-cols-1 gap-7 py-10 desktop:grid-cols-[1.05fr_1fr]">
         <div>
           <span className="font-scrawl flex items-center gap-2 text-[15px]">
             {hero.eyebrow} <Crown className="h-6 w-8 text-white" />
@@ -96,7 +96,7 @@ export default async function HomePage() {
       <div className="sh my-8 flex items-center gap-3 font-scrawl text-[30px]">
         Collections <Crown className="h-6 w-[34px] text-cyan" />
       </div>
-      <div className="grid gap-4 desktop:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 desktop:grid-cols-3">
         {COLLECTION_TILES.map((t) => (
           <Link key={t.label} href={t.href} className="relative flex min-h-[280px] items-end overflow-hidden border border-line bg-ink">
             <PlaceholderFrame accentColor={t.color} shape={t.shape} stamp={false} className="absolute inset-0 z-[2] h-full w-full" />
@@ -111,7 +111,7 @@ export default async function HomePage() {
           <div className="sh my-8 flex items-center gap-3 font-scrawl text-[30px]">
             Featured drop <Crown className="h-6 w-[34px] text-yellow" />
           </div>
-          <div className="grid gap-8 desktop:grid-cols-[1fr_1.2fr] items-center border border-line bg-panel p-6">
+          <div className="grid grid-cols-1 gap-8 desktop:grid-cols-[1fr_1.2fr] items-center border border-line bg-panel p-6">
             <div className="aspect-square">
               <PlaceholderFrame
                 accentColor={featuredAccent.color}

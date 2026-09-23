@@ -67,6 +67,17 @@ function slugify(s: string): string {
 }
 
 async function main() {
+  // This script is a demo/dev dataset — it creates test customer accounts with known passwords
+  // (e.g. rex@example.com / Password123!) and a demo staff login, published in this repo's README.
+  // Never run it unattended against a real production database.
+  if (process.env.NODE_ENV === "production" && process.env.ALLOW_PRODUCTION_SEED !== "true") {
+    throw new Error(
+      "Refusing to run the demo seed against a production database (NODE_ENV=production). " +
+        "It creates test accounts with publicly-known passwords. If you really want this demo " +
+        "catalog as a starting point, set ALLOW_PRODUCTION_SEED=true and re-run.",
+    );
+  }
+
   console.log("Seeding…");
 
   // ---------- categories ----------

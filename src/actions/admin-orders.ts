@@ -46,13 +46,21 @@ export async function refundOrder(orderId: string) {
   await requireAdmin();
   await db.$transaction(async (tx) => {
     const order = await tx.order.findUniqueOrThrow({ where: { id: orderId }, include: { items: true } });
-    if (order.status === "REFUNDED") return;
+
+    // Atomic claim on the REFUNDED transition: two concurrent refund clicks could otherwise both
+    // read status as not-yet-refunded before either commits, and both restock — double-crediting
+    // inventory that was only actually returned once.
+    const claimed = await tx.order.updateMany({
+      where: { id: orderId, status: { not: "REFUNDED" } },
+      data: { status: "REFUNDED", paymentStatus: "REFUNDED" },
+    });
+    if (claimed.count === 0) return; // already refunded
+
     for (const item of order.items) {
       if (!item.isPreorder && item.variantId) {
         await tx.variant.update({ where: { id: item.variantId }, data: { stockQty: { increment: item.qty } } });
       }
     }
-    await tx.order.update({ where: { id: orderId }, data: { status: "REFUNDED", paymentStatus: "REFUNDED" } });
   });
   revalidatePath(`/admin/orders/${orderId}`);
   revalidatePath("/admin/orders");

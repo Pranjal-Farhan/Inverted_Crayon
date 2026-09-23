@@ -59,7 +59,7 @@ export default async function AdminDashboardPage() {
         <Kpi label="Low stock" value={String(allLowStock.length)} accent="yellow" />
       </div>
 
-      <div className="grid gap-4.5 desktop:grid-cols-[1.6fr_1fr]">
+      <div className="grid grid-cols-1 gap-4.5 desktop:grid-cols-[1.6fr_1fr]">
         <Panel title="Sales — last 7 days">
           <div className="flex items-end gap-2 pt-2.5" style={{ height: 160 }}>
             {days.map((d) => (
@@ -73,7 +73,8 @@ export default async function AdminDashboardPage() {
 
         <div>
           <Panel title="Recent orders">
-            <table className="w-full text-sm">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
               <tbody>
                 {recentOrders.map((o) => (
                   <tr key={o.id} className="border-b border-line last:border-0">
@@ -95,7 +96,8 @@ export default async function AdminDashboardPage() {
                   </tr>
                 )}
               </tbody>
-            </table>
+              </table>
+            </div>
           </Panel>
           <Panel title="Low stock" className="mt-4.5">
             {lowStockVariants.length === 0 ? (

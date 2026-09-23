@@ -46,7 +46,8 @@ export default async function AdminEmailsPage({ searchParams }: Props) {
       </form>
 
       <Panel className="!p-0">
-        <table className="w-full text-sm">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-line-2 text-left text-muted">
               {["To", "Type", "Subject", "Sent"].map((h) => (
@@ -79,7 +80,8 @@ export default async function AdminEmailsPage({ searchParams }: Props) {
               </tr>
             )}
           </tbody>
-        </table>
+          </table>
+        </div>
       </Panel>
     </div>
   );

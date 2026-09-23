@@ -27,9 +27,10 @@ export default async function AdminOrderDetailPage({ params }: Props) {
           View / print receipt →
         </Link>
       </div>
-      <div className="grid gap-4.5 desktop:grid-cols-[1.6fr_1fr]">
+      <div className="grid grid-cols-1 gap-4.5 desktop:grid-cols-[1.6fr_1fr]">
         <Panel title={`Order #${order.number}`}>
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-line-2 text-left text-muted">
                 {["Item", "Variant", "Qty", "Total"].map((h) => (
@@ -51,7 +52,8 @@ export default async function AdminOrderDetailPage({ params }: Props) {
                 </tr>
               ))}
             </tbody>
-          </table>
+            </table>
+          </div>
           <div className="mt-3 flex justify-between text-paper">
             <span>Total paid ({order.paymentMethod})</span>
             <span className="font-impact">{formatTaka(toNumber(order.total))}</span>

@@ -20,6 +20,7 @@ const TYPE_LABEL: Record<Discount["type"], string> = { PERCENT: "Percent", FIXED
 
 export function DiscountManager({ discounts }: { discounts: Discount[] }) {
   const [editing, setEditing] = useState<Discount | "new" | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   return (
@@ -30,7 +31,8 @@ export function DiscountManager({ discounts }: { discounts: Discount[] }) {
         </button>
       </div>
       <div className="border border-line bg-panel p-0">
-        <table className="w-full text-sm">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-line-2 text-left text-muted">
               {["Code", "Type", "Value", "Min spend", "Used", "Status", ""].map((h) => (
@@ -66,16 +68,39 @@ export function DiscountManager({ discounts }: { discounts: Discount[] }) {
               </tr>
             )}
           </tbody>
-        </table>
+          </table>
+        </div>
       </div>
 
       {editing && (
         <DiscountForm
           discount={editing === "new" ? null : editing}
           pending={pending}
-          onCancel={() => setEditing(null)}
-          onSave={(data) => startTransition(async () => { await saveDiscount(data); setEditing(null); })}
-          onDelete={editing !== "new" ? () => startTransition(async () => { await deleteDiscount(editing.id); setEditing(null); }) : undefined}
+          error={error}
+          onCancel={() => {
+            setError(null);
+            setEditing(null);
+          }}
+          onSave={(data) =>
+            startTransition(async () => {
+              setError(null);
+              const res = await saveDiscount(data);
+              if (!res.ok) {
+                setError(res.error);
+                return;
+              }
+              setEditing(null);
+            })
+          }
+          onDelete={
+            editing !== "new"
+              ? () =>
+                  startTransition(async () => {
+                    await deleteDiscount(editing.id);
+                    setEditing(null);
+                  })
+              : undefined
+          }
         />
       )}
     </div>
@@ -85,12 +110,14 @@ export function DiscountManager({ discounts }: { discounts: Discount[] }) {
 function DiscountForm({
   discount,
   pending,
+  error,
   onCancel,
   onSave,
   onDelete,
 }: {
   discount: Discount | null;
   pending: boolean;
+  error: string | null;
   onCancel: () => void;
   onSave: (data: {
     id?: string;
@@ -114,7 +141,7 @@ function DiscountForm({
 
   return (
     <div className="mt-3.5 border border-line bg-panel-2 p-4">
-      <div className="grid gap-2.5 desktop:grid-cols-3">
+      <div className="grid grid-cols-1 gap-2.5 desktop:grid-cols-3">
         <input value={code} onChange={(e) => setCode(e.target.value)} placeholder="CODE" className="border border-line-2 bg-ink px-2.5 py-1.5 text-sm uppercase" />
         <select value={type} onChange={(e) => setType(e.target.value as Discount["type"])} className="border border-line-2 bg-ink px-2.5 py-1.5 text-sm">
           <option value="PERCENT">Percent</option>
@@ -125,7 +152,7 @@ function DiscountForm({
           <input type="number" value={value} onChange={(e) => setValue(Number(e.target.value))} placeholder="Value" className="border border-line-2 bg-ink px-2.5 py-1.5 text-sm" />
         )}
       </div>
-      <div className="mt-2.5 grid gap-2.5 desktop:grid-cols-3">
+      <div className="mt-2.5 grid grid-cols-1 gap-2.5 desktop:grid-cols-3">
         <input type="number" value={minSpend} onChange={(e) => setMinSpend(Number(e.target.value))} placeholder="Min spend ৳" className="border border-line-2 bg-ink px-2.5 py-1.5 text-sm" />
         <input type="number" value={usageLimit} onChange={(e) => setUsageLimit(Number(e.target.value))} placeholder="Usage limit (0 = unlimited)" className="border border-line-2 bg-ink px-2.5 py-1.5 text-sm" />
       </div>
@@ -137,6 +164,7 @@ function DiscountForm({
           <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} /> Active
         </label>
       </div>
+      {error && <p className="mt-2.5 text-[13px] text-error">{error}</p>}
       <div className="mt-3 flex gap-2">
         <button
           disabled={pending}

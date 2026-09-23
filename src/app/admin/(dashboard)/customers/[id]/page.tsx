@@ -22,9 +22,10 @@ export default async function AdminCustomerDetailPage({ params }: Props) {
       <Link href="/admin/customers" className="text-cyan mb-3 inline-block text-sm">
         ← Customers
       </Link>
-      <div className="grid gap-4.5 desktop:grid-cols-[1.6fr_1fr]">
+      <div className="grid grid-cols-1 gap-4.5 desktop:grid-cols-[1.6fr_1fr]">
         <Panel title="Orders">
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-line-2 text-left text-muted">
                 {["Order", "Total", "Status", "Date"].map((h) => (
@@ -57,7 +58,8 @@ export default async function AdminCustomerDetailPage({ params }: Props) {
                 </tr>
               )}
             </tbody>
-          </table>
+            </table>
+          </div>
         </Panel>
 
         <div>

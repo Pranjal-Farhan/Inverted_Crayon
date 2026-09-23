@@ -34,7 +34,8 @@ export default async function AdminCustomersPage({ searchParams }: Props) {
       </form>
 
       <Panel className="!p-0">
-        <table className="w-full text-sm">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-line-2 text-left text-muted">
               {["Customer", "Email", "Orders", "LTV", "Segment"].map((h) => (
@@ -73,7 +74,8 @@ export default async function AdminCustomersPage({ searchParams }: Props) {
               </tr>
             )}
           </tbody>
-        </table>
+          </table>
+        </div>
       </Panel>
     </div>
   );

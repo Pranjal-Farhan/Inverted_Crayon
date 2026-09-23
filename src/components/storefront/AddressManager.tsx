@@ -83,12 +83,12 @@ function AddressForm({
 
   return (
     <div className="mt-3.5 border border-line bg-panel-2 p-4">
-      <div className="grid gap-2.5 desktop:grid-cols-2">
+      <div className="grid grid-cols-1 gap-2.5 desktop:grid-cols-2">
         <input value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Full name" className="border border-line-2 bg-ink px-2.5 py-1.5 text-sm" />
         <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Phone" className="border border-line-2 bg-ink px-2.5 py-1.5 text-sm" />
       </div>
       <input value={line1} onChange={(e) => setLine1(e.target.value)} placeholder="Address" className="mt-2.5 w-full border border-line-2 bg-ink px-2.5 py-1.5 text-sm" />
-      <div className="mt-2.5 grid gap-2.5 desktop:grid-cols-3">
+      <div className="mt-2.5 grid grid-cols-1 gap-2.5 desktop:grid-cols-3">
         <input value={area} onChange={(e) => setArea(e.target.value)} placeholder="Area" className="border border-line-2 bg-ink px-2.5 py-1.5 text-sm" />
         <input value={district} onChange={(e) => setDistrict(e.target.value)} placeholder="District" className="border border-line-2 bg-ink px-2.5 py-1.5 text-sm" />
         <input value={postcode} onChange={(e) => setPostcode(e.target.value)} placeholder="Postcode" className="border border-line-2 bg-ink px-2.5 py-1.5 text-sm" />

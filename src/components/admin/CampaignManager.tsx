@@ -41,7 +41,8 @@ export function CampaignManager({
         </button>
       </div>
       <div className="border border-line bg-panel">
-        <table className="w-full text-sm">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-line-2 text-left text-muted">
               {["Campaign", "Target", "Discount", "Window", "Status", ""].map((h) => (
@@ -79,7 +80,8 @@ export function CampaignManager({
               </tr>
             )}
           </tbody>
-        </table>
+          </table>
+        </div>
       </div>
 
       {editing && (
@@ -136,7 +138,7 @@ function CampaignForm({
 
   return (
     <div className="mt-3.5 border border-line bg-panel-2 p-4">
-      <div className="grid gap-2.5 desktop:grid-cols-3">
+      <div className="grid grid-cols-1 gap-2.5 desktop:grid-cols-3">
         <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Campaign name" className="border border-line-2 bg-ink px-2.5 py-1.5 text-sm" />
         <select value={targetCategoryId} onChange={(e) => setTargetCategoryId(e.target.value)} className="border border-line-2 bg-ink px-2.5 py-1.5 text-sm">
           <option value="">All categories</option>
@@ -148,7 +150,7 @@ function CampaignForm({
         </select>
         <input type="number" value={percentOff} onChange={(e) => setPercentOff(Number(e.target.value))} placeholder="% off" className="border border-line-2 bg-ink px-2.5 py-1.5 text-sm" />
       </div>
-      <div className="mt-2.5 grid gap-2.5 desktop:grid-cols-2">
+      <div className="mt-2.5 grid grid-cols-1 gap-2.5 desktop:grid-cols-2">
         <input type="datetime-local" value={startsAt} onChange={(e) => setStartsAt(e.target.value)} className="border border-line-2 bg-ink px-2.5 py-1.5 text-sm" />
         <input type="datetime-local" value={endsAt} onChange={(e) => setEndsAt(e.target.value)} className="border border-line-2 bg-ink px-2.5 py-1.5 text-sm" />
       </div>

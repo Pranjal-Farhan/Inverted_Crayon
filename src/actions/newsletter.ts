@@ -14,15 +14,20 @@ export async function subscribeNewsletter(
   if (!parsed.success) {
     return { ok: false, message: "That didn't go through. Check the fields in red and try again." };
   }
-  const existing = await db.newsletterSubscriber.findUnique({ where: { email: parsed.data } });
-  if (!existing) {
-    await db.newsletterSubscriber.create({ data: { email: parsed.data } });
-    await sendMail({
-      to: parsed.data,
-      subject: "Stay inverted.",
-      body: "Drops, restocks, nothing boring. You're on the list.",
-      type: "WELCOME",
-    });
+  try {
+    const existing = await db.newsletterSubscriber.findUnique({ where: { email: parsed.data } });
+    if (!existing) {
+      await db.newsletterSubscriber.create({ data: { email: parsed.data } });
+      await sendMail({
+        to: parsed.data,
+        subject: "Stay inverted.",
+        body: "Drops, restocks, nothing boring. You're on the list.",
+        type: "WELCOME",
+      }).catch((e) => console.error("newsletter welcome email failed", e));
+    }
+  } catch (e) {
+    console.error("subscribeNewsletter failed", e);
+    return { ok: false, message: "That didn't go through. Please try again in a moment." };
   }
   return { ok: true, message: "Stay inverted. You're in." };
 }

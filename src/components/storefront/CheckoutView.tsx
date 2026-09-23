@@ -125,7 +125,7 @@ export function CheckoutView({
   }
 
   return (
-    <div className="two grid gap-7 py-5 desktop:grid-cols-[1.5fr_1fr]">
+    <div className="two grid grid-cols-1 gap-7 py-5 desktop:grid-cols-[1.5fr_1fr]">
       <div className="min-w-0">
         <Step n={1} title="Contact">
           <Field label="Email" error={fieldErrors.email}>

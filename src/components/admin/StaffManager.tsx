@@ -19,7 +19,8 @@ export function StaffManager({ users, selfId }: { users: StaffUser[]; selfId: st
   return (
     <Panel title="Staff roles">
       <p className="mb-3 text-[13px] text-muted">Admin — full access · Staff — fulfil orders, no refunds or settings.</p>
-      <table className="w-full text-sm">
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-line-2 text-left text-muted">
             {["Name", "Email", "Role", ""].map((h) => (
@@ -80,7 +81,8 @@ export function StaffManager({ users, selfId }: { users: StaffUser[]; selfId: st
             </tr>
           ))}
         </tbody>
-      </table>
+        </table>
+      </div>
       {actionError && <p className="mt-2 text-[13px] text-error">{actionError}</p>}
 
       {!inviting ? (
@@ -89,11 +91,11 @@ export function StaffManager({ users, selfId }: { users: StaffUser[]; selfId: st
         </button>
       ) : (
         <div className="mt-3.5 border border-line bg-panel-2 p-4">
-          <div className="grid gap-2.5 desktop:grid-cols-2">
+          <div className="grid grid-cols-1 gap-2.5 desktop:grid-cols-2">
             <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Name" className="border border-line-2 bg-ink px-2.5 py-1.5 text-sm" />
             <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" className="border border-line-2 bg-ink px-2.5 py-1.5 text-sm" />
           </div>
-          <div className="mt-2.5 grid gap-2.5 desktop:grid-cols-2">
+          <div className="mt-2.5 grid grid-cols-1 gap-2.5 desktop:grid-cols-2">
             <input
               value={password}
               onChange={(e) => setPassword(e.target.value)}

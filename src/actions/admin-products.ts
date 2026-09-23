@@ -7,10 +7,16 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
 import { db } from "@/lib/db";
+import { Prisma } from "@/generated/prisma/client";
 import { getAdminSession } from "@/lib/session";
 import { sendMail } from "@/lib/mail";
 
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
+const MAX_FILES_PER_UPLOAD = 12;
+const MAX_TOTAL_UPLOAD_BYTES = 40 * 1024 * 1024;
+// SVG is deliberately excluded even though it's an "image/*" type: it can embed <script>, and
+// since it's served back from /uploads at its own URL, an uploaded SVG would be stored XSS.
+const REJECTED_IMAGE_TYPES = new Set(["image/svg+xml"]);
 
 async function requireAdmin() {
   const session = await getAdminSession();
@@ -115,7 +121,10 @@ export async function saveProduct(input: ProductFormInput): Promise<ProductSaveR
             size: v.size,
             color: v.color,
             colorHex: v.colorHex,
-            stockQty: v.stockQty,
+            // stockQty deliberately omitted: this form loads stock at page-open time, and a
+            // customer purchase (or an inventory-page edit) between then and save would get
+            // silently overwritten by that stale value. Stock changes go through the Inventory
+            // page's setVariantStock instead; new variants still get their initial count below.
             lowStockThreshold: v.lowStockThreshold,
             priceOverride: v.priceOverride ?? null,
           },
@@ -192,7 +201,12 @@ export async function saveProduct(input: ProductFormInput): Promise<ProductSaveR
 
 export async function deleteProduct(id: string) {
   await requireAdmin();
-  await db.product.delete({ where: { id } });
+  try {
+    await db.product.delete({ where: { id } });
+  } catch (e) {
+    // P2025 = record already gone (double-submit) — deleting is idempotent, just continue.
+    if (!(e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2025")) throw e;
+  }
   await fs.rm(path.join(process.cwd(), "public", "uploads", "products", id), { recursive: true, force: true });
   revalidatePath("/admin/products");
   redirect("/admin/products");
@@ -209,12 +223,16 @@ export async function uploadProductImages(productId: string, formData: FormData)
 
   const files = formData.getAll("files").filter((f): f is File => f instanceof File && f.size > 0);
   if (files.length === 0) return { ok: false, error: "No files received." };
+  if (files.length > MAX_FILES_PER_UPLOAD) return { ok: false, error: `Upload at most ${MAX_FILES_PER_UPLOAD} images at a time.` };
 
   const oversized = files.some((f) => f.size > MAX_IMAGE_BYTES);
   if (oversized) return { ok: false, error: "Each image must be under 8MB." };
 
-  const imageFiles = files.filter((f) => f.type.startsWith("image/"));
-  if (imageFiles.length === 0) return { ok: false, error: "Only image files are accepted." };
+  const totalBytes = files.reduce((sum, f) => sum + f.size, 0);
+  if (totalBytes > MAX_TOTAL_UPLOAD_BYTES) return { ok: false, error: "That's too much data in one upload — try fewer images." };
+
+  const imageFiles = files.filter((f) => f.type.startsWith("image/") && !REJECTED_IMAGE_TYPES.has(f.type));
+  if (imageFiles.length === 0) return { ok: false, error: "Only JPG, PNG, WEBP, GIF or AVIF images are accepted." };
 
   const dir = path.join(process.cwd(), "public", "uploads", "products", productId);
   await fs.mkdir(dir, { recursive: true });

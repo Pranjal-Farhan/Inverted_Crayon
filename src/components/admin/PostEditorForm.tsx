@@ -47,7 +47,7 @@ export function PostEditorForm({
   }
 
   return (
-    <div className="grid gap-4.5 desktop:grid-cols-[1.4fr_1fr]">
+    <div className="grid grid-cols-1 gap-4.5 desktop:grid-cols-[1.4fr_1fr]">
       <Panel title="Post">
         <Field label="Title">
           <input value={title} onChange={(e) => setTitle(e.target.value)} className={inputClass} />

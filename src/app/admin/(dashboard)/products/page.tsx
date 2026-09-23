@@ -48,7 +48,8 @@ export default async function AdminProductsPage({ searchParams }: Props) {
       </form>
 
       <Panel className="!p-0">
-        <table className="w-full text-sm">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-line-2 text-left text-muted">
               {["Product", "Gender", "Category", "Price", "Stock", "Tags", "Status"].map((h) => (
@@ -88,7 +89,8 @@ export default async function AdminProductsPage({ searchParams }: Props) {
               </tr>
             )}
           </tbody>
-        </table>
+          </table>
+        </div>
       </Panel>
     </div>
   );

@@ -2,6 +2,7 @@
 
 import { z } from "zod";
 import { db } from "@/lib/db";
+import { Prisma } from "@/generated/prisma/client";
 import { formatTaka, toNumber } from "@/lib/money";
 import { generateOrderNumber } from "@/lib/order-number";
 import { validateDiscountCode } from "@/lib/discount";
@@ -9,6 +10,11 @@ import { getShippingRates } from "@/lib/store-settings";
 import { getCustomerSession } from "@/lib/session";
 import { findActiveCampaign } from "@/lib/product-view";
 import { sendMail } from "@/lib/mail";
+
+const MAX_ORDER_NUMBER_ATTEMPTS = 5;
+
+/** Thrown inside the checkout transaction for expected, user-facing failures (stock/discount raced out from under this order) — rolls back and surfaces as a normal error, not a crash. */
+class CheckoutConflictError extends Error {}
 
 const checkoutSchema = z.object({
   email: z.email(),
@@ -106,73 +112,119 @@ export async function placeOrder(input: CheckoutInput): Promise<CheckoutResult> 
   }
   subtotal = Math.round(subtotal * 100) / 100;
 
+  const session = await getCustomerSession();
+
   let discountAmount = 0;
   let freeShipping = false;
   let appliedCode: string | null = null;
+  let appliedUsageLimit: number | null = null;
   if (data.promoCode) {
-    const session = await getCustomerSession();
     let isFirstOrder = true;
     if (session?.customerId) {
       isFirstOrder = (await db.order.count({ where: { customerId: session.customerId } })) === 0;
+    } else {
+      // Guest checkout: no session to key off, so fall back to order history for this email —
+      // otherwise anyone can reuse a first-order-only code indefinitely by simply staying logged out.
+      isFirstOrder = (await db.order.count({ where: { email: data.email } })) === 0;
     }
     const result = await validateDiscountCode(data.promoCode, subtotal, isFirstOrder);
     if (result.ok) {
       discountAmount = result.amount;
       freeShipping = result.discount.type === "FREE_SHIPPING";
       appliedCode = result.discount.code;
+      appliedUsageLimit = result.discount.usageLimit;
     }
   }
 
   const shippingCost = freeShipping ? 0 : rates[data.shippingZone].cost;
-  const total = Math.max(subtotal - discountAmount + shippingCost, 0);
+  const total = Math.max(Math.round((subtotal - discountAmount + shippingCost) * 100) / 100, 0);
 
-  const session = await getCustomerSession();
-  const orderNumber = generateOrderNumber();
+  let orderNumber = "";
+  let succeeded = false;
 
-  await db.$transaction(async (tx) => {
-    await tx.order.create({
-      data: {
-        number: orderNumber,
-        email: data.email,
-        phone: data.phone,
-        customerId: session?.customerId,
-        status: data.paymentMethod === "COD" ? "PENDING" : "PAID",
-        subtotal,
-        shippingCost,
-        discountAmount,
-        total,
-        paymentMethod: data.paymentMethod,
-        paymentStatus: data.paymentMethod === "COD" ? "PENDING" : "PAID",
-        shippingZone: data.shippingZone,
-        shippingFullName: data.shipping.fullName,
-        shippingPhone: data.shipping.phone,
-        shippingLine1: data.shipping.line1,
-        shippingArea: data.shipping.area,
-        shippingDistrict: data.shipping.district,
-        shippingPostcode: data.shipping.postcode,
-        shippingCountry: data.shipping.country,
-        isPreorder: hasPreorder,
-        preorderShipMode: hasPreorder ? data.preorderShipMode : null,
-        discountCode: appliedCode,
-        items: { create: orderItemsData },
-      },
-    });
+  for (let attempt = 1; attempt <= MAX_ORDER_NUMBER_ATTEMPTS && !succeeded; attempt++) {
+    orderNumber = generateOrderNumber();
+    try {
+      await db.$transaction(async (tx) => {
+        // Guarded, atomic decrement: only succeeds if enough stock is still there at write time.
+        // Without the `gte` guard, two concurrent checkouts for the last unit could both pass the
+        // earlier read-time check and both commit a decrement, overselling.
+        for (const item of orderItemsData) {
+          if (!item.isPreorder) {
+            const updated = await tx.variant.updateMany({
+              where: { id: item.variantId, stockQty: { gte: item.qty } },
+              data: { stockQty: { decrement: item.qty } },
+            });
+            if (updated.count === 0) {
+              throw new CheckoutConflictError(
+                `Not enough stock left for ${item.productTitleSnapshot} (${item.variantLabelSnapshot}). Update your bag and try again.`,
+              );
+            }
+          }
+        }
 
-    for (const item of orderItemsData) {
-      if (!item.isPreorder) {
-        await tx.variant.update({
-          where: { id: item.variantId },
-          data: { stockQty: { decrement: item.qty } },
+        // Same guarded-update pattern for usage-limited codes, so two concurrent redemptions of
+        // the last slot can't both slip through.
+        if (appliedCode) {
+          if (appliedUsageLimit != null) {
+            const updated = await tx.discount.updateMany({
+              where: { code: appliedCode, usedCount: { lt: appliedUsageLimit } },
+              data: { usedCount: { increment: 1 } },
+            });
+            if (updated.count === 0) {
+              throw new CheckoutConflictError("That promo code just reached its redemption limit. Remove it and try again.");
+            }
+          } else {
+            await tx.discount.update({ where: { code: appliedCode }, data: { usedCount: { increment: 1 } } });
+          }
+        }
+
+        await tx.order.create({
+          data: {
+            number: orderNumber,
+            email: data.email,
+            phone: data.phone,
+            customerId: session?.customerId,
+            status: data.paymentMethod === "COD" ? "PENDING" : "PAID",
+            subtotal,
+            shippingCost,
+            discountAmount,
+            total,
+            paymentMethod: data.paymentMethod,
+            paymentStatus: data.paymentMethod === "COD" ? "PENDING" : "PAID",
+            shippingZone: data.shippingZone,
+            shippingFullName: data.shipping.fullName,
+            shippingPhone: data.shipping.phone,
+            shippingLine1: data.shipping.line1,
+            shippingArea: data.shipping.area,
+            shippingDistrict: data.shipping.district,
+            shippingPostcode: data.shipping.postcode,
+            shippingCountry: data.shipping.country,
+            isPreorder: hasPreorder,
+            preorderShipMode: hasPreorder ? data.preorderShipMode : null,
+            discountCode: appliedCode,
+            items: { create: orderItemsData },
+          },
         });
+
+        await tx.abandonedCheckout.deleteMany({ where: { email: data.email } });
+      });
+      succeeded = true;
+    } catch (e) {
+      if (e instanceof CheckoutConflictError) {
+        return { ok: false, error: e.message };
       }
+      const isOrderNumberCollision =
+        e instanceof Prisma.PrismaClientKnownRequestError &&
+        e.code === "P2002" &&
+        (e.meta?.target as string[] | undefined)?.includes("number");
+      if (!isOrderNumberCollision || attempt === MAX_ORDER_NUMBER_ATTEMPTS) {
+        console.error("placeOrder failed", e);
+        return { ok: false, error: "We couldn't complete your order just now. Please try again — you have not been charged." };
+      }
+      // else: order-number collision with attempts left — loop retries with a freshly generated number.
     }
-
-    if (appliedCode) {
-      await tx.discount.update({ where: { code: appliedCode }, data: { usedCount: { increment: 1 } } });
-    }
-
-    await tx.abandonedCheckout.deleteMany({ where: { email: data.email } });
-  });
+  }
 
   await sendMail({
     to: data.email,
@@ -182,7 +234,7 @@ export async function placeOrder(input: CheckoutInput): Promise<CheckoutResult> 
     }`,
     type: "ORDER_CONFIRMED",
     relatedOrderId: orderNumber,
-  });
+  }).catch((e) => console.error("order-confirmation email failed", e));
 
   return { ok: true, orderNumber };
 }

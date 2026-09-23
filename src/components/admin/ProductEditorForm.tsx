@@ -149,7 +149,7 @@ export function ProductEditorForm({
   }
 
   return (
-    <div className="grid gap-4.5 desktop:grid-cols-[1.4fr_1fr]">
+    <div className="grid grid-cols-1 gap-4.5 desktop:grid-cols-[1.4fr_1fr]">
       <div>
         <Panel title="Basics">
           <Field label="Title">
@@ -223,7 +223,15 @@ export function ProductEditorForm({
         </Panel>
 
         <Panel title="Variants — size × color" className="mt-4.5">
-          <table className="w-full text-[13px]">
+          <p className="mb-2 text-[12px] text-muted-2">
+            Stock is set here only for new variants — edit existing stock counts from{" "}
+            <a href="/admin/inventory" className="text-cyan hover:underline">
+              Inventory
+            </a>
+            .
+          </p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-[13px]">
             <thead>
               <tr className="text-left text-muted">
                 {["SKU", "Size", "Color", "Hex", "Stock", "Low@", "Price ৳", ""].map((h) => (
@@ -253,7 +261,9 @@ export function ProductEditorForm({
                       type="number"
                       value={v.stockQty}
                       onChange={(e) => updateVariant(i, { stockQty: Number(e.target.value) })}
-                      className={`${cellClass} w-16`}
+                      disabled={Boolean(v.id)}
+                      title={v.id ? "Edit stock from the Inventory page — this field only sets the starting count for a new variant." : undefined}
+                      className={`${cellClass} w-16 ${v.id ? "cursor-not-allowed opacity-50" : ""}`}
                     />
                   </td>
                   <td className="pr-1.5 py-1">
@@ -281,7 +291,8 @@ export function ProductEditorForm({
                 </tr>
               ))}
             </tbody>
-          </table>
+            </table>
+          </div>
           <button onClick={addVariant} className="mt-2.5 border border-line-2 px-3 py-1.5 text-[13px] hover:border-lime">
             + Add variant
           </button>

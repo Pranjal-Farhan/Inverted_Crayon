@@ -21,7 +21,8 @@ export function CollectionManager({ collections }: { collections: Collection[] }
 
   return (
     <Panel title="Collections">
-      <table className="w-full text-sm">
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-line-2 text-left text-muted">
             {["Collection", "Products", "Status", ""].map((h) => (
@@ -47,7 +48,8 @@ export function CollectionManager({ collections }: { collections: Collection[] }
             </tr>
           ))}
         </tbody>
-      </table>
+        </table>
+      </div>
       <button onClick={() => setEditing("new")} className="mt-3 border border-line-2 px-3 py-1.5 text-[13px] hover:border-lime">
         + New collection
       </button>
@@ -99,7 +101,7 @@ function CollectionForm({
 
   return (
     <div className="mt-3.5 border border-line bg-panel-2 p-4">
-      <div className="grid gap-2.5 desktop:grid-cols-2">
+      <div className="grid grid-cols-1 gap-2.5 desktop:grid-cols-2">
         <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Title" className="border border-line-2 bg-ink px-2.5 py-1.5 text-sm" />
         <input value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="slug" className="border border-line-2 bg-ink px-2.5 py-1.5 text-sm" />
       </div>

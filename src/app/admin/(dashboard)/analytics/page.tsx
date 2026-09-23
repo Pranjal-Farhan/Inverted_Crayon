@@ -47,7 +47,7 @@ export default async function AdminAnalyticsPage() {
         <Kpi label="Return rate" value={`${returnRate.toFixed(1)}%`} accent="yellow" />
       </div>
 
-      <div className="grid gap-4.5 desktop:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4.5 desktop:grid-cols-2">
         <Panel title="Revenue by category">
           <div className="flex items-end gap-2 pt-2.5" style={{ height: 160 }}>
             {catRows.map((c) => (
@@ -58,7 +58,8 @@ export default async function AdminAnalyticsPage() {
           </div>
         </Panel>
         <Panel title="Top sellers">
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
             <tbody>
               {topSellers.map((p) => (
                 <tr key={p.title} className="border-b border-line last:border-0">
@@ -72,7 +73,8 @@ export default async function AdminAnalyticsPage() {
                 </tr>
               )}
             </tbody>
-          </table>
+            </table>
+          </div>
         </Panel>
       </div>
     </div>
