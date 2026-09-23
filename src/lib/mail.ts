@@ -1,13 +1,13 @@
 import "server-only";
 import { db } from "@/lib/db";
 import { getEmailTemplates } from "@/lib/store-settings";
+import { emailProviderConfigured, sendViaResend } from "@/lib/email-provider";
 import type { $Enums } from "@/generated/prisma/client";
 
 /**
- * Payments are mocked per the build's stated scope; email sending is mocked
- * the same way — every "send" writes to EmailLog (the outbox) instead of
- * calling a real provider. Wiring SendGrid/SES/etc. later means replacing
- * the body of this one function; every call site stays the same.
+ * Every "send" always writes to EmailLog (the outbox, viewable at /admin/emails) as an audit
+ * trail. When RESEND_API_KEY + EMAIL_FROM are set, it also actually sends the email; otherwise it
+ * stays mocked exactly as before this integration existed, so local dev needs no credentials.
  */
 export async function sendMail({
   to,
@@ -25,7 +25,17 @@ export async function sendMail({
   const templates = await getEmailTemplates();
   if (templates[type]?.enabled === false) return null;
 
-  return db.emailLog.create({
+  const log = await db.emailLog.create({
     data: { to, subject, body, type, relatedOrderId },
   });
+
+  if (emailProviderConfigured()) {
+    try {
+      await sendViaResend({ to, subject, body });
+    } catch (e) {
+      console.error("real email send failed", e);
+    }
+  }
+
+  return log;
 }

@@ -353,7 +353,7 @@ async function main() {
 
   const orderDefs: Array<{
     status: "PENDING" | "PAID" | "PROCESSING" | "SHIPPED" | "DELIVERED" | "REFUNDED";
-    paymentMethod: "BKASH" | "NAGAD" | "SSLCOMMERZ" | "COD";
+    paymentMethod: "BKASH" | "SSLCOMMERZ" | "COD";
     paymentStatus: "PENDING" | "PAID" | "REFUNDED";
     email: string;
     customerId?: string;
@@ -362,7 +362,7 @@ async function main() {
     { status: "PAID", paymentMethod: "BKASH", paymentStatus: "PAID", email: rex.email, customerId: rex.id, daysAgo: 0 },
     { status: "PENDING", paymentMethod: "COD", paymentStatus: "PENDING", email: mitu.email, customerId: mitu.id, daysAgo: 0 },
     { status: "SHIPPED", paymentMethod: "SSLCOMMERZ", paymentStatus: "PAID", email: "arif@example.com", daysAgo: 1 },
-    { status: "DELIVERED", paymentMethod: "NAGAD", paymentStatus: "PAID", email: "nabil@example.com", daysAgo: 1 },
+    { status: "DELIVERED", paymentMethod: "BKASH", paymentStatus: "PAID", email: "nabil@example.com", daysAgo: 1 },
     { status: "REFUNDED", paymentMethod: "BKASH", paymentStatus: "REFUNDED", email: "sara@example.com", daysAgo: 2 },
   ];
 

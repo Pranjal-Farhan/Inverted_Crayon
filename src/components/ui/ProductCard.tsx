@@ -27,14 +27,16 @@ export function ProductCard({ product }: { product: ProductDisplay }) {
 
   return (
     <Link href={href} className="card group block">
-      <div className="relative mb-2.5 aspect-[1/1.16]">
+      <div className="relative mb-2.5 aspect-[1/1.16] overflow-hidden">
         {primaryImage ? (
           <>
             <img
               src={primaryImage}
               alt={product.title}
-              className={`absolute inset-0 h-full w-full object-cover transition ${
-                !product.soldOut ? "group-hover:outline group-hover:outline-2 group-hover:outline-offset-[-2px] group-hover:outline-lime" : ""
+              className={`absolute inset-0 h-full w-full object-cover transition duration-300 ease-out ${
+                !product.soldOut
+                  ? "group-hover:scale-[1.05] group-hover:outline group-hover:outline-2 group-hover:outline-offset-[-2px] group-hover:outline-lime"
+                  : ""
               }`}
             />
             {product.soldOut && (
@@ -49,8 +51,10 @@ export function ProductCard({ product }: { product: ProductDisplay }) {
             shape={accent.shape}
             label={product.title.toUpperCase()}
             soldOut={product.soldOut}
-            className={`absolute inset-0 h-full w-full transition ${
-              !product.soldOut ? "group-hover:outline group-hover:outline-2 group-hover:outline-offset-[-2px] group-hover:outline-lime" : ""
+            className={`absolute inset-0 h-full w-full transition duration-300 ease-out ${
+              !product.soldOut
+                ? "group-hover:scale-[1.05] group-hover:outline group-hover:outline-2 group-hover:outline-offset-[-2px] group-hover:outline-lime"
+                : ""
             }`}
           />
         )}

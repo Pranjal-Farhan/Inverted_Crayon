@@ -10,8 +10,13 @@ import { getShippingRates } from "@/lib/store-settings";
 import { getCustomerSession } from "@/lib/session";
 import { findActiveCampaign } from "@/lib/product-view";
 import { sendMail } from "@/lib/mail";
+import { getSiteOrigin } from "@/lib/site-url";
+import { restockAndCancelOrder } from "@/lib/payments/rollback";
+import { bkashConfigured, createBkashPayment } from "@/lib/payments/bkash";
+import { sslcommerzConfigured, initSslcommerzSession } from "@/lib/payments/sslcommerz";
 
 const MAX_ORDER_NUMBER_ATTEMPTS = 5;
+const MIN_PREORDER_ADVANCE_PERCENT = 20;
 
 /** Thrown inside the checkout transaction for expected, user-facing failures (stock/discount raced out from under this order) — rolls back and surfaces as a normal error, not a crash. */
 class CheckoutConflictError extends Error {}
@@ -29,9 +34,11 @@ const checkoutSchema = z.object({
     country: z.string().min(2),
   }),
   shippingZone: z.enum(["INSIDE_DHAKA", "OUTSIDE_DHAKA", "INTERNATIONAL"]),
-  paymentMethod: z.enum(["BKASH", "NAGAD", "SSLCOMMERZ", "COD"]),
+  paymentMethod: z.enum(["BKASH", "SSLCOMMERZ", "COD"]),
   promoCode: z.string().nullable().optional(),
   preorderShipMode: z.enum(["together", "split"]).default("together"),
+  // Preorder-only: % of the total paid online now (20-100); the rest is COD at delivery.
+  advancePercent: z.number().int().min(MIN_PREORDER_ADVANCE_PERCENT).max(100).optional(),
   lines: z
     .array(z.object({ variantId: z.string().min(1), qty: z.number().int().positive() }))
     .min(1),
@@ -39,7 +46,7 @@ const checkoutSchema = z.object({
 
 export type CheckoutInput = z.infer<typeof checkoutSchema>;
 export type CheckoutResult =
-  | { ok: true; orderNumber: string }
+  | { ok: true; orderNumber: string; redirectUrl?: string }
   | { ok: false; error: string; fieldErrors?: Record<string, string> };
 
 export async function placeOrder(input: CheckoutInput): Promise<CheckoutResult> {
@@ -112,6 +119,13 @@ export async function placeOrder(input: CheckoutInput): Promise<CheckoutResult> 
   }
   subtotal = Math.round(subtotal * 100) / 100;
 
+  if (hasPreorder && data.paymentMethod === "COD") {
+    return {
+      ok: false,
+      error: "Preorders need an online advance payment (bKash or card) — the rest is collected on delivery.",
+    };
+  }
+
   const session = await getCustomerSession();
 
   let discountAmount = 0;
@@ -138,6 +152,19 @@ export async function placeOrder(input: CheckoutInput): Promise<CheckoutResult> 
 
   const shippingCost = freeShipping ? 0 : rates[data.shippingZone].cost;
   const total = Math.max(Math.round((subtotal - discountAmount + shippingCost) * 100) / 100, 0);
+
+  // Non-preorder orders are always "paid in full online" (advancePercent effectively 100).
+  const advancePercent = hasPreorder ? (data.advancePercent ?? 100) : 100;
+  const advanceAmount = Math.round(total * (advancePercent / 100) * 100) / 100;
+  const balanceDue = Math.max(Math.round((total - advanceAmount) * 100) / 100, 0);
+
+  // Only redirect to a real gateway when that gateway is actually configured — otherwise fall
+  // back to the app's existing mocked instant-paid behavior (unchanged from before this
+  // integration existed), so local dev keeps working with zero external credentials.
+  const usesLiveGateway =
+    (data.paymentMethod === "BKASH" && bkashConfigured()) ||
+    (data.paymentMethod === "SSLCOMMERZ" && sslcommerzConfigured());
+  const initialStatus = data.paymentMethod === "COD" || usesLiveGateway ? "PENDING" : "PAID";
 
   let orderNumber = "";
   let succeeded = false;
@@ -185,13 +212,16 @@ export async function placeOrder(input: CheckoutInput): Promise<CheckoutResult> 
             email: data.email,
             phone: data.phone,
             customerId: session?.customerId,
-            status: data.paymentMethod === "COD" ? "PENDING" : "PAID",
+            status: initialStatus,
             subtotal,
             shippingCost,
             discountAmount,
             total,
             paymentMethod: data.paymentMethod,
-            paymentStatus: data.paymentMethod === "COD" ? "PENDING" : "PAID",
+            paymentStatus: initialStatus === "PAID" ? "PAID" : "PENDING",
+            advancePercent: hasPreorder ? advancePercent : null,
+            advanceAmount,
+            balanceDue,
             shippingZone: data.shippingZone,
             shippingFullName: data.shipping.fullName,
             shippingPhone: data.shipping.phone,
@@ -226,12 +256,45 @@ export async function placeOrder(input: CheckoutInput): Promise<CheckoutResult> 
     }
   }
 
+  if (usesLiveGateway) {
+    const order = await db.order.findUniqueOrThrow({ where: { number: orderNumber } });
+    try {
+      const origin = await getSiteOrigin();
+      if (data.paymentMethod === "BKASH") {
+        const { bkashURL, paymentID } = await createBkashPayment({
+          amount: advanceAmount,
+          orderNumber,
+          callbackURL: `${origin}/api/payments/bkash/callback`,
+        });
+        await db.order.update({ where: { id: order.id }, data: { paymentTransactionId: paymentID } });
+        return { ok: true, orderNumber, redirectUrl: bkashURL };
+      } else {
+        const { gatewayPageURL } = await initSslcommerzSession({
+          amount: advanceAmount,
+          orderNumber,
+          customerName: data.shipping.fullName,
+          customerEmail: data.email,
+          customerPhone: data.phone,
+          customerAddress: data.shipping.line1,
+          successUrl: `${origin}/api/payments/sslcommerz/success`,
+          failUrl: `${origin}/api/payments/sslcommerz/fail`,
+          cancelUrl: `${origin}/api/payments/sslcommerz/cancel`,
+        });
+        return { ok: true, orderNumber, redirectUrl: gatewayPageURL };
+      }
+    } catch (e) {
+      console.error("payment gateway session init failed", e);
+      await restockAndCancelOrder(order.id);
+      return { ok: false, error: "Payment couldn't be started right now. Please try again." };
+    }
+  }
+
   await sendMail({
     to: data.email,
     subject: "Order confirmed",
-    body: `Order #${orderNumber} confirmed — ${formatTaka(total)}. ${
-      hasPreorder ? "Includes a preorder item; we'll email you if the ship date moves." : "We'll email you when it ships."
-    }`,
+    body: `Order #${orderNumber} confirmed — ${formatTaka(advanceAmount)}${
+      balanceDue > 0 ? ` now, ${formatTaka(balanceDue)} due on delivery` : ""
+    }. ${hasPreorder ? "Includes a preorder item; we'll email you if the ship date moves." : "We'll email you when it ships."}`,
     type: "ORDER_CONFIRMED",
     relatedOrderId: orderNumber,
   }).catch((e) => console.error("order-confirmation email failed", e));

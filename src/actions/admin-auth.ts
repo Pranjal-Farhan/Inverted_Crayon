@@ -19,7 +19,7 @@ export async function adminLogin(
     return { ok: false, error: lockoutMessage(user.lockedUntil!) };
   }
 
-  if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
+  if (!user || !user.passwordHash || !(await bcrypt.compare(password, user.passwordHash))) {
     if (user) {
       const next = nextLockoutState(user.failedLoginCount);
       await db.adminUser.update({ where: { id: user.id }, data: next });

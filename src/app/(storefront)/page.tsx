@@ -8,6 +8,8 @@ import { Crown } from "@/components/brand/Crown";
 import { pickAccent } from "@/lib/accent-color";
 import { toNumber } from "@/lib/money";
 import { AddToCartForm } from "@/components/storefront/AddToCartForm";
+import { HeroCarousel } from "@/components/storefront/HeroCarousel";
+import { DEFAULT_HERO, type HeroData } from "@/lib/hero-defaults";
 
 const COLLECTION_TILES = [
   { label: "Graphic Tees", href: "/men/tees", shape: "x" as const, color: "#ff2d84" },
@@ -29,15 +31,9 @@ export default async function HomePage() {
     }),
   ]);
 
-  const hero = (heroBlock?.data as
-    | { eyebrow: string; headline: string; sub: string; subBold: string; badge: string }
-    | undefined) ?? {
-    eyebrow: "Color outside the norm.",
-    headline: "Invert the ordinary.",
-    sub: "Streetwear made for disruptors.",
-    subBold: "Bold. Unfiltered. Inverted.",
-    badge: "New drop live now",
-  };
+  const hero: HeroData = { ...DEFAULT_HERO, ...(heroBlock?.data as Partial<HeroData> | undefined) };
+  const [headlineFirst, ...headlineRest] = hero.headline.split(" ");
+  const headlineRestText = headlineRest.join(" ");
 
   const featuredId = (featuredBlock?.data as { productId?: string } | undefined)?.productId;
   const featuredProduct = featuredId
@@ -54,13 +50,16 @@ export default async function HomePage() {
   return (
     <>
       {/* HERO */}
-      <div className="grid grid-cols-1 gap-7 py-10 desktop:grid-cols-[1.05fr_1fr]">
+      <div
+        className="grid grid-cols-1 gap-7 py-10 desktop:grid-cols-[1.05fr_1fr]"
+        style={hero.backgroundColor ? { backgroundColor: hero.backgroundColor } : undefined}
+      >
         <div>
           <span className="font-scrawl flex items-center gap-2 text-[15px]">
             {hero.eyebrow} <Crown className="h-6 w-8 text-white" />
           </span>
           <h1 className="font-impact mt-3 text-[clamp(54px,7.5vw,110px)] uppercase leading-[0.82]">
-            Invert the <span className="text-lime">ordinary.</span>
+            {headlineFirst} <span className="text-lime">{headlineRestText}</span>
           </h1>
           <div className="my-5 h-[5px] w-[min(400px,78%)] -rotate-[0.6deg] bg-white" />
           <p className="mb-6.5 max-w-[32ch] text-[#dcdcda]">
@@ -77,7 +76,11 @@ export default async function HomePage() {
         </div>
         <div className="relative">
           <div className="aspect-[3/3.3]">
-            <PlaceholderFrame accentColor="#26a7e6" shape="circle" label="HERO · MODEL / BACK PRINT" className="h-full w-full" />
+            {hero.heroImages.length > 0 ? (
+              <HeroCarousel images={hero.heroImages} />
+            ) : (
+              <PlaceholderFrame accentColor="#26a7e6" shape="circle" label="HERO · MODEL / BACK PRINT" className="h-full w-full" />
+            )}
           </div>
           <div className="font-scrawl absolute right-[2%] top-[3%] z-[6] text-right text-lg">
             Not <span className="relative text-[#cfcfcd] after:absolute after:-left-1 after:right-0 after:top-1/2 after:h-[3px] after:-rotate-[4deg] after:bg-pink after:content-['']">NORMAL</span>

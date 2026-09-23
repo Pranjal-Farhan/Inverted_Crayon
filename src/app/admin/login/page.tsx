@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { Monogram } from "@/components/brand/Monogram";
 import { AdminLoginForm } from "@/components/admin/AdminLoginForm";
 
@@ -12,7 +13,9 @@ export default function AdminLoginPage() {
           <Monogram className="h-6 w-7" />
           <span className="font-scrawl text-lg">Admin</span>
         </div>
-        <AdminLoginForm />
+        <Suspense fallback={null}>
+          <AdminLoginForm />
+        </Suspense>
       </div>
     </div>
   );

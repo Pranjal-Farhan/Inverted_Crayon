@@ -25,8 +25,9 @@ export default function TermsPage() {
 
         <h2 className="font-impact mt-6 mb-2 text-2xl uppercase tracking-[0.5px]">Payments</h2>
         <p>
-          We accept bKash, Nagad, card / mobile banking via SSLCommerz, and cash on delivery (where available). Cash
-          on delivery orders may be limited by delivery area.
+          We accept bKash, card / mobile banking via SSLCommerz, and cash on delivery (where available). Cash
+          on delivery orders may be limited by delivery area. Preorders require a minimum 20% advance payment via
+          bKash or card, with the remainder collected as cash on delivery.
         </p>
 
         <h2 className="font-impact mt-6 mb-2 text-2xl uppercase tracking-[0.5px]">Returns &amp; refunds</h2>

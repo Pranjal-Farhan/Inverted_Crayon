@@ -68,7 +68,7 @@ export function SettingsView({
       {tab === "Payments" && (
         <Panel title="Payment gateways">
           <div className="flex flex-wrap gap-4">
-            {(["bkash", "nagad", "sslcommerz", "cod"] as const).map((key) => (
+            {(["bkash", "sslcommerz", "cod"] as const).map((key) => (
               <label key={key} className="inline-flex items-center gap-1.5 text-sm">
                 <input
                   type="checkbox"

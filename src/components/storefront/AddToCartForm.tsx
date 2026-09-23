@@ -144,7 +144,7 @@ export function AddToCartForm({
       )}
 
       {notifyOpen && (
-        <div className="fixed inset-0 z-[250] grid place-items-center bg-black/70 p-4" onClick={() => setNotifyOpen(false)}>
+        <div className="overlay-fade-in fixed inset-0 z-[250] grid place-items-center bg-black/70 p-4" onClick={() => setNotifyOpen(false)}>
           <div
             className="w-full max-w-[380px] border border-line bg-panel p-6"
             onClick={(e) => e.stopPropagation()}

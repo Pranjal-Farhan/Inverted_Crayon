@@ -27,7 +27,7 @@ export default function PrivacyPage() {
 
         <h2 className="font-impact mt-6 mb-2 text-2xl uppercase tracking-[0.5px]">Payments</h2>
         <p>
-          Payments are processed by bKash, Nagad, and SSLCommerz. We do not store your card, mobile banking PIN, or
+          Payments are processed by bKash and SSLCommerz. We do not store your card, mobile banking PIN, or
           wallet credentials — those are handled directly by the payment gateway over an encrypted connection.
         </p>
 

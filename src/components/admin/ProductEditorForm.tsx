@@ -52,6 +52,7 @@ export function ProductEditorForm({
   const [categoryId, setCategoryId] = useState(initial?.categoryId ?? categories[0]?.id ?? "");
   const [basePrice, setBasePrice] = useState(initial?.basePrice ?? 1000);
   const [status, setStatus] = useState<"DRAFT" | "ACTIVE">(initial?.status ?? "DRAFT");
+  const [freeDelivery, setFreeDelivery] = useState<"NONE" | "INSIDE_DHAKA" | "NATIONWIDE">(initial?.freeDelivery ?? "NONE");
   const [collectionIds, setCollectionIds] = useState<string[]>(initial?.collectionIds ?? []);
   const [tagNew, setTagNew] = useState(initial?.tagNew ?? false);
   const [tagPreorder, setTagPreorder] = useState(initial?.tagPreorder ?? false);
@@ -126,6 +127,7 @@ export function ProductEditorForm({
         categoryId,
         basePrice,
         status,
+        freeDelivery,
         collectionIds,
         tagNew,
         tagPreorder,
@@ -187,7 +189,7 @@ export function ProductEditorForm({
             />
             {uploading
               ? "Uploading…"
-              : "Drag images here or click to browse · placeholder frames render automatically until photos are uploaded."}
+              : `Drag images here or click to browse · up to 20 per product · placeholder frames render automatically until photos are uploaded.`}
             {uploadError && <div className="mt-1 text-error">{uploadError}</div>}
           </div>
           {(images.length > 0 || staged.length > 0) && (
@@ -335,6 +337,13 @@ export function ProductEditorForm({
           </Field>
           <Field label="Base price ৳">
             <input type="number" value={basePrice} onChange={(e) => setBasePrice(Number(e.target.value))} className={inputClass} />
+          </Field>
+          <Field label="Free delivery">
+            <select value={freeDelivery} onChange={(e) => setFreeDelivery(e.target.value as typeof freeDelivery)} className={inputClass}>
+              <option value="NONE">None</option>
+              <option value="INSIDE_DHAKA">Free delivery — Inside Dhaka</option>
+              <option value="NATIONWIDE">Free delivery — Nationwide</option>
+            </select>
           </Field>
         </Panel>
 

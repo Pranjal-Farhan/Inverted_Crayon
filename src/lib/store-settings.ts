@@ -21,7 +21,6 @@ export const DEFAULT_SHIPPING_RATES: ShippingRates = {
 
 export type PaymentGatewaySettings = {
   bkash: boolean;
-  nagad: boolean;
   sslcommerz: boolean;
   cod: boolean;
   codRule: "inside_dhaka_only" | "nationwide";
@@ -29,7 +28,6 @@ export type PaymentGatewaySettings = {
 
 export const DEFAULT_PAYMENT_GATEWAYS: PaymentGatewaySettings = {
   bkash: true,
-  nagad: true,
   sslcommerz: true,
   cod: true,
   codRule: "inside_dhaka_only",

@@ -29,7 +29,7 @@ export function SearchOverlay({ open, onClose }: { open: boolean; onClose: () =>
   }
 
   return (
-    <div className="fixed inset-0 z-[210] bg-ink/97 backdrop-blur-sm">
+    <div className="overlay-fade-in fixed inset-0 z-[210] bg-ink/97 backdrop-blur-sm">
       <div className="wrap flex items-center gap-4 border-b border-line py-5">
         <form
           className="flex flex-1 gap-3"

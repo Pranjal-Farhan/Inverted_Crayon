@@ -58,7 +58,17 @@ const LEGAL_LINKS = [
   { href: "/terms", label: "Terms" },
 ];
 
-export function Footer() {
+export function Footer({
+  brandName = "Inverted Crayon",
+  motto = "Stay Inverted",
+  logoImageUrl = null,
+}: {
+  brandName?: string;
+  motto?: string;
+  logoImageUrl?: string | null;
+}) {
+  const [mottoFirst, ...mottoRest] = motto.split(" ");
+  const mottoRestText = mottoRest.join(" ");
   return (
     <footer className="mt-10 border-t border-line bg-ink pb-8">
       <div className="wrap">
@@ -81,11 +91,19 @@ export function Footer() {
 
         <div className="flex flex-wrap items-center justify-between gap-5 py-6">
           <div className="flex items-center gap-3.5">
-            <Monogram className="h-8 w-9" />
+            {logoImageUrl ? (
+              <img src={logoImageUrl} alt={brandName} className="h-9 w-auto object-contain" />
+            ) : (
+              <Monogram className="h-8 w-9" />
+            )}
             <div className="font-scrawl text-[30px] leading-[0.9] text-yellow">
-              Stay
-              <br />
-              Inverted
+              {mottoFirst}
+              {mottoRestText && (
+                <>
+                  <br />
+                  {mottoRestText}
+                </>
+              )}
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-4.5">

@@ -13,6 +13,7 @@ import { sendMail } from "@/lib/mail";
 
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const MAX_FILES_PER_UPLOAD = 12;
+const MAX_IMAGES_PER_PRODUCT = 20;
 const MAX_TOTAL_UPLOAD_BYTES = 40 * 1024 * 1024;
 // SVG is deliberately excluded even though it's an "image/*" type: it can embed <script>, and
 // since it's served back from /uploads at its own URL, an uploaded SVG would be stored XSS.
@@ -46,6 +47,7 @@ const productSchema = z.object({
   status: z.enum(["DRAFT", "ACTIVE"]),
   seoTitle: z.string().optional(),
   seoDescription: z.string().optional(),
+  freeDelivery: z.enum(["NONE", "INSIDE_DHAKA", "NATIONWIDE"]).default("NONE"),
   collectionIds: z.array(z.string()).default([]),
   tagNew: z.boolean().default(false),
   tagPreorder: z.boolean().default(false),
@@ -92,6 +94,7 @@ export async function saveProduct(input: ProductFormInput): Promise<ProductSaveR
           status: data.status,
           seoTitle: data.seoTitle,
           seoDescription: data.seoDescription,
+          freeDelivery: data.freeDelivery,
           // Only stamp publishedAt the first time a product goes live —
           // re-saving an already-active product must not re-trigger "New".
           publishedAt:
@@ -107,6 +110,7 @@ export async function saveProduct(input: ProductFormInput): Promise<ProductSaveR
           status: data.status,
           seoTitle: data.seoTitle,
           seoDescription: data.seoDescription,
+          freeDelivery: data.freeDelivery,
           publishedAt: data.status === "ACTIVE" ? new Date() : null,
         },
       });
@@ -234,10 +238,14 @@ export async function uploadProductImages(productId: string, formData: FormData)
   const imageFiles = files.filter((f) => f.type.startsWith("image/") && !REJECTED_IMAGE_TYPES.has(f.type));
   if (imageFiles.length === 0) return { ok: false, error: "Only JPG, PNG, WEBP, GIF or AVIF images are accepted." };
 
+  let position = await db.productImage.count({ where: { productId } });
+  if (position + imageFiles.length > MAX_IMAGES_PER_PRODUCT) {
+    return { ok: false, error: `A product can have at most ${MAX_IMAGES_PER_PRODUCT} images (${position} already uploaded).` };
+  }
+
   const dir = path.join(process.cwd(), "public", "uploads", "products", productId);
   await fs.mkdir(dir, { recursive: true });
 
-  let position = await db.productImage.count({ where: { productId } });
   const created: ProductImageRow[] = [];
   for (const file of imageFiles) {
     const nameExt = file.name.includes(".") ? file.name.split(".").pop() : null;

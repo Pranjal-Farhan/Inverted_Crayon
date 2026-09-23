@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useState, useTransition } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useCart } from "@/context/cart-context";
 import { cartHasPreorder, cartHasInStock } from "@/lib/cart-types";
@@ -14,12 +14,19 @@ import type { PaymentGatewaySettings, ShippingRates } from "@/lib/store-settings
 type ShippingZoneKey = keyof ShippingRates;
 
 const ZONE_ORDER: ShippingZoneKey[] = ["INSIDE_DHAKA", "OUTSIDE_DHAKA", "INTERNATIONAL"];
+const MIN_PREORDER_ADVANCE_PERCENT = 20;
+const ADVANCE_PRESETS = [20, 50, 100];
 
 const PAYMENT_LABELS: Record<string, string> = {
   BKASH: "bKash",
-  NAGAD: "Nagad",
   SSLCOMMERZ: "Card / mobile banking (SSLCommerz)",
   COD: "Cash on delivery",
+};
+
+const PAYMENT_ERROR_MESSAGES: Record<string, string> = {
+  failed: "Your payment didn't go through. Your bag has been restored — please try again.",
+  cancelled: "Payment was cancelled. Your bag has been restored.",
+  error: "Something went wrong starting your payment. Please try again.",
 };
 
 export function CheckoutView({
@@ -31,9 +38,16 @@ export function CheckoutView({
 }) {
   const { cart, subtotal, clearCart } = useCart();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    const payment = searchParams.get("payment");
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reflecting a redirect-back query param into local state, not derived from props
+    if (payment && PAYMENT_ERROR_MESSAGES[payment]) setError(PAYMENT_ERROR_MESSAGES[payment]);
+  }, [searchParams]);
 
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
@@ -45,10 +59,11 @@ export function CheckoutView({
   const [postcode, setPostcode] = useState("");
   const [country, setCountry] = useState("Bangladesh");
   const [zone, setZone] = useState<ShippingZoneKey>("INSIDE_DHAKA");
-  const [paymentMethod, setPaymentMethod] = useState<"BKASH" | "NAGAD" | "SSLCOMMERZ" | "COD">(
-    gateways.bkash ? "BKASH" : gateways.nagad ? "NAGAD" : gateways.sslcommerz ? "SSLCOMMERZ" : "COD",
+  const [paymentMethod, setPaymentMethod] = useState<"BKASH" | "SSLCOMMERZ" | "COD">(
+    gateways.bkash ? "BKASH" : gateways.sslcommerz ? "SSLCOMMERZ" : "COD",
   );
   const [preorderShipMode, setPreorderShipMode] = useState<"together" | "split">("together");
+  const [advancePercent, setAdvancePercent] = useState(MIN_PREORDER_ADVANCE_PERCENT);
 
   const { result: promoResult } = usePromoValidation(cart.promoCode, subtotal);
   const freeShipping = promoResult?.ok && promoResult.type === "FREE_SHIPPING";
@@ -60,17 +75,26 @@ export function CheckoutView({
   const hasInStock = cartHasInStock(cart);
   const mixedCart = hasPreorder && hasInStock;
 
-  const codAllowed = gateways.cod && (gateways.codRule === "nationwide" || zone === "INSIDE_DHAKA");
+  const codAllowed = gateways.cod && !hasPreorder && (gateways.codRule === "nationwide" || zone === "INSIDE_DHAKA");
   const availableMethods = useMemo(
     () =>
-      (["BKASH", "NAGAD", "SSLCOMMERZ", "COD"] as const).filter((m) => {
+      (["BKASH", "SSLCOMMERZ", "COD"] as const).filter((m) => {
         if (m === "BKASH") return gateways.bkash;
-        if (m === "NAGAD") return gateways.nagad;
         if (m === "SSLCOMMERZ") return gateways.sslcommerz;
         return codAllowed;
       }),
     [gateways, codAllowed],
   );
+
+  useEffect(() => {
+    if (!availableMethods.includes(paymentMethod) && availableMethods.length > 0) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- syncing selection to the derived set of methods the current cart/zone actually allows
+      setPaymentMethod(availableMethods[0]);
+    }
+  }, [availableMethods, paymentMethod]);
+
+  const advanceAmount = hasPreorder ? Math.round(total * (advancePercent / 100) * 100) / 100 : total;
+  const balanceDue = Math.max(Math.round((total - advanceAmount) * 100) / 100, 0);
 
   if (cart.lines.length === 0) {
     return (
@@ -113,6 +137,7 @@ export function CheckoutView({
         paymentMethod,
         promoCode: promoResult?.ok ? cart.promoCode : null,
         preorderShipMode,
+        advancePercent: hasPreorder ? advancePercent : undefined,
         lines: cart.lines.map((l) => ({ variantId: l.variantId, qty: l.qty })),
       });
       if (!res.ok) {
@@ -120,6 +145,10 @@ export function CheckoutView({
         return;
       }
       clearCart();
+      if (res.redirectUrl) {
+        window.location.href = res.redirectUrl;
+        return;
+      }
       router.push(`/order/${res.orderNumber}`);
     });
   }
@@ -196,12 +225,48 @@ export function CheckoutView({
           </div>
         </Step>
 
-        <Step n={4} title="Payment">
+        {hasPreorder && (
+          <Step n={4} title="Preorder advance payment">
+            <p className="mb-3 text-sm text-muted">
+              Preorders need an online advance now — minimum {MIN_PREORDER_ADVANCE_PERCENT}%, or pay in full. The rest
+              is collected as cash on delivery.
+            </p>
+            <div className="mb-3 flex gap-2">
+              {ADVANCE_PRESETS.map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => setAdvancePercent(p)}
+                  className={`flex-1 border px-3 py-2 text-sm font-label tracking-[0.8px] ${
+                    advancePercent === p ? "border-lime bg-lime text-ink" : "border-line-2 hover:border-lime"
+                  }`}
+                >
+                  {p === 100 ? "Pay in full" : `${p}% now`}
+                </button>
+              ))}
+            </div>
+            <input
+              type="range"
+              min={MIN_PREORDER_ADVANCE_PERCENT}
+              max={100}
+              step={5}
+              value={advancePercent}
+              onChange={(e) => setAdvancePercent(Number(e.target.value))}
+              className="w-full accent-lime"
+            />
+            <div className="mt-2 flex justify-between text-[13px] text-muted">
+              <span>Pay now: {formatTaka(advanceAmount)} ({advancePercent}%)</span>
+              {balanceDue > 0 && <span>Due on delivery: {formatTaka(balanceDue)}</span>}
+            </div>
+          </Step>
+        )}
+
+        <Step n={hasPreorder ? 5 : 4} title="Payment">
           <div className="flex flex-col gap-2">
             {availableMethods.map((m) => (
               <label
                 key={m}
-                className={`flex items-center gap-2.5 border px-3.5 py-2.5 text-sm ${paymentMethod === m ? "border-lime" : "border-line-2"}`}
+                className={`flex items-center gap-2.5 border px-3.5 py-2.5 text-sm transition-colors ${paymentMethod === m ? "border-lime" : "border-line-2"}`}
               >
                 <input
                   type="radio"
@@ -214,13 +279,19 @@ export function CheckoutView({
               </label>
             ))}
           </div>
-          {gateways.cod && !codAllowed && (
-            <p className="mt-2 text-[12px] text-muted">Cash on delivery is available inside Dhaka only.</p>
+          {hasPreorder ? (
+            <p className="mt-2 text-[12px] text-muted">
+              Cash on delivery isn&apos;t available as the sole payment method for preorders — it&apos;s used for the
+              balance above, if any.
+            </p>
+          ) : (
+            gateways.cod &&
+            !codAllowed && <p className="mt-2 text-[12px] text-muted">Cash on delivery is available inside Dhaka only.</p>
           )}
         </Step>
 
         {mixedCart && (
-          <Step n={5} title="Mixed cart">
+          <Step n={6} title="Mixed cart">
             <p className="mb-2 text-sm text-muted">
               Your bag mixes in-stock and preorder items.
             </p>
@@ -274,6 +345,20 @@ export function CheckoutView({
           <span className="font-impact text-xl">Total</span>
           <span className="price text-xl">{formatTaka(total)}</span>
         </div>
+        {hasPreorder && (
+          <div className="mt-2 border-t border-dashed border-line-2 pt-2 text-sm">
+            <div className="flex justify-between text-lime">
+              <span>Pay now ({advancePercent}%)</span>
+              <span>{formatTaka(advanceAmount)}</span>
+            </div>
+            {balanceDue > 0 && (
+              <div className="flex justify-between text-muted">
+                <span>Due on delivery</span>
+                <span>{formatTaka(balanceDue)}</span>
+              </div>
+            )}
+          </div>
+        )}
 
         {error && <p className="mt-3 text-[13px] text-error">{error}</p>}
 

@@ -46,9 +46,14 @@ enum OrderStatus {
 
 enum PaymentMethod {
   BKASH
-  NAGAD
   SSLCOMMERZ
   COD
+}
+
+enum FreeDeliveryScope {
+  NONE
+  INSIDE_DHAKA
+  NATIONWIDE
 }
 
 enum PaymentStatus {
@@ -100,6 +105,7 @@ model Product {
   status         ProductStatus @default(DRAFT)
   seoTitle       String?
   seoDescription String?
+  freeDelivery   FreeDeliveryScope @default(NONE)
 
   categoryId String
   category   Category @relation(fields: [categoryId], references: [id])
@@ -212,6 +218,8 @@ model Customer {
   segmentTags      String[]  @default([])
   failedLoginCount Int       @default(0)
   lockedUntil      DateTime?
+  googleId         String?   @unique
+  facebookId       String?   @unique
 
   addresses       Address[]
   orders          Order[]
@@ -254,8 +262,16 @@ model Order {
   discountAmount Decimal     @default(0) @db.Decimal(10, 2)
   total          Decimal     @db.Decimal(10, 2)
 
-  paymentMethod PaymentMethod
-  paymentStatus PaymentStatus @default(PENDING)
+  paymentMethod     PaymentMethod
+  paymentStatus     PaymentStatus @default(PENDING)
+  paymentTransactionId String? // gateway reference (bKash paymentID / SSLCommerz val_id) for reconciliation
+
+  // Preorder partial payment: advancePercent/advanceAmount is what was actually captured online
+  // (min 20%, up to 100%); any shortfall is collected as cash on delivery (balanceDue).
+  advancePercent   Int?
+  advanceAmount    Decimal @default(0) @db.Decimal(10, 2)
+  balanceDue       Decimal @default(0) @db.Decimal(10, 2)
+  balanceCollected Boolean @default(false)
 
   shippingZone     ShippingZone
   shippingFullName String
@@ -373,12 +389,13 @@ model Review {
 }
 
 model WishlistItem {
-  id         String   @id @default(cuid())
+  id         String    @id @default(cuid())
   customerId String
-  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  customer   Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
   productId  String
-  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
-  createdAt  DateTime @default(now())
+  product    Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  notifiedAt DateTime?
+  createdAt  DateTime  @default(now())
 
   @@unique([customerId, productId])
 }
@@ -415,11 +432,16 @@ model NewsletterSubscriber {
 model AdminUser {
   id               String    @id @default(cuid())
   email            String    @unique
-  passwordHash     String
+  // Nullable: an admin/staff account can be OAuth-only (Google/Facebook). OAuth sign-in for admin
+  // accounts only ever signs in to an account that already exists (matched by email) — it never
+  // self-registers a new admin, so this being nullable doesn't open a privilege-escalation path.
+  passwordHash     String?
   name             String
   role             AdminRole @default(STAFF)
   failedLoginCount Int       @default(0)
   lockedUntil      DateTime?
+  googleId         String?   @unique
+  facebookId       String?   @unique
   createdAt        DateTime  @default(now())
 }
 

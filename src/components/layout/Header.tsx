@@ -12,22 +12,40 @@ const GENDERS = [
   { key: "women", label: "Women" },
 ] as const;
 
-export function Header({ saleActive, customerName }: { saleActive: boolean; customerName: string | null }) {
+export function Header({
+  saleActive,
+  customerName,
+  brandName = "Inverted Crayon",
+  logoImageUrl = null,
+}: {
+  saleActive: boolean;
+  customerName: string | null;
+  brandName?: string;
+  logoImageUrl?: string | null;
+}) {
   const [searchOpen, setSearchOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [mobileAccordion, setMobileAccordion] = useState<string | null>(null);
   const { count, openDrawer } = useCart();
+  const [brandFirst, ...brandRest] = brandName.split(" ");
+  const brandRestText = brandRest.join(" ");
 
   return (
     <>
       <header className="site-hd sticky top-0 z-[80] border-b border-line bg-ink/94 backdrop-blur-sm">
         <div className="wrap flex h-[66px] items-center gap-6">
-          <Link href="/" className="flex shrink-0 items-center gap-2.5">
-            <Monogram className="h-[26px] w-[30px]" />
-            <span className="font-scrawl text-[19px] leading-[0.85]">
-              INVERTED
-              <small className="block text-[13px]">CRAYON</small>
-            </span>
+          <Link href="/" className="flex shrink-0 items-center gap-2.5 transition-opacity hover:opacity-80">
+            {logoImageUrl ? (
+              <img src={logoImageUrl} alt={brandName} className="h-[34px] w-auto object-contain" />
+            ) : (
+              <>
+                <Monogram className="h-[26px] w-[30px]" />
+                <span className="font-scrawl text-[19px] uppercase leading-[0.85]">
+                  {brandFirst}
+                  {brandRestText && <small className="block text-[13px]">{brandRestText}</small>}
+                </span>
+              </>
+            )}
           </Link>
 
           <nav className="desktop:flex hidden flex-1 gap-5">
@@ -35,11 +53,12 @@ export function Header({ saleActive, customerName }: { saleActive: boolean; cust
               <div key={g.key} className="group relative">
                 <Link
                   href={`/${g.key}`}
-                  className="inline-block py-2 font-label text-[17px] tracking-[1.4px] hover:text-lime"
+                  className="inline-flex items-center gap-1 py-2 font-label text-[17px] tracking-[1.4px] hover:text-lime"
                 >
-                  {g.label.toUpperCase()} ▾
+                  {g.label.toUpperCase()}
+                  <span className="inline-block transition-transform duration-200 group-hover:rotate-180">▾</span>
                 </Link>
-                <div className="absolute left-[-20px] top-full z-[90] hidden min-w-[440px] border border-line-2 bg-[#0e0e10] p-[18px_22px] group-hover:block">
+                <div className="pointer-events-none absolute left-[-20px] top-full z-[90] min-w-[440px] -translate-y-1.5 border border-line-2 bg-[#0e0e10] p-[18px_22px] opacity-0 transition-all duration-200 ease-out group-hover:pointer-events-auto group-hover:translate-y-0 group-hover:opacity-100">
                   <div className="mb-2.5 font-label text-[13px] tracking-[1.5px] text-muted">
                     {g.label.toUpperCase()} · SHOP BY CATEGORY
                   </div>
@@ -61,7 +80,7 @@ export function Header({ saleActive, customerName }: { saleActive: boolean; cust
               NEW
             </Link>
             <Link href="/sale" className="inline-block py-2 font-label text-[17px] tracking-[1.4px] hover:text-lime">
-              SALE {saleActive && <span className="text-pink">●</span>}
+              SALE {saleActive && <span className="text-pink animate-pulse">●</span>}
             </Link>
             <Link
               href="/lookbook"
@@ -150,7 +169,7 @@ export function Header({ saleActive, customerName }: { saleActive: boolean; cust
             NEW
           </Link>
           <Link href="/sale" onClick={() => setMobileOpen(false)} className="block border-b border-line py-3 font-label text-lg tracking-[1.2px]">
-            SALE {saleActive && <span className="text-pink">●</span>}
+            SALE {saleActive && <span className="text-pink animate-pulse">●</span>}
           </Link>
           <Link href="/lookbook" onClick={() => setMobileOpen(false)} className="block border-b border-line py-3 font-label text-lg tracking-[1.2px]">
             LOOKBOOK

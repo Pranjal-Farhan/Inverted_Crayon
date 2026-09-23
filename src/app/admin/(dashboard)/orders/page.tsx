@@ -19,7 +19,7 @@ const STATUSES: $Enums.OrderStatus[] = [
   "REFUNDED",
   "RETURNED",
 ];
-const PAYMENT_METHODS: $Enums.PaymentMethod[] = ["BKASH", "NAGAD", "SSLCOMMERZ", "COD"];
+const PAYMENT_METHODS: $Enums.PaymentMethod[] = ["BKASH", "SSLCOMMERZ", "COD"];
 
 export default async function AdminOrdersPage({ searchParams }: Props) {
   const { status, payment, q } = await searchParams;

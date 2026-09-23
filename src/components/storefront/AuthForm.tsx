@@ -1,17 +1,22 @@
 "use client";
 
 import { useActionState, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { customerLogin, customerRegister } from "@/actions/customer-auth";
 import { Button } from "@/components/ui/Button";
+import { OAuthButtons, OAuthErrorBanner } from "@/components/auth/OAuthButtons";
 
 export function AuthForm({ initialTab = "login" }: { initialTab?: "login" | "register" }) {
   const [tab, setTab] = useState<"login" | "register">(initialTab);
   const [loginState, loginAction, loginPending] = useActionState(customerLogin, null);
   const [registerState, registerAction, registerPending] = useActionState(customerRegister, null);
+  const searchParams = useSearchParams();
 
   return (
     <div className="mx-auto my-10 max-w-[420px] border border-line bg-panel p-7.5">
       <h1 className="font-impact text-[34px] uppercase">{tab === "login" ? "Log in" : "Register"}</h1>
+      <OAuthErrorBanner code={searchParams.get("oauth")} />
+      <OAuthButtons intent="customer" />
       <div className="mb-5 mt-3 flex border border-line-2">
         <button
           onClick={() => setTab("login")}

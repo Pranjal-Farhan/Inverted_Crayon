@@ -31,6 +31,7 @@ export default async function EditProductPage({ params }: Props) {
         categoryId: product.categoryId,
         basePrice: toNumber(product.basePrice),
         status: product.status,
+        freeDelivery: product.freeDelivery,
         seoTitle: product.seoTitle ?? undefined,
         seoDescription: product.seoDescription ?? undefined,
         collectionIds: product.collections.map((c) => c.collectionId),
