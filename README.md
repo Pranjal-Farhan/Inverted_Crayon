@@ -56,7 +56,7 @@ Both P1 (launch-critical) and P2 (fast-follow) from the spec's §13 checklist ar
 
 ## Notes for further work
 
-- Product/model photography: every image is a styled placeholder (`PlaceholderFrame`) — swap in real assets at the same aspect ratios noted per page in the spec. Each product now seeds with 4 placeholder images so the gallery has real content to page through.
+- Product/model photography: seeded products use a styled placeholder (`PlaceholderFrame`) until real photos are uploaded. Admin → product editor supports dragging (or click-to-browse) images onto a product — files save to `public/uploads/products/<id>/` and render on the PDP gallery, product cards, and grids in place of the placeholder. Uploads are local disk storage, not a CDN/object store — fine for local dev, swap for S3/Cloudinary-backed storage before deploying anywhere with ephemeral or multi-instance filesystems.
 - Payments are mocked; wiring real bKash/Nagad/SSLCommerz sandbox APIs would replace the payment-status logic in `src/actions/checkout.ts`.
 - Emails are mocked to an outbox table rather than actually sent — swap the body of `sendMail()` in `src/lib/mail.ts` for a real provider (SES/SendGrid/etc.) and every call site (order events, back-in-stock, abandoned checkout, newsletter, contact) keeps working unchanged.
 - Abandoned-checkout reminders are admin-triggered (`/admin/campaigns` → "Send all pending reminders") rather than on an automatic schedule — wire that button's action (`sendAllAbandonedReminders` in `src/actions/admin-marketing.ts`) into a cron job for real automation.

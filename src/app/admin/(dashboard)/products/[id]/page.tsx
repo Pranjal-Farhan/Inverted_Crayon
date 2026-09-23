@@ -10,7 +10,7 @@ export default async function EditProductPage({ params }: Props) {
   const [product, categories, collections] = await Promise.all([
     db.product.findUnique({
       where: { id },
-      include: { variants: true, collections: true, tags: { include: { tag: true } } },
+      include: { variants: true, collections: true, tags: { include: { tag: true } }, images: { orderBy: { position: "asc" } } },
     }),
     db.category.findMany({ orderBy: { position: "asc" } }),
     db.collection.findMany({ orderBy: { title: "asc" } }),
@@ -49,6 +49,7 @@ export default async function EditProductPage({ params }: Props) {
           lowStockThreshold: v.lowStockThreshold,
           priceOverride: v.priceOverride != null ? toNumber(v.priceOverride) : null,
         })),
+        images: product.images,
       }}
       categories={categories}
       collections={collections.map((c) => ({ id: c.id, title: c.title }))}

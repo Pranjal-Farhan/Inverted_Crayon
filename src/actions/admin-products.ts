@@ -2,10 +2,15 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { randomUUID } from "node:crypto";
+import fs from "node:fs/promises";
+import path from "node:path";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { getAdminSession } from "@/lib/session";
 import { sendMail } from "@/lib/mail";
+
+const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 
 async function requireAdmin() {
   const session = await getAdminSession();
@@ -188,6 +193,63 @@ export async function saveProduct(input: ProductFormInput): Promise<ProductSaveR
 export async function deleteProduct(id: string) {
   await requireAdmin();
   await db.product.delete({ where: { id } });
+  await fs.rm(path.join(process.cwd(), "public", "uploads", "products", id), { recursive: true, force: true });
   revalidatePath("/admin/products");
   redirect("/admin/products");
+}
+
+export type ProductImageRow = { id: string; url: string; alt: string | null; position: number; accentColor: string | null };
+export type UploadImagesResult = { ok: true; images: ProductImageRow[] } | { ok: false; error: string };
+
+export async function uploadProductImages(productId: string, formData: FormData): Promise<UploadImagesResult> {
+  await requireAdmin();
+
+  const product = await db.product.findUnique({ where: { id: productId }, select: { id: true, title: true } });
+  if (!product) return { ok: false, error: "Product not found — save the product first." };
+
+  const files = formData.getAll("files").filter((f): f is File => f instanceof File && f.size > 0);
+  if (files.length === 0) return { ok: false, error: "No files received." };
+
+  const oversized = files.some((f) => f.size > MAX_IMAGE_BYTES);
+  if (oversized) return { ok: false, error: "Each image must be under 8MB." };
+
+  const imageFiles = files.filter((f) => f.type.startsWith("image/"));
+  if (imageFiles.length === 0) return { ok: false, error: "Only image files are accepted." };
+
+  const dir = path.join(process.cwd(), "public", "uploads", "products", productId);
+  await fs.mkdir(dir, { recursive: true });
+
+  let position = await db.productImage.count({ where: { productId } });
+  const created: ProductImageRow[] = [];
+  for (const file of imageFiles) {
+    const nameExt = file.name.includes(".") ? file.name.split(".").pop() : null;
+    const mimeExt = file.type.split("/")[1]?.split("+")[0];
+    const ext = (nameExt || mimeExt || "jpg").toLowerCase().replace(/[^a-z0-9]/g, "") || "jpg";
+    const filename = `${randomUUID()}.${ext}`;
+    await fs.writeFile(path.join(dir, filename), Buffer.from(await file.arrayBuffer()));
+    const row = await db.productImage.create({
+      data: { productId, url: `/uploads/products/${productId}/${filename}`, alt: product.title, position },
+    });
+    created.push(row);
+    position += 1;
+  }
+
+  revalidatePath(`/admin/products/${productId}`);
+  revalidatePath("/admin/products");
+  return { ok: true, images: created };
+}
+
+export async function deleteProductImage(id: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  await requireAdmin();
+  const image = await db.productImage.findUnique({ where: { id } });
+  if (!image) return { ok: false, error: "Image not found." };
+
+  await db.productImage.delete({ where: { id } });
+  if (image.url.startsWith("/uploads/")) {
+    await fs.unlink(path.join(process.cwd(), "public", image.url)).catch(() => {});
+  }
+
+  revalidatePath(`/admin/products/${image.productId}`);
+  revalidatePath("/admin/products");
+  return { ok: true };
 }

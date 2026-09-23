@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import { PlaceholderFrame } from "@/components/ui/PlaceholderFrame";
 import { pickAccent } from "@/lib/accent-color";
 
-type GalleryImage = { id: string; accentColor: string | null; alt: string | null };
+type GalleryImage = { id: string; url?: string; accentColor: string | null; alt: string | null };
 
 export function ProductGallery({
   images,
@@ -35,7 +35,11 @@ export function ProductGallery({
               className={`aspect-square border ${active === i ? "border-lime" : "border-line"}`}
               aria-label={`View image ${i + 1}`}
             >
-              <PlaceholderFrame accentColor={img.accentColor ?? accent.color} shape={accent.shape} stamp={false} className="h-full w-full" />
+              {img.url ? (
+                <img src={img.url} alt={img.alt ?? ""} className="h-full w-full object-cover" />
+              ) : (
+                <PlaceholderFrame accentColor={img.accentColor ?? accent.color} shape={accent.shape} stamp={false} className="h-full w-full" />
+              )}
             </button>
           );
         })}
@@ -56,7 +60,16 @@ export function ProductGallery({
         {(() => {
           const img = slides[active];
           const accent = pickAccent(img.id);
-          return (
+          return img.url ? (
+            <>
+              <img src={img.url} alt={img.alt ?? ""} className="h-full w-full object-cover" />
+              {soldOut && (
+                <div className="absolute inset-0 z-[5] grid place-items-center bg-[rgba(8,8,9,.55)]">
+                  <span className="font-impact text-[22px] tracking-[2px] text-paper">SOLD OUT</span>
+                </div>
+              )}
+            </>
+          ) : (
             <PlaceholderFrame
               accentColor={img.accentColor ?? accent.color}
               shape={accent.shape}

@@ -1,9 +1,18 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
-import { saveProduct, deleteProduct, type ProductFormInput } from "@/actions/admin-products";
+import { useRef, useState, useTransition } from "react";
+import {
+  saveProduct,
+  deleteProduct,
+  uploadProductImages,
+  deleteProductImage,
+  type ProductFormInput,
+  type ProductImageRow,
+} from "@/actions/admin-products";
 import { Panel } from "@/components/admin/Panel";
+
+type StagedImage = { file: File; previewUrl: string };
 
 type VariantRow = {
   id?: string;
@@ -21,13 +30,20 @@ export function ProductEditorForm({
   categories,
   collections,
 }: {
-  initial: (ProductFormInput & { variants: VariantRow[] }) | null;
+  initial: (ProductFormInput & { variants: VariantRow[]; images: ProductImageRow[] }) | null;
   categories: { id: string; name: string }[];
   collections: { id: string; title: string }[];
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [images, setImages] = useState<ProductImageRow[]>(initial?.images ?? []);
+  const [staged, setStaged] = useState<StagedImage[]>([]);
+  const [dragActive, setDragActive] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   const [title, setTitle] = useState(initial?.title ?? "");
   const [slug, setSlug] = useState(initial?.slug ?? "");
@@ -63,6 +79,41 @@ export function ProductEditorForm({
     setVariants((rows) => rows.filter((_, idx) => idx !== i));
   }
 
+  async function handleFiles(fileList: FileList | File[]) {
+    const files = Array.from(fileList).filter((f) => f.type.startsWith("image/"));
+    if (files.length === 0) return;
+    setUploadError(null);
+
+    if (initial?.id) {
+      setUploading(true);
+      const formData = new FormData();
+      files.forEach((f) => formData.append("files", f));
+      const res = await uploadProductImages(initial.id, formData);
+      setUploading(false);
+      if (!res.ok) {
+        setUploadError(res.error);
+        return;
+      }
+      setImages((prev) => [...prev, ...res.images]);
+    } else {
+      setStaged((prev) => [...prev, ...files.map((file) => ({ file, previewUrl: URL.createObjectURL(file) }))]);
+    }
+  }
+
+  async function removeImage(id: string) {
+    setImages((prev) => prev.filter((img) => img.id !== id));
+    await deleteProductImage(id);
+  }
+
+  function removeStaged(index: number) {
+    setStaged((prev) => {
+      const copy = [...prev];
+      const [removed] = copy.splice(index, 1);
+      if (removed) URL.revokeObjectURL(removed.previewUrl);
+      return copy;
+    });
+  }
+
   function submit() {
     setError(null);
     startTransition(async () => {
@@ -87,6 +138,11 @@ export function ProductEditorForm({
         setError(res.error);
         return;
       }
+      if (staged.length > 0) {
+        const formData = new FormData();
+        staged.forEach((s) => formData.append("files", s.file));
+        await uploadProductImages(res.id, formData);
+      }
       router.push(`/admin/products/${res.id}`);
       router.refresh();
     });
@@ -102,9 +158,68 @@ export function ProductEditorForm({
           <Field label="Description">
             <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} className={inputClass} />
           </Field>
-          <div className="border border-dashed border-line-2 p-4 text-center text-[13px] text-muted-2">
-            Drag images · placeholder frames render automatically until real photography is uploaded.
+          <div
+            onDragOver={(e) => {
+              e.preventDefault();
+              setDragActive(true);
+            }}
+            onDragLeave={() => setDragActive(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setDragActive(false);
+              handleFiles(e.dataTransfer.files);
+            }}
+            onClick={() => fileInputRef.current?.click()}
+            className={`cursor-pointer border border-dashed p-4 text-center text-[13px] transition ${
+              dragActive ? "border-lime text-lime" : "border-line-2 text-muted-2"
+            }`}
+          >
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              multiple
+              className="hidden"
+              onChange={(e) => {
+                if (e.target.files) handleFiles(e.target.files);
+                e.target.value = "";
+              }}
+            />
+            {uploading
+              ? "Uploading…"
+              : "Drag images here or click to browse · placeholder frames render automatically until photos are uploaded."}
+            {uploadError && <div className="mt-1 text-error">{uploadError}</div>}
           </div>
+          {(images.length > 0 || staged.length > 0) && (
+            <div className="mt-3 grid grid-cols-4 gap-2">
+              {images.map((img) => (
+                <div key={img.id} className="group relative aspect-square overflow-hidden border border-line">
+                  <img src={img.url} alt={img.alt ?? ""} className="h-full w-full object-cover" />
+                  <button
+                    type="button"
+                    onClick={() => removeImage(img.id)}
+                    aria-label="Remove image"
+                    className="absolute right-1 top-1 hidden h-5 w-5 items-center justify-center rounded-full bg-ink/80 text-xs text-paper group-hover:flex"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+              {staged.map((s, i) => (
+                <div key={s.previewUrl} className="group relative aspect-square overflow-hidden border border-dashed border-yellow">
+                  <img src={s.previewUrl} alt="" className="h-full w-full object-cover" />
+                  <button
+                    type="button"
+                    onClick={() => removeStaged(i)}
+                    aria-label="Remove image"
+                    className="absolute right-1 top-1 hidden h-5 w-5 items-center justify-center rounded-full bg-ink/80 text-xs text-paper group-hover:flex"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </Panel>
 
         <Panel title="Variants — size × color" className="mt-4.5">

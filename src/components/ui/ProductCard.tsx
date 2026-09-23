@@ -9,6 +9,7 @@ import type { ProductDisplay } from "@/lib/product-view";
 export function ProductCard({ product }: { product: ProductDisplay }) {
   const accent = pickAccent(product.id);
   const href = `/product/${product.slug}`;
+  const primaryImage = product.images.find((img) => img.url)?.url;
 
   const primaryTag = product.soldOut
     ? "soldout"
@@ -27,15 +28,32 @@ export function ProductCard({ product }: { product: ProductDisplay }) {
   return (
     <Link href={href} className="card group block">
       <div className="relative mb-2.5 aspect-[1/1.16]">
-        <PlaceholderFrame
-          accentColor={accent.color}
-          shape={accent.shape}
-          label={product.title.toUpperCase()}
-          soldOut={product.soldOut}
-          className={`absolute inset-0 h-full w-full transition ${
-            !product.soldOut ? "group-hover:outline group-hover:outline-2 group-hover:outline-offset-[-2px] group-hover:outline-lime" : ""
-          }`}
-        />
+        {primaryImage ? (
+          <>
+            <img
+              src={primaryImage}
+              alt={product.title}
+              className={`absolute inset-0 h-full w-full object-cover transition ${
+                !product.soldOut ? "group-hover:outline group-hover:outline-2 group-hover:outline-offset-[-2px] group-hover:outline-lime" : ""
+              }`}
+            />
+            {product.soldOut && (
+              <div className="absolute inset-0 z-[5] grid place-items-center bg-[rgba(8,8,9,.55)]">
+                <span className="font-impact text-[22px] tracking-[2px] text-paper">SOLD OUT</span>
+              </div>
+            )}
+          </>
+        ) : (
+          <PlaceholderFrame
+            accentColor={accent.color}
+            shape={accent.shape}
+            label={product.title.toUpperCase()}
+            soldOut={product.soldOut}
+            className={`absolute inset-0 h-full w-full transition ${
+              !product.soldOut ? "group-hover:outline group-hover:outline-2 group-hover:outline-offset-[-2px] group-hover:outline-lime" : ""
+            }`}
+          />
+        )}
         {primaryTag && (
           <span className="absolute left-2 top-2 z-[4] -rotate-2">
             <TagPill kind={primaryTag} />

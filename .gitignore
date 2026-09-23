@@ -43,5 +43,8 @@ next-env.d.ts
 
 /src/generated/prisma
 
+# admin-uploaded product photography (local dev storage)
+/public/uploads/
+
 # local debug scratch
 .scratch/
