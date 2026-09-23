@@ -1,25 +1,52 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { saveShippingRates, savePaymentGateways, saveStoreInfo } from "@/actions/admin-settings";
+import {
+  saveShippingRates,
+  savePaymentGateways,
+  saveStoreInfo,
+  saveTaxSettings,
+  saveEmailTemplates,
+} from "@/actions/admin-settings";
 import { Panel } from "@/components/admin/Panel";
-import type { PaymentGatewaySettings, ShippingRates, StoreInfo } from "@/lib/store-settings";
+import { StaffManager } from "@/components/admin/StaffManager";
+import type { EmailTemplates, PaymentGatewaySettings, ShippingRates, StoreInfo, TaxSettings } from "@/lib/store-settings";
 
-const TABS = ["Payments", "Shipping", "Store"] as const;
+const TABS = ["Payments", "Shipping", "Tax", "Emails", "Roles", "Store"] as const;
+
+const EMAIL_TYPE_LABEL: Record<keyof EmailTemplates, string> = {
+  WELCOME: "Newsletter welcome",
+  ORDER_CONFIRMED: "Order confirmed",
+  ORDER_SHIPPED: "It's shipped",
+  BACK_IN_STOCK: "Back in stock",
+  PREORDER_SHIP_UPDATE: "Preorder ship update",
+  ABANDONED_CHECKOUT: "Abandoned checkout reminder",
+  CONTACT_RECEIVED: "Contact form received",
+};
 
 export function SettingsView({
   rates: initialRates,
   gateways: initialGateways,
   storeInfo: initialInfo,
+  tax: initialTax,
+  emailTemplates: initialTemplates,
+  staff,
+  selfId,
 }: {
   rates: ShippingRates;
   gateways: PaymentGatewaySettings;
   storeInfo: StoreInfo;
+  tax: TaxSettings;
+  emailTemplates: EmailTemplates;
+  staff: { id: string; email: string; name: string; role: "ADMIN" | "STAFF" }[];
+  selfId: string;
 }) {
   const [tab, setTab] = useState<(typeof TABS)[number]>("Payments");
   const [rates, setRates] = useState(initialRates);
   const [gateways, setGateways] = useState(initialGateways);
   const [info, setInfo] = useState(initialInfo);
+  const [tax, setTax] = useState(initialTax);
+  const [templates, setTemplates] = useState(initialTemplates);
   const [pending, startTransition] = useTransition();
   const [saved, setSaved] = useState(false);
 
@@ -101,6 +128,69 @@ export function SettingsView({
         </Panel>
       )}
 
+      {tab === "Tax" && (
+        <Panel title="Tax">
+          <label className="mb-3 flex items-center gap-1.5 text-sm">
+            <input type="checkbox" checked={tax.inclusive} onChange={(e) => setTax((t) => ({ ...t, inclusive: e.target.checked }))} />
+            Prices include tax
+          </label>
+          <div className="grid gap-2.5 desktop:grid-cols-2">
+            <div>
+              <label className="font-label mb-1 block text-[12px] tracking-[1px] text-muted">Rate (%)</label>
+              <input
+                type="number"
+                value={tax.rate}
+                onChange={(e) => setTax((t) => ({ ...t, rate: Number(e.target.value) }))}
+                className="w-full border border-line-2 bg-ink px-2.5 py-1.5 text-sm"
+              />
+            </div>
+            <div>
+              <label className="font-label mb-1 block text-[12px] tracking-[1px] text-muted">Label</label>
+              <input
+                value={tax.label}
+                onChange={(e) => setTax((t) => ({ ...t, label: e.target.value }))}
+                className="w-full border border-line-2 bg-ink px-2.5 py-1.5 text-sm"
+              />
+            </div>
+          </div>
+          <p className="mt-2 text-[12px] text-muted">
+            Bangladesh apparel pricing is typically tax-inclusive — this stays informational unless you switch to
+            exclusive pricing.
+          </p>
+          <SaveBtn pending={pending} saved={saved} onClick={() => startTransition(async () => { await saveTaxSettings(tax); flashSaved(); })} />
+        </Panel>
+      )}
+
+      {tab === "Emails" && (
+        <Panel title="Email templates">
+          <p className="mb-3 text-[13px] text-muted">Emails are mocked — toggling one off here skips writing it to the outbox.</p>
+          {(Object.keys(EMAIL_TYPE_LABEL) as (keyof EmailTemplates)[]).map((key) => (
+            <div key={key} className="mb-2.5 flex items-center gap-3">
+              <label className="flex w-8 items-center">
+                <input
+                  type="checkbox"
+                  checked={templates[key].enabled}
+                  onChange={(e) => setTemplates((t) => ({ ...t, [key]: { ...t[key], enabled: e.target.checked } }))}
+                />
+              </label>
+              <span className="w-[220px] shrink-0 text-sm text-muted">{EMAIL_TYPE_LABEL[key]}</span>
+              <input
+                value={templates[key].subject}
+                onChange={(e) => setTemplates((t) => ({ ...t, [key]: { ...t[key], subject: e.target.value } }))}
+                className="flex-1 border border-line-2 bg-ink px-2.5 py-1.5 text-sm"
+              />
+            </div>
+          ))}
+          <SaveBtn
+            pending={pending}
+            saved={saved}
+            onClick={() => startTransition(async () => { await saveEmailTemplates(templates); flashSaved(); })}
+          />
+        </Panel>
+      )}
+
+      {tab === "Roles" && <StaffManager users={staff} selfId={selfId} />}
+
       {tab === "Store" && (
         <Panel title="Store info">
           {(["name", "email", "phone", "address"] as const).map((key) => (
@@ -120,10 +210,6 @@ export function SettingsView({
           />
         </Panel>
       )}
-
-      <Panel title="Staff roles" className="mt-4.5">
-        <p className="text-sm text-muted">Admin — full access · Staff — fulfil orders, no refunds or settings.</p>
-      </Panel>
     </div>
   );
 }

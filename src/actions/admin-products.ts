@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { getAdminSession } from "@/lib/session";
+import { sendMail } from "@/lib/mail";
 
 async function requireAdmin() {
   const session = await getAdminSession();
@@ -57,6 +58,15 @@ export async function saveProduct(input: ProductFormInput): Promise<ProductSaveR
   const tags = await db.tag.findMany();
   const tagByType = Object.fromEntries(tags.map((t) => [t.type, t]));
 
+  const existing = data.id
+    ? await db.product.findUnique({
+        where: { id: data.id },
+        include: { tags: { include: { tag: true } } },
+      })
+    : null;
+  const wasPreorderTag = existing?.tags.find((t) => t.tag.type === "PREORDER");
+  const previousShipDate = (wasPreorderTag?.meta as { shipDate?: string } | null | undefined)?.shipDate;
+
   try {
     const product = await db.$transaction(async (tx) => {
       const productRecord = await tx.product.upsert({
@@ -71,7 +81,10 @@ export async function saveProduct(input: ProductFormInput): Promise<ProductSaveR
           status: data.status,
           seoTitle: data.seoTitle,
           seoDescription: data.seoDescription,
-          publishedAt: data.status === "ACTIVE" ? new Date() : null,
+          // Only stamp publishedAt the first time a product goes live —
+          // re-saving an already-active product must not re-trigger "New".
+          publishedAt:
+            data.status === "ACTIVE" ? (existing?.publishedAt ?? new Date()) : null,
         },
         create: {
           title: data.title,
@@ -140,6 +153,26 @@ export async function saveProduct(input: ProductFormInput): Promise<ProductSaveR
 
       return productRecord;
     });
+
+    if (data.tagPreorder && data.preorderShipDate && data.preorderShipDate !== previousShipDate) {
+      const affected = await db.orderItem.findMany({
+        where: {
+          productId: product.id,
+          isPreorder: true,
+          order: { status: { in: ["PENDING", "PAID", "PROCESSING"] } },
+        },
+        include: { order: true },
+      });
+      const emails = [...new Set(affected.map((i) => i.order.email))];
+      for (const to of emails) {
+        await sendMail({
+          to,
+          subject: "Your preorder ships soon",
+          body: `${product.title} now ships ${data.preorderShipDate}. We'll keep you posted if that changes.`,
+          type: "PREORDER_SHIP_UPDATE",
+        });
+      }
+    }
 
     revalidatePath("/admin/products");
     revalidatePath(`/admin/products/${product.id}`);

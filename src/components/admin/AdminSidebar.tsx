@@ -22,11 +22,18 @@ const NAV: { group: string; items: { href: string; label: string; icon: string }
       { href: "/admin/discounts", label: "Discounts", icon: "%" },
       { href: "/admin/campaigns", label: "Campaigns", icon: "◔" },
       { href: "/admin/content", label: "Content CMS", icon: "▥" },
+      { href: "/admin/journal", label: "Journal", icon: "✎" },
       { href: "/admin/analytics", label: "Analytics", icon: "◧" },
       { href: "/admin/reviews", label: "Reviews", icon: "★" },
     ],
   },
-  { group: "System", items: [{ href: "/admin/settings", label: "Settings", icon: "⚙" }] },
+  {
+    group: "System",
+    items: [
+      { href: "/admin/emails", label: "Emails", icon: "✉" },
+      { href: "/admin/settings", label: "Settings", icon: "⚙" },
+    ],
+  },
 ];
 
 export function AdminSidebar() {

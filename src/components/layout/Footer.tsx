@@ -49,6 +49,7 @@ const VALUE_PROPS = [
 ];
 
 const LEGAL_LINKS = [
+  { href: "/journal", label: "Journal" },
   { href: "/faq", label: "FAQ" },
   { href: "/contact", label: "Contact" },
   { href: "/size-guide", label: "Size guide" },

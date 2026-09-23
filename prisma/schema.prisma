@@ -431,3 +431,60 @@ model StoreSetting {
   key   String @unique
   value Json
 }
+
+// ---------- journal / blog ----------
+
+enum PostStatus {
+  DRAFT
+  PUBLISHED
+}
+
+model Post {
+  id          String     @id @default(cuid())
+  slug        String     @unique
+  title       String
+  excerpt     String
+  body        String
+  accentColor String      @default("#ff2d84")
+  authorName  String      @default("Inverted Crayon")
+  status      PostStatus  @default(DRAFT)
+  publishedAt DateTime?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+}
+
+// ---------- email (mocked outbox) ----------
+
+enum EmailType {
+  WELCOME
+  ORDER_CONFIRMED
+  ORDER_SHIPPED
+  BACK_IN_STOCK
+  PREORDER_SHIP_UPDATE
+  ABANDONED_CHECKOUT
+  CONTACT_RECEIVED
+}
+
+model EmailLog {
+  id            String    @id @default(cuid())
+  to            String
+  subject       String
+  body          String
+  type          EmailType
+  relatedOrderId String?
+  sentAt        DateTime  @default(now())
+
+  @@index([to])
+  @@index([type])
+}
+
+// Captured at checkout (on contact-step blur) so an abandoned session can be
+// followed up on. Cleared once that email completes an order.
+model AbandonedCheckout {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  cartSnapshot Json
+  remindedAt   DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}

@@ -2,6 +2,7 @@
 
 import { z } from "zod";
 import { db } from "@/lib/db";
+import { sendMail } from "@/lib/mail";
 
 const schema = z.email();
 
@@ -13,10 +14,15 @@ export async function subscribeNewsletter(
   if (!parsed.success) {
     return { ok: false, message: "That didn't go through. Check the fields in red and try again." };
   }
-  await db.newsletterSubscriber.upsert({
-    where: { email: parsed.data },
-    update: {},
-    create: { email: parsed.data },
-  });
+  const existing = await db.newsletterSubscriber.findUnique({ where: { email: parsed.data } });
+  if (!existing) {
+    await db.newsletterSubscriber.create({ data: { email: parsed.data } });
+    await sendMail({
+      to: parsed.data,
+      subject: "Stay inverted.",
+      body: "Drops, restocks, nothing boring. You're on the list.",
+      type: "WELCOME",
+    });
+  }
   return { ok: true, message: "Stay inverted. You're in." };
 }

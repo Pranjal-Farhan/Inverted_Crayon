@@ -1,16 +1,24 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { CATEGORIES } from "@/lib/categories";
+import { useSearchSuggestions } from "@/lib/use-search-suggestions";
+import { formatTaka } from "@/lib/money";
 
 export function SearchOverlay({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [q, setQ] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
+  const suggestions = useSearchSuggestions(q);
 
+  // Syncs local input state to the overlay's open/close prop (an external
+  // trigger) — resetting the query when it closes.
   useEffect(() => {
     if (open) inputRef.current?.focus();
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    else setQ("");
   }, [open]);
 
   if (!open) return null;
@@ -43,6 +51,33 @@ export function SearchOverlay({ open, onClose }: { open: boolean; onClose: () =>
         </button>
       </div>
       <div className="wrap py-8">
+        {suggestions.length > 0 ? (
+          <>
+            <p className="mb-3 font-label text-[13px] tracking-[1.4px] text-muted">SUGGESTIONS</p>
+            <div className="mb-8 flex flex-col gap-1">
+              {suggestions.map((s) => (
+                <Link
+                  key={s.slug}
+                  href={`/product/${s.slug}`}
+                  onClick={onClose}
+                  className="flex justify-between border-b border-line py-2.5 hover:text-lime"
+                >
+                  <span>{s.title}</span>
+                  <span className="price text-lime">{formatTaka(s.price)}</span>
+                </Link>
+              ))}
+            </div>
+          </>
+        ) : (
+          q.trim().length >= 2 && (
+            <p className="mb-8 text-muted">
+              No quick matches —{" "}
+              <button onClick={() => submit(q.trim())} className="text-cyan hover:underline">
+                see full results for &quot;{q}&quot;
+              </button>
+            </p>
+          )
+        )}
         <p className="mb-3 font-label text-[13px] tracking-[1.4px] text-muted">POPULAR CATEGORIES</p>
         <div className="flex flex-wrap gap-2.5">
           {CATEGORIES.map((c) => (

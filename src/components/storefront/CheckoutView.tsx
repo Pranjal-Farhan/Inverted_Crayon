@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useCart } from "@/context/cart-context";
 import { cartHasPreorder, cartHasInStock } from "@/lib/cart-types";
-import { placeOrder } from "@/actions/checkout";
+import { placeOrder, captureAbandonedCheckout } from "@/actions/checkout";
 import { usePromoValidation } from "@/lib/use-promo";
 import { formatTaka } from "@/lib/money";
 import { Button } from "@/components/ui/Button";
@@ -129,7 +129,20 @@ export function CheckoutView({
       <div className="min-w-0">
         <Step n={1} title="Contact">
           <Field label="Email" error={fieldErrors.email}>
-            <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" className={inputClass(fieldErrors.email)} />
+            <input
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              onBlur={() => {
+                if (/^\S+@\S+\.\S+$/.test(email) && cart.lines.length > 0) {
+                  captureAbandonedCheckout({
+                    email,
+                    lines: cart.lines.map((l) => ({ title: l.title, size: l.size, color: l.color, qty: l.qty, unitPrice: l.unitPrice })),
+                  });
+                }
+              }}
+              type="email"
+              className={inputClass(fieldErrors.email)}
+            />
           </Field>
           <Field label="Phone (delivery SMS)" error={fieldErrors.phone}>
             <input value={phone} onChange={(e) => setPhone(e.target.value)} className={inputClass(fieldErrors.phone)} />

@@ -67,6 +67,11 @@ export default async function AdminOrderDetailPage({ params }: Props) {
           </Panel>
           <Panel title="Timeline" className="mt-4.5">
             <OrderTimeline status={order.status} />
+            {order.trackingCourier && (
+              <p className="mt-3 text-[13px] text-muted">
+                {order.trackingCourier} · ref {order.trackingRef}
+              </p>
+            )}
           </Panel>
         </div>
       </div>

@@ -2,6 +2,7 @@
 
 import { z } from "zod";
 import { db } from "@/lib/db";
+import { sendMail } from "@/lib/mail";
 
 const schema = z.object({
   name: z.string().min(1),
@@ -22,5 +23,11 @@ export async function sendContactMessage(
     return { ok: false, message: "That didn't go through. Check the fields in red and try again." };
   }
   await db.contactMessage.create({ data: parsed.data });
+  await sendMail({
+    to: parsed.data.email,
+    subject: "We got your message",
+    body: `Hey ${parsed.data.name} — we got it and will reply within 1–2 business days.`,
+    type: "CONTACT_RECEIVED",
+  });
   return { ok: true, message: "Got it — we'll reply within 1–2 business days." };
 }

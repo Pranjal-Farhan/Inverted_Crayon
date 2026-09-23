@@ -2,11 +2,13 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { getProductForPDP } from "@/lib/get-product";
-import { PlaceholderFrame } from "@/components/ui/PlaceholderFrame";
 import { TagPill } from "@/components/ui/TagPill";
 import { Accordion } from "@/components/ui/Accordion";
 import { AddToCartForm } from "@/components/storefront/AddToCartForm";
 import { ProductCard } from "@/components/ui/ProductCard";
+import { ProductGallery } from "@/components/storefront/ProductGallery";
+import { ReviewList } from "@/components/storefront/ReviewList";
+import { TrackRecentlyViewed, RecentlyViewedRail } from "@/components/storefront/RecentlyViewed";
 import { formatTaka } from "@/lib/money";
 import { toNumber } from "@/lib/money";
 import { pickAccent } from "@/lib/accent-color";
@@ -59,25 +61,13 @@ export default async function ProductPage({ params }: Props) {
 
   return (
     <section className="pg pb-16">
+      <TrackRecentlyViewed productId={product.id} />
       <div className="grid gap-10 py-5.5 desktop:grid-cols-[1.05fr_1fr]">
-        <div className="grid min-w-0 grid-cols-1 items-start gap-3 desktop:grid-cols-[70px_1fr]">
-          <div className="hidden desktop:flex flex-col gap-2.5">
-            {[0, 1, 2, 3].map((i) => (
-              <div key={i} className="aspect-square border border-line">
-                <PlaceholderFrame accentColor={accent.color} shape={accent.shape} stamp={false} className="h-full w-full" />
-              </div>
-            ))}
-          </div>
-          <div className="aspect-[1/1.14]">
-            <PlaceholderFrame
-              accentColor={accent.color}
-              shape={accent.shape}
-              label="PRODUCT · FRONT"
-              soldOut={display.soldOut}
-              className="h-full w-full"
-            />
-          </div>
-        </div>
+        <ProductGallery
+          images={product.images.map((img) => ({ id: img.id, accentColor: img.accentColor, alt: img.alt }))}
+          fallbackAccent={accent}
+          soldOut={display.soldOut}
+        />
 
         <div className="min-w-0">
           <div className="font-label text-sm tracking-[1.4px] text-muted">
@@ -177,6 +167,20 @@ export default async function ProductPage({ params }: Props) {
           </div>
         </>
       )}
+
+      <RecentlyViewedRail excludeProductId={product.id} />
+
+      <div className="sh my-8 flex items-center gap-3 font-scrawl text-[30px]">
+        Reviews <Crown className="h-6 w-[34px] text-yellow" />
+      </div>
+      <div className="max-w-[640px]">
+        <ReviewList reviews={product.reviews} />
+        {session && (
+          <p className="mt-3 text-[13px] text-muted">
+            Bought this? <Link href="/account/orders" className="text-cyan">Write a review</Link> from your order history.
+          </p>
+        )}
+      </div>
     </section>
   );
 }

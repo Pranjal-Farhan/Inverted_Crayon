@@ -6,7 +6,7 @@ export async function getProductForPDP(slug: string) {
     where: { slug },
     include: {
       variants: true,
-      images: true,
+      images: { orderBy: { position: "asc" } },
       tags: { include: { tag: true } },
       category: true,
       reviews: { where: { status: "APPROVED" }, orderBy: { createdAt: "desc" } },

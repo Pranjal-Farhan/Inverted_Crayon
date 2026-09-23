@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { getAdminSession } from "@/lib/session";
+import { sendMail } from "@/lib/mail";
 
 async function requireAdmin() {
   const session = await getAdminSession();
@@ -12,9 +13,16 @@ async function requireAdmin() {
 
 export async function markOrderShipped(orderId: string, courier: string, trackingRef: string) {
   await requireAdmin();
-  await db.order.update({
+  const order = await db.order.update({
     where: { id: orderId },
     data: { status: "SHIPPED", trackingCourier: courier, trackingRef },
+  });
+  await sendMail({
+    to: order.email,
+    subject: "It's shipped",
+    body: `Order #${order.number} is on its way via ${courier} — tracking ref ${trackingRef}.`,
+    type: "ORDER_SHIPPED",
+    relatedOrderId: order.number,
   });
   revalidatePath(`/admin/orders/${orderId}`);
   revalidatePath("/admin/orders");

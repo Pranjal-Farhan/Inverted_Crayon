@@ -2,12 +2,13 @@
 
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { toNumber } from "@/lib/money";
+import { formatTaka, toNumber } from "@/lib/money";
 import { generateOrderNumber } from "@/lib/order-number";
 import { validateDiscountCode } from "@/lib/discount";
 import { getShippingRates } from "@/lib/store-settings";
 import { getCustomerSession } from "@/lib/session";
 import { findActiveCampaign } from "@/lib/product-view";
+import { sendMail } from "@/lib/mail";
 
 const checkoutSchema = z.object({
   email: z.email(),
@@ -169,7 +170,41 @@ export async function placeOrder(input: CheckoutInput): Promise<CheckoutResult> 
     if (appliedCode) {
       await tx.discount.update({ where: { code: appliedCode }, data: { usedCount: { increment: 1 } } });
     }
+
+    await tx.abandonedCheckout.deleteMany({ where: { email: data.email } });
+  });
+
+  await sendMail({
+    to: data.email,
+    subject: "Order confirmed",
+    body: `Order #${orderNumber} confirmed — ${formatTaka(total)}. ${
+      hasPreorder ? "Includes a preorder item; we'll email you if the ship date moves." : "We'll email you when it ships."
+    }`,
+    type: "ORDER_CONFIRMED",
+    relatedOrderId: orderNumber,
   });
 
   return { ok: true, orderNumber };
+}
+
+const captureSchema = z.object({
+  email: z.email(),
+  lines: z.array(
+    z.object({ title: z.string(), size: z.string(), color: z.string(), qty: z.number(), unitPrice: z.number() }),
+  ),
+});
+
+/** Captured on checkout's contact-step blur — the standard "abandoned cart" hook point. */
+export async function captureAbandonedCheckout(input: z.infer<typeof captureSchema>) {
+  const parsed = captureSchema.safeParse(input);
+  if (!parsed.success || parsed.data.lines.length === 0) return;
+
+  const hasOrder = await db.order.findFirst({ where: { email: parsed.data.email } });
+  if (hasOrder) return; // returning customer mid-checkout, not actually abandoning
+
+  await db.abandonedCheckout.upsert({
+    where: { email: parsed.data.email },
+    update: { cartSnapshot: parsed.data.lines, remindedAt: null },
+    create: { email: parsed.data.email, cartSnapshot: parsed.data.lines },
+  });
 }

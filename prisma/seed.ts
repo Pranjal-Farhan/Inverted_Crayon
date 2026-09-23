@@ -5,9 +5,11 @@ import { PrismaClient } from "../src/generated/prisma/client";
 import { CATEGORIES } from "../src/lib/categories";
 import { generateOrderNumber } from "../src/lib/order-number";
 import {
+  DEFAULT_EMAIL_TEMPLATES,
   DEFAULT_PAYMENT_GATEWAYS,
   DEFAULT_SHIPPING_RATES,
   DEFAULT_STORE_INFO,
+  DEFAULT_TAX_SETTINGS,
 } from "../src/lib/store-settings";
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
@@ -158,7 +160,12 @@ async function main() {
             seoTitle: title,
             seoDescription: `${title} — Inverted Crayon streetwear.`,
             images: {
-              create: [{ url: "", alt: title, position: 0, accentColor: colorA.hex }],
+              create: [0, 1, 2, 3].map((i) => ({
+                url: "",
+                alt: `${title} — view ${i + 1}`,
+                position: i,
+                accentColor: pick(COLORS, seedCounter + i * 3).hex,
+              })),
             },
             variants: {
               create: sizes.flatMap((size, sIdx) =>
@@ -429,6 +436,48 @@ async function main() {
     update: {},
     create: { key: "store_info", value: DEFAULT_STORE_INFO },
   });
+  await db.storeSetting.upsert({
+    where: { key: "tax_settings" },
+    update: {},
+    create: { key: "tax_settings", value: DEFAULT_TAX_SETTINGS },
+  });
+  await db.storeSetting.upsert({
+    where: { key: "email_templates" },
+    update: {},
+    create: { key: "email_templates", value: DEFAULT_EMAIL_TEMPLATES },
+  });
+
+  // ---------- journal ----------
+  const posts = [
+    {
+      slug: "made-to-stand-out",
+      title: "Made to stand out — the story behind the crayon",
+      excerpt: "Why we flipped the crayon upside down and built a brand around it.",
+      body: "Every crayon box has that one colour nobody reaches for. We built a brand around being that colour — inverted, on purpose, impossible to ignore. This is the short version of how Inverted Crayon started as a single screen-printed tee and turned into a full drop cycle.",
+      accentColor: "#ff2d84",
+    },
+    {
+      slug: "how-we-print",
+      title: "How we print — and why it cracks on purpose",
+      excerpt: "The screen-print process behind every heavyweight tee, and why the crack-and-fade finish is intentional.",
+      body: "Heavyweight 260gsm cotton, hand-mixed ink, and a print technique that's built to crack and fade with wear — the same way a favourite tee always looks better after the twentieth wash. Here's exactly how it's done, and why we'll never switch to a 'permanent' print.",
+      accentColor: "#26a7e6",
+    },
+    {
+      slug: "drop-04-the-outsiders",
+      title: "Inside Drop 04 — The Outsiders",
+      excerpt: "A 12-piece capsule for the ones who never fit the box, numbered and gone when they're gone.",
+      body: "The Outsiders started as a single sketch on the back of a delivery receipt. Twelve pieces, limited runs, each one numbered. Here's what went into it, from the first fit sample to the final print run.",
+      accentColor: "#c3f53a",
+    },
+  ];
+  for (const p of posts) {
+    await db.post.upsert({
+      where: { slug: p.slug },
+      update: {},
+      create: { ...p, status: "PUBLISHED", publishedAt: new Date(), authorName: "Inverted Crayon" },
+    });
+  }
 
   console.log("Seed complete.");
   console.log(`Admin login → ${adminEmail} / ${adminPassword}`);
