@@ -2,6 +2,8 @@
 
 Streetwear storefront + admin, built from the [Build Specification v1.0](.) — Next.js 16 (App Router), TypeScript, Tailwind v4, Prisma 7 / PostgreSQL.
 
+**This is the quickstart.** For the full architecture — every model, every route, every server action, how they connect, and the design philosophy behind all of it — see **[ARCHITECTURE.md](./ARCHITECTURE.md)**.
+
 ## Stack
 
 - **Framework**: Next.js 16 (App Router, Turbopack, Server Actions)
