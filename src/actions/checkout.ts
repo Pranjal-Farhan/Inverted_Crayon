@@ -17,7 +17,6 @@ import { bkashConfigured, createBkashPayment } from "@/lib/payments/bkash";
 import { sslcommerzConfigured, initSslcommerzSession } from "@/lib/payments/sslcommerz";
 
 const MAX_ORDER_NUMBER_ATTEMPTS = 5;
-const MIN_PREORDER_ADVANCE_PERCENT = 20;
 
 /** Thrown inside the checkout transaction for expected, user-facing failures (stock/discount raced out from under this order) — rolls back and surfaces as a normal error, not a crash. */
 class CheckoutConflictError extends Error {}
@@ -38,8 +37,6 @@ const checkoutSchema = z.object({
   paymentMethod: z.enum(["BKASH", "SSLCOMMERZ", "COD"]),
   promoCode: z.string().nullable().optional(),
   preorderShipMode: z.enum(["together", "split"]).default("together"),
-  // Preorder-only: % of the total paid online now (20-100); the rest is COD at delivery.
-  advancePercent: z.number().int().min(MIN_PREORDER_ADVANCE_PERCENT).max(100).optional(),
   lines: z
     .array(z.object({ variantId: z.string().min(1), qty: z.number().int().positive() }))
     .min(1),
@@ -59,7 +56,7 @@ export async function placeOrder(input: CheckoutInput): Promise<CheckoutResult> 
 
   const variants = await db.variant.findMany({
     where: { id: { in: data.lines.map((l) => l.variantId) } },
-    include: { product: { include: { tags: { include: { tag: true } } } } },
+    include: { product: true },
   });
   if (variants.length !== data.lines.length) {
     return { ok: false, error: "Something in your bag is no longer available." };
@@ -74,6 +71,8 @@ export async function placeOrder(input: CheckoutInput): Promise<CheckoutResult> 
 
   let subtotal = 0;
   let hasPreorder = false;
+  let preorderHoldback = 0; // sum of (unitPrice - advance) * qty across preorder lines — the only part that can become COD
+  let anyMandatoryPreorderAdvance = false;
   const orderItemsData: {
     productId: string;
     variantId: string;
@@ -83,12 +82,16 @@ export async function placeOrder(input: CheckoutInput): Promise<CheckoutResult> 
     unitPrice: number;
     lineTotal: number;
     isPreorder: boolean;
+    preorderAdvanceAmount: number | null;
   }[] = [];
 
   for (const line of data.lines) {
     const variant = variants.find((v) => v.id === line.variantId)!;
     const product = variant.product;
-    const isPreorder = product.tags.some((t) => t.tag.type === "PREORDER");
+    // Server-authoritative: a variant is a preorder the moment it's out of stock AND the admin
+    // has configured an advance for it (§ preorder philosophy) — never trust anything the client
+    // claims about preorder status.
+    const isPreorder = variant.stockQty <= 0 && variant.preorderAdvanceAmount != null;
 
     if (!isPreorder && variant.stockQty < line.qty) {
       return { ok: false, error: `Not enough stock for ${product.title} (${variant.size}/${variant.color}).` };
@@ -107,6 +110,13 @@ export async function placeOrder(input: CheckoutInput): Promise<CheckoutResult> 
     subtotal += lineTotal;
     hasPreorder = hasPreorder || isPreorder;
 
+    // Clamp defensively — an advance can never exceed the unit price even if misconfigured.
+    const advancePerUnit = isPreorder ? Math.min(Math.max(toNumber(variant.preorderAdvanceAmount ?? 0), 0), unitPrice) : null;
+    if (isPreorder) {
+      preorderHoldback += (unitPrice - (advancePerUnit ?? 0)) * line.qty;
+      if ((advancePerUnit ?? 0) > 0) anyMandatoryPreorderAdvance = true;
+    }
+
     orderItemsData.push({
       productId: product.id,
       variantId: variant.id,
@@ -116,14 +126,16 @@ export async function placeOrder(input: CheckoutInput): Promise<CheckoutResult> 
       unitPrice,
       lineTotal,
       isPreorder,
+      preorderAdvanceAmount: advancePerUnit,
     });
   }
   subtotal = Math.round(subtotal * 100) / 100;
+  preorderHoldback = Math.round(preorderHoldback * 100) / 100;
 
-  if (hasPreorder && data.paymentMethod === "COD") {
+  if (anyMandatoryPreorderAdvance && data.paymentMethod === "COD") {
     return {
       ok: false,
-      error: "Preorders need an online advance payment (bKash or card) — the rest is collected on delivery.",
+      error: "Part of this order needs an online advance payment (bKash or card) — the rest is collected on delivery.",
     };
   }
 
@@ -154,10 +166,15 @@ export async function placeOrder(input: CheckoutInput): Promise<CheckoutResult> 
   const shippingCost = freeShipping ? 0 : rates[data.shippingZone].cost;
   const total = Math.max(Math.round((subtotal - discountAmount + shippingCost) * 100) / 100, 0);
 
-  // Non-preorder orders are always "paid in full online" (advancePercent effectively 100).
-  const advancePercent = hasPreorder ? (data.advancePercent ?? 100) : 100;
-  const advanceAmount = Math.round(total * (advancePercent / 100) * 100) / 100;
+  // advanceAmount is "how much was actually captured online" — for COD, that's always 0 (nothing
+  // is charged through a gateway, the whole order is collected at delivery), whatever the
+  // preorder holdback math would otherwise suggest. Only the held-back portion of preorder items
+  // can ever be deferred to COD when paying online; shipping/discount/non-preorder lines are
+  // always part of what's charged then.
+  const advanceAmount =
+    data.paymentMethod === "COD" ? 0 : Math.max(Math.round((total - preorderHoldback) * 100) / 100, 0);
   const balanceDue = Math.max(Math.round((total - advanceAmount) * 100) / 100, 0);
+  const advancePercent = hasPreorder && total > 0 ? Math.round((advanceAmount / total) * 100) : null;
 
   // Only redirect to a real gateway when that gateway is actually configured — otherwise fall
   // back to the app's existing mocked instant-paid behavior (unchanged from before this
@@ -220,7 +237,7 @@ export async function placeOrder(input: CheckoutInput): Promise<CheckoutResult> 
             total,
             paymentMethod: data.paymentMethod,
             paymentStatus: initialStatus === "PAID" ? "PAID" : "PENDING",
-            advancePercent: hasPreorder ? advancePercent : null,
+            advancePercent,
             advanceAmount,
             balanceDue,
             shippingZone: data.shippingZone,
@@ -295,7 +312,7 @@ export async function placeOrder(input: CheckoutInput): Promise<CheckoutResult> 
     subject: "Order confirmed",
     body: `Order #${orderNumber} confirmed — ${formatTaka(advanceAmount)}${
       balanceDue > 0 ? ` now, ${formatTaka(balanceDue)} due on delivery` : ""
-    }. ${hasPreorder ? "Includes a preorder item; we'll email you if the ship date moves." : "We'll email you when it ships."}`,
+    }. ${hasPreorder ? "Includes a preorder item — we'll email you when it's ready to ship." : "We'll email you when it ships."}`,
     type: "ORDER_CONFIRMED",
     relatedOrderId: orderNumber,
   }).catch((e) => console.error("order-confirmation email failed", e));

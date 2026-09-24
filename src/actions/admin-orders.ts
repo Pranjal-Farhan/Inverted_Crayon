@@ -71,3 +71,10 @@ export async function updateOrderNotes(orderId: string, notes: string) {
   await db.order.update({ where: { id: orderId }, data: { internalNotes: notes } });
   revalidatePath(`/admin/orders/${orderId}`);
 }
+
+/** Marks a preorder's cash-on-delivery balance as collected — purely a record-keeping flag, doesn't touch paymentStatus (that still tracks the online advance). */
+export async function markBalanceCollected(orderId: string) {
+  await requireAdmin();
+  await db.order.update({ where: { id: orderId }, data: { balanceCollected: true } });
+  revalidatePath(`/admin/orders/${orderId}`);
+}

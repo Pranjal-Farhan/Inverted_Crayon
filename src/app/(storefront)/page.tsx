@@ -136,6 +136,7 @@ export default async function HomePage() {
                   colorHex: v.colorHex,
                   stockQty: v.stockQty,
                   price: v.priceOverride != null ? toNumber(v.priceOverride) : featuredDisplay.basePrice,
+                  preorderAdvanceAmount: v.preorderAdvanceAmount != null ? toNumber(v.preorderAdvanceAmount) : null,
                 }))}
                 isPreorder={featuredDisplay.isPreorder}
                 preorderShipDate={featuredDisplay.preorderShipDate}

@@ -49,6 +49,7 @@ export default async function EditProductPage({ params }: Props) {
           stockQty: v.stockQty,
           lowStockThreshold: v.lowStockThreshold,
           priceOverride: v.priceOverride != null ? toNumber(v.priceOverride) : null,
+          preorderAdvanceAmount: v.preorderAdvanceAmount != null ? toNumber(v.preorderAdvanceAmount) : null,
         })),
         images: product.images,
       }}

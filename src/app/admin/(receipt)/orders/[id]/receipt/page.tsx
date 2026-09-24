@@ -110,7 +110,13 @@ export default async function OrderReceiptPage({ params }: Props) {
               <tr key={item.id} className="border-b border-ink/10">
                 <td className="py-2.5 pr-3">
                   {item.productTitleSnapshot}
-                  {item.isPreorder && <span className="ml-1.5 text-[11px] text-ink/50">· preorder</span>}
+                  {item.isPreorder && (
+                    <span className="ml-1.5 text-[11px] text-ink/50">
+                      · preorder
+                      {item.preorderAdvanceAmount != null &&
+                        ` (advance ${formatTaka(toNumber(item.preorderAdvanceAmount))}/unit)`}
+                    </span>
+                  )}
                 </td>
                 <td className="py-2.5 pr-3 text-ink/70">{item.variantLabelSnapshot}</td>
                 <td className="py-2.5 text-right">{item.qty}</td>
@@ -142,6 +148,18 @@ export default async function OrderReceiptPage({ params }: Props) {
               <span className="font-impact text-[16px] uppercase">Total</span>
               <span className="font-impact text-[16px]">{formatTaka(toNumber(order.total))}</span>
             </div>
+            {order.isPreorder && (
+              <>
+                <div className="mt-1.5 flex justify-between border-t border-dashed border-ink/15 pt-1.5 text-ink/70">
+                  <span>Paid now (advance)</span>
+                  <span>{formatTaka(toNumber(order.advanceAmount))}</span>
+                </div>
+                <div className="flex justify-between text-ink/70">
+                  <span>Due on delivery (cash){order.balanceCollected ? " — collected" : ""}</span>
+                  <span>{formatTaka(toNumber(order.balanceDue))}</span>
+                </div>
+              </>
+            )}
             <p className="mt-1.5 text-right text-[11px] text-ink/45">
               {tax.rate > 0 ? `Includes ${tax.rate}% ${tax.label}` : tax.label}
             </p>

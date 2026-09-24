@@ -7,6 +7,7 @@ import { PlaceholderFrame } from "@/components/ui/PlaceholderFrame";
 import { Button } from "@/components/ui/Button";
 import { formatTaka } from "@/lib/money";
 import { pickAccent } from "@/lib/accent-color";
+import { preorderLineNote } from "@/lib/cart-types";
 
 export function CartDrawer() {
   const { cart, drawerOpen, closeDrawer, removeLine, setQty, subtotal, count } = useCart();
@@ -63,9 +64,7 @@ export function CartDrawer() {
                         {line.size} / {line.color}
                       </div>
                       {line.isPreorder && (
-                        <div className="mt-1 text-[12px] font-label tracking-[1px] text-yellow">
-                          Preorder — ships {line.preorderShipDate ?? "TBA"}
-                        </div>
+                        <div className="mt-1 text-[12px] font-label tracking-[1px] text-yellow">{preorderLineNote(line)}</div>
                       )}
                       <div className="mt-2 flex w-[110px] border border-line-2">
                         <button

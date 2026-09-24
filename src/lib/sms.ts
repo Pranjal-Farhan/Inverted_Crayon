@@ -44,10 +44,14 @@ function summarizeItems(items: OrderItem[]): string {
   return `${first.qty}x ${first.productTitleSnapshot} & ${restCount} more item${restCount === 1 ? "" : "s"}`;
 }
 
-/** COD orders are never partially paid online (§ preorders always require an online advance). */
+/**
+ * Preorder takes priority over payment method — even a preorder whose admin-set advance is ৳0
+ * (paymentMethod ends up COD, since there's nothing to pay online) still gets the reservation
+ * framing, not a plain COD message, since the wait/delivery expectations genuinely differ.
+ */
 export function classifyOrderSmsType(order: Order): $Enums.SmsType {
+  if (order.isPreorder) return "ORDER_CONFIRMED_PARTIAL";
   if (order.paymentMethod === "COD") return "ORDER_CONFIRMED_COD";
-  if (order.isPreorder && toNumber(order.balanceDue) > 0) return "ORDER_CONFIRMED_PARTIAL";
   return "ORDER_CONFIRMED_PAID";
 }
 
@@ -69,9 +73,13 @@ export function composeOrderConfirmationSms(
   }
 
   if (type === "ORDER_CONFIRMED_PARTIAL") {
+    const advance = toNumber(order.advanceAmount);
+    const balance = toNumber(order.balanceDue);
+    const paidPart = advance > 0 ? `Paid ${formatTaka(advance)} advance` : "Nothing to pay now — reserved";
+    const balancePart = balance > 0 ? `${formatTaka(balance)} due cash on delivery` : "fully paid";
     return {
       type,
-      body: `${storeName}: Order #${order.number} confirmed (${items}, preorder). Paid ${formatTaka(toNumber(order.advanceAmount))} advance — ${formatTaka(toNumber(order.balanceDue))} due cash on delivery to ${location}. Help: ${storePhone}`,
+      body: `${storeName}: Order #${order.number} confirmed (${items}, preorder). ${paidPart} — ${balancePart}. Shipping to ${location}. Help: ${storePhone}`,
     };
   }
 

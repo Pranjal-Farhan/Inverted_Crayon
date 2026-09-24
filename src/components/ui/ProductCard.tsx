@@ -11,9 +11,10 @@ export function ProductCard({ product }: { product: ProductDisplay }) {
   const href = `/product/${product.slug}`;
   const primaryImage = product.images.find((img) => img.url)?.url;
 
-  const primaryTag = product.soldOut
+  const soldOutButPreorderable = product.soldOut && product.hasPreorderableVariant;
+  const primaryTag = product.soldOut && !soldOutButPreorderable
     ? "soldout"
-    : product.isPreorder
+    : product.isPreorder || soldOutButPreorderable
       ? "preorder"
       : product.onSale
         ? "sale"
@@ -41,7 +42,9 @@ export function ProductCard({ product }: { product: ProductDisplay }) {
             />
             {product.soldOut && (
               <div className="absolute inset-0 z-[5] grid place-items-center bg-[rgba(8,8,9,.55)]">
-                <span className="font-impact text-[22px] tracking-[2px] text-paper">SOLD OUT</span>
+                <span className="font-impact text-[22px] tracking-[2px] text-paper">
+                  {soldOutButPreorderable ? "PREORDER" : "SOLD OUT"}
+                </span>
               </div>
             )}
           </>
@@ -51,6 +54,7 @@ export function ProductCard({ product }: { product: ProductDisplay }) {
             shape={accent.shape}
             label={product.title.toUpperCase()}
             soldOut={product.soldOut}
+            soldOutLabel={soldOutButPreorderable ? "PREORDER" : "SOLD OUT"}
             className={`absolute inset-0 h-full w-full transition duration-300 ease-out ${
               !product.soldOut
                 ? "group-hover:scale-[1.05] group-hover:outline group-hover:outline-2 group-hover:outline-offset-[-2px] group-hover:outline-lime"
@@ -65,7 +69,7 @@ export function ProductCard({ product }: { product: ProductDisplay }) {
         )}
         {product.soldOut && (
           <span className="absolute inset-x-0 bottom-3 z-[6] hidden text-center font-label text-xs tracking-[1px] text-paper group-hover:block">
-            Notify me →
+            {soldOutButPreorderable ? "Preorder →" : "Notify me →"}
           </span>
         )}
       </div>

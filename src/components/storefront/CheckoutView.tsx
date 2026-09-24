@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useCart } from "@/context/cart-context";
@@ -14,8 +14,6 @@ import type { PaymentGatewaySettings, ShippingRates } from "@/lib/store-settings
 type ShippingZoneKey = keyof ShippingRates;
 
 const ZONE_ORDER: ShippingZoneKey[] = ["INSIDE_DHAKA", "OUTSIDE_DHAKA", "INTERNATIONAL"];
-const MIN_PREORDER_ADVANCE_PERCENT = 20;
-const ADVANCE_PRESETS = [20, 50, 100];
 
 const PAYMENT_LABELS: Record<string, string> = {
   BKASH: "bKash",
@@ -63,7 +61,6 @@ export function CheckoutView({
     gateways.bkash ? "BKASH" : gateways.sslcommerz ? "SSLCOMMERZ" : "COD",
   );
   const [preorderShipMode, setPreorderShipMode] = useState<"together" | "split">("together");
-  const [advancePercent, setAdvancePercent] = useState(MIN_PREORDER_ADVANCE_PERCENT);
 
   const { result: promoResult } = usePromoValidation(cart.promoCode, subtotal);
   const freeShipping = promoResult?.ok && promoResult.type === "FREE_SHIPPING";
@@ -75,16 +72,27 @@ export function CheckoutView({
   const hasInStock = cartHasInStock(cart);
   const mixedCart = hasPreorder && hasInStock;
 
-  const codAllowed = gateways.cod && !hasPreorder && (gateways.codRule === "nationwide" || zone === "INSIDE_DHAKA");
-  const availableMethods = useMemo(
-    () =>
-      (["BKASH", "SSLCOMMERZ", "COD"] as const).filter((m) => {
-        if (m === "BKASH") return gateways.bkash;
-        if (m === "SSLCOMMERZ") return gateways.sslcommerz;
-        return codAllowed;
-      }),
-    [gateways, codAllowed],
+  // Advance/balance are no longer a customer choice — each preorder line's advance is whatever
+  // the admin set on that variant (0 or more), snapshotted onto the cart line when it was added.
+  // Only the held-back portion of preorder items (unitPrice - advance) can ever become COD; the
+  // rest of the order (shipping, discount, any in-stock items) is always due now.
+  const preorderLines = cart.lines.filter((l) => l.isPreorder);
+  const preorderHoldback = preorderLines.reduce(
+    (s, l) => s + (l.unitPrice - (l.preorderAdvanceAmount ?? l.unitPrice)) * l.qty,
+    0,
   );
+  // Nothing is ever actually captured online for COD — matches the server's placeOrder computation.
+  const advanceAmount =
+    paymentMethod === "COD" ? 0 : Math.max(Math.round((total - preorderHoldback) * 100) / 100, 0);
+  const balanceDue = Math.max(Math.round((total - advanceAmount) * 100) / 100, 0);
+  const allPreorderLinesFree = preorderLines.every((l) => (l.preorderAdvanceAmount ?? l.unitPrice) === 0);
+
+  const codAllowed = gateways.cod && allPreorderLinesFree && (gateways.codRule === "nationwide" || zone === "INSIDE_DHAKA");
+  const availableMethods = (["BKASH", "SSLCOMMERZ", "COD"] as const).filter((m) => {
+    if (m === "BKASH") return gateways.bkash;
+    if (m === "SSLCOMMERZ") return gateways.sslcommerz;
+    return codAllowed;
+  });
 
   useEffect(() => {
     if (!availableMethods.includes(paymentMethod) && availableMethods.length > 0) {
@@ -92,9 +100,6 @@ export function CheckoutView({
       setPaymentMethod(availableMethods[0]);
     }
   }, [availableMethods, paymentMethod]);
-
-  const advanceAmount = hasPreorder ? Math.round(total * (advancePercent / 100) * 100) / 100 : total;
-  const balanceDue = Math.max(Math.round((total - advanceAmount) * 100) / 100, 0);
 
   if (cart.lines.length === 0) {
     return (
@@ -137,7 +142,6 @@ export function CheckoutView({
         paymentMethod,
         promoCode: promoResult?.ok ? cart.promoCode : null,
         preorderShipMode,
-        advancePercent: hasPreorder ? advancePercent : undefined,
         lines: cart.lines.map((l) => ({ variantId: l.variantId, qty: l.qty })),
       });
       if (!res.ok) {
@@ -226,36 +230,29 @@ export function CheckoutView({
         </Step>
 
         {hasPreorder && (
-          <Step n={4} title="Preorder advance payment">
+          <Step n={4} title="Preorder advance">
             <p className="mb-3 text-sm text-muted">
-              Preorders need an online advance now — minimum {MIN_PREORDER_ADVANCE_PERCENT}%, or pay in full. The rest
-              is collected as cash on delivery.
+              The advance for each preorder item is set by us, not chosen at checkout — some are free to reserve. The
+              rest is collected as cash on delivery.
             </p>
-            <div className="mb-3 flex gap-2">
-              {ADVANCE_PRESETS.map((p) => (
-                <button
-                  key={p}
-                  type="button"
-                  onClick={() => setAdvancePercent(p)}
-                  className={`flex-1 border px-3 py-2 text-sm font-label tracking-[0.8px] ${
-                    advancePercent === p ? "border-lime bg-lime text-ink" : "border-line-2 hover:border-lime"
-                  }`}
-                >
-                  {p === 100 ? "Pay in full" : `${p}% now`}
-                </button>
-              ))}
+            <div className="flex flex-col gap-1.5">
+              {preorderLines.map((l) => {
+                const advance = l.preorderAdvanceAmount ?? l.unitPrice;
+                return (
+                  <div key={l.variantId} className="flex justify-between text-[13px]">
+                    <span className="text-muted">
+                      {l.title} · {l.size} × {l.qty}
+                    </span>
+                    <span>
+                      {advance > 0 ? `${formatTaka(advance * l.qty)} now` : "Free to reserve"}
+                      {l.unitPrice - advance > 0 && ` · ${formatTaka((l.unitPrice - advance) * l.qty)} on delivery`}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
-            <input
-              type="range"
-              min={MIN_PREORDER_ADVANCE_PERCENT}
-              max={100}
-              step={5}
-              value={advancePercent}
-              onChange={(e) => setAdvancePercent(Number(e.target.value))}
-              className="w-full accent-lime"
-            />
-            <div className="mt-2 flex justify-between text-[13px] text-muted">
-              <span>Pay now: {formatTaka(advanceAmount)} ({advancePercent}%)</span>
+            <div className="mt-3 flex justify-between border-t border-line-2 pt-2.5 text-[13px]">
+              <span>Pay now: {formatTaka(advanceAmount)}</span>
               {balanceDue > 0 && <span>Due on delivery: {formatTaka(balanceDue)}</span>}
             </div>
           </Step>
@@ -279,10 +276,10 @@ export function CheckoutView({
               </label>
             ))}
           </div>
-          {hasPreorder ? (
+          {hasPreorder && !allPreorderLinesFree ? (
             <p className="mt-2 text-[12px] text-muted">
-              Cash on delivery isn&apos;t available as the sole payment method for preorders — it&apos;s used for the
-              balance above, if any.
+              Cash on delivery isn&apos;t available as the sole payment method here — {formatTaka(advanceAmount)} of
+              this order needs to be paid online now, with the rest collected on delivery.
             </p>
           ) : (
             gateways.cod &&
@@ -348,7 +345,7 @@ export function CheckoutView({
         {hasPreorder && (
           <div className="mt-2 border-t border-dashed border-line-2 pt-2 text-sm">
             <div className="flex justify-between text-lime">
-              <span>Pay now ({advancePercent}%)</span>
+              <span>Pay now</span>
               <span>{formatTaka(advanceAmount)}</span>
             </div>
             {balanceDue > 0 && (

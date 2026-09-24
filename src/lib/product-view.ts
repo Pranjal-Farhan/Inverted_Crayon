@@ -35,6 +35,8 @@ export type ProductDisplay = {
   soldOut: boolean;
   totalStock: number;
   publishedAt: Date | null;
+  /** True when at least one variant is out of stock but admin-configured to still sell as a preorder. */
+  hasPreorderableVariant: boolean;
 };
 
 const NEW_WINDOW_DAYS = 21;
@@ -85,6 +87,7 @@ export function deriveProductDisplay(
     now.getTime() - new Date(product.publishedAt).getTime() < NEW_WINDOW_DAYS * 24 * 60 * 60 * 1000;
 
   const preorderMeta = preorderTag?.meta as { shipDate?: string } | null | undefined;
+  const hasPreorderableVariant = product.variants.some(variantPreorderEligible);
 
   return {
     id: product.id,
@@ -105,11 +108,22 @@ export function deriveProductDisplay(
     soldOut,
     totalStock,
     publishedAt: product.publishedAt,
+    hasPreorderableVariant,
   };
 }
 
 export function variantIsSoldOut(variant: Pick<Variant, "stockQty">): boolean {
   return variant.stockQty <= 0;
+}
+
+/**
+ * Single source of truth for "can this specific out-of-stock size/color still be bought as a
+ * preorder" — driven entirely by the admin-set per-variant advance (§ preorder philosophy), not
+ * by the product-level Preorder tag. A tag-based pre-launch product's variants become eligible
+ * the same way: they start at 0 stock, and the admin sets an advance amount for each of them.
+ */
+export function variantPreorderEligible(variant: Pick<Variant, "stockQty" | "preorderAdvanceAmount">): boolean {
+  return variant.stockQty <= 0 && variant.preorderAdvanceAmount != null;
 }
 
 export function variantPrice(product: Pick<Product, "basePrice">, variant: Pick<Variant, "priceOverride">): number {

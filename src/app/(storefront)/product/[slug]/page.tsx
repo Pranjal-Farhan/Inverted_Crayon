@@ -52,6 +52,7 @@ export default async function ProductPage({ params }: Props) {
     colorHex: v.colorHex,
     stockQty: v.stockQty,
     price: v.priceOverride != null ? toNumber(v.priceOverride) : display.basePrice,
+    preorderAdvanceAmount: v.preorderAdvanceAmount != null ? toNumber(v.preorderAdvanceAmount) : null,
   }));
 
   const avgRating =
@@ -75,13 +76,13 @@ export default async function ProductPage({ params }: Props) {
           </div>
 
           <div className="statebar my-3 flex gap-2">
-            <span className={`px-2.5 py-1 font-label text-[13px] tracking-[1px] ${!display.soldOut && !display.isPreorder ? "bg-white text-ink" : "bg-panel-2 text-muted"}`}>
+            <span className={`px-2.5 py-1 font-label text-[13px] tracking-[1px] ${!display.soldOut ? "bg-white text-ink" : "bg-panel-2 text-muted"}`}>
               IN STOCK
             </span>
-            <span className={`px-2.5 py-1 font-label text-[13px] tracking-[1px] ${display.isPreorder ? "bg-white text-ink" : "bg-panel-2 text-muted"}`}>
+            <span className={`px-2.5 py-1 font-label text-[13px] tracking-[1px] ${display.isPreorder || display.hasPreorderableVariant ? "bg-white text-ink" : "bg-panel-2 text-muted"}`}>
               PREORDER
             </span>
-            <span className={`px-2.5 py-1 font-label text-[13px] tracking-[1px] ${display.soldOut ? "bg-white text-ink" : "bg-panel-2 text-muted"}`}>
+            <span className={`px-2.5 py-1 font-label text-[13px] tracking-[1px] ${display.soldOut && !display.hasPreorderableVariant ? "bg-white text-ink" : "bg-panel-2 text-muted"}`}>
               SOLD OUT
             </span>
           </div>

@@ -87,9 +87,11 @@ Both P1 (launch-critical) and P2 (fast-follow) from the spec's §13 checklist ar
 
 `/admin/content` → **Brand identity** and **Homepage hero** panels control, without a code deploy: the logo image (falls back to the drawn monogram + wordmark when unset), brand name, motto (shown in the footer), the hero eyebrow/headline/sub-copy/badge text, a hero background color override, and a hero image carousel (falls back to a styled placeholder when empty). All of it renders live on `/` and in the header/footer immediately after publishing.
 
-## Preorders & partial payment
+## Preorders — admin-set advance, not a customer choice
 
-A product tagged **Preorder** (in its admin editor's Tags panel) requires checkout to collect a 20–100% advance via bKash or card — COD alone isn't accepted as full payment for a preorder, since there'd be nothing to charge online. Whatever isn't paid upfront becomes `balanceDue`, collected as cash on delivery; admins can see and mark it collected from the order detail page. Non-preorder items check out exactly as before (any of bKash/card/COD, no advance concept).
+Any size/color becomes a preorder **the moment it sells out**, if you've set a **Preorder ৳** advance for it in that product's editor (per row in the variant table) — blank means it just stays "sold out", any set amount (including `0`) means it keeps selling. This covers two cases with one mechanism: a genuinely pre-launch product (every size starts at 0 stock, tag it **Preorder** in the Tags panel too for the ship-date banner) and an ordinary product where one size just ran out (no tag needed — it flashes a "Preorder — ships in 7–15 days · Free delivery" banner and stays purchasable automatically).
+
+The advance is **per unit**, admin-set, not something the customer picks at checkout — `0` means free to reserve, everything due on delivery; anything above that is charged online (bKash/card) at checkout, with the rest collected as cash on delivery. COD as the *sole* payment method is only available when every preorder item in the cart has a `0` advance; otherwise the advance portion has to be paid online, same "COD can't fund a partial capture" reasoning as before. Admins see and mark the outstanding balance collected from the order-detail page's **Mark COD balance collected** button, and the exact advance-paid/balance-due split shows up on the customer's order confirmation, the SMS, the confirmation email, and the printable receipt.
 
 ## Order-confirmation SMS
 

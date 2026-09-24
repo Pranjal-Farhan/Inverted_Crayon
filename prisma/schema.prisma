@@ -139,6 +139,14 @@ model Variant {
   stockQty          Int      @default(0)
   lowStockThreshold Int      @default(5)
 
+  // Admin-set per-unit advance (set per size/color at product insertion). Null = this variant
+  // isn't preorder-eligible — once it hits 0 stock it's just sold out, same as before this
+  // existed. Any set value (0 or more) makes it preorder-eligible the moment stockQty hits 0:
+  // 0 means "reserve now, everything due on delivery"; a positive amount is charged online at
+  // checkout, with the rest collected as COD. This is the single source of truth for whether an
+  // out-of-stock variant can still be bought — see product-view.ts's variantPreorderEligible().
+  preorderAdvanceAmount Decimal? @db.Decimal(10, 2)
+
   orderItems      OrderItem[]
   backInStockSubs BackInStockSubscription[]
   stockPurchases  StockPurchase[]
@@ -312,12 +320,16 @@ model OrderItem {
   variantId String?
   variant   Variant? @relation(fields: [variantId], references: [id])
 
-  productTitleSnapshot String
-  variantLabelSnapshot String
-  qty                  Int
-  unitPrice            Decimal @db.Decimal(10, 2)
-  lineTotal            Decimal @db.Decimal(10, 2)
-  isPreorder           Boolean @default(false)
+  productTitleSnapshot  String
+  variantLabelSnapshot  String
+  qty                   Int
+  unitPrice             Decimal  @db.Decimal(10, 2)
+  lineTotal             Decimal  @db.Decimal(10, 2)
+  isPreorder            Boolean  @default(false)
+  // Per-unit advance at the moment this order was placed — a snapshot, same reasoning as
+  // productTitleSnapshot: the variant's own preorderAdvanceAmount can change later (or the
+  // variant can be deleted) without rewriting history. Null for non-preorder items.
+  preorderAdvanceAmount Decimal? @db.Decimal(10, 2)
 
   returnItems ReturnItem[]
 }

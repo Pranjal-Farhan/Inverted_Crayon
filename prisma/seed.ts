@@ -182,13 +182,26 @@ async function main() {
               create: sizes.flatMap((size, sIdx) =>
                 colorsForProduct.map((color, cIdx) => {
                   const stock = (seedCounter + sIdx + cIdx) % 11; // some will be 0 (sold out)
+                  const stockQty = isPreorder ? 0 : stock;
+                  // Preorder-philosophy demo data: every tag-based preorder variant needs an
+                  // admin-set advance (they're always at 0 stock) — a third of ordinary sold-out
+                  // variants get one too, so the auto-preorder-on-stockout flash is visible on
+                  // regular products without having to actually sell one out first. A quarter of
+                  // those are free-to-reserve (৳0), the rest ~30% of base price.
+                  const eligibleForAutoPreorder = stockQty === 0 && (isPreorder || (seedCounter + sIdx + cIdx) % 3 === 0);
+                  const preorderAdvanceAmount = eligibleForAutoPreorder
+                    ? (seedCounter + sIdx + cIdx) % 4 === 0
+                      ? 0
+                      : Math.round(basePrice * 0.3)
+                    : null;
                   return {
                     sku: `${baseSlug.slice(0, 8).toUpperCase()}-${size}-${color.name.slice(0, 3).toUpperCase()}-${sIdx}${cIdx}`,
                     size,
                     color: color.name,
                     colorHex: color.hex,
-                    stockQty: isPreorder ? 0 : stock,
+                    stockQty,
                     lowStockThreshold: 5,
+                    preorderAdvanceAmount,
                   };
                 }),
               ),

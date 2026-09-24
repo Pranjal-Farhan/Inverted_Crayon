@@ -54,12 +54,41 @@ export default async function AdminOrderDetailPage({ params }: Props) {
             </tbody>
             </table>
           </div>
-          <div className="mt-3 flex justify-between text-paper">
-            <span>Total paid ({order.paymentMethod})</span>
-            <span className="font-impact">{formatTaka(toNumber(order.total))}</span>
+          <div className="mt-3 border-t border-line pt-3">
+            <div className="flex justify-between text-paper">
+              <span className="font-impact">Order total</span>
+              <span className="font-impact">{formatTaka(toNumber(order.total))}</span>
+            </div>
+            {order.isPreorder ? (
+              <>
+                <div className="mt-1 flex justify-between text-sm text-muted">
+                  <span>Paid now (advance, {order.paymentMethod})</span>
+                  <span>{formatTaka(toNumber(order.advanceAmount))}</span>
+                </div>
+                {toNumber(order.balanceDue) > 0 && (
+                  <div className="flex justify-between text-sm text-muted">
+                    <span>Due on delivery (cash){order.balanceCollected ? " — collected" : ""}</span>
+                    <span className={order.balanceCollected ? "text-lime" : "text-yellow"}>
+                      {formatTaka(toNumber(order.balanceDue))}
+                    </span>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="mt-1 flex justify-between text-sm text-muted">
+                <span>Payment method</span>
+                <span>{order.paymentMethod}</span>
+              </div>
+            )}
           </div>
           <div className="mt-4">
-            <OrderActions orderId={order.id} status={order.status} notes={order.internalNotes ?? ""} />
+            <OrderActions
+              orderId={order.id}
+              status={order.status}
+              notes={order.internalNotes ?? ""}
+              balanceDue={toNumber(order.balanceDue)}
+              balanceCollected={order.balanceCollected}
+            />
           </div>
         </Panel>
 

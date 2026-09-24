@@ -23,6 +23,8 @@ type VariantRow = {
   stockQty: number;
   lowStockThreshold: number;
   priceOverride: number | null;
+  /** Null = not preorder-eligible once sold out. Set (incl. 0) = it is — see the preorder philosophy note in schema.prisma. */
+  preorderAdvanceAmount: number | null;
 };
 
 export function ProductEditorForm({
@@ -62,7 +64,18 @@ export function ProductEditorForm({
   const [variants, setVariants] = useState<VariantRow[]>(
     initial?.variants.length
       ? initial.variants
-      : [{ sku: "", size: "M", color: "Black", colorHex: "#0c0c0d", stockQty: 0, lowStockThreshold: 5, priceOverride: null }],
+      : [
+          {
+            sku: "",
+            size: "M",
+            color: "Black",
+            colorHex: "#0c0c0d",
+            stockQty: 0,
+            lowStockThreshold: 5,
+            priceOverride: null,
+            preorderAdvanceAmount: null,
+          },
+        ],
   );
 
   function updateVariant(i: number, patch: Partial<VariantRow>) {
@@ -72,7 +85,16 @@ export function ProductEditorForm({
   function addVariant() {
     setVariants((rows) => [
       ...rows,
-      { sku: "", size: "M", color: "Black", colorHex: "#0c0c0d", stockQty: 0, lowStockThreshold: 5, priceOverride: null },
+      {
+        sku: "",
+        size: "M",
+        color: "Black",
+        colorHex: "#0c0c0d",
+        stockQty: 0,
+        lowStockThreshold: 5,
+        priceOverride: null,
+        preorderAdvanceAmount: null,
+      },
     ]);
   }
 
@@ -230,13 +252,14 @@ export function ProductEditorForm({
             <a href="/admin/inventory" className="text-cyan hover:underline">
               Inventory
             </a>
-            .
+            . <strong className="text-paper">Preorder ৳</strong> is the advance charged online once this size sells
+            out (blank = just sold out, no preorder offered; 0 = free to reserve, everything due on delivery).
           </p>
           <div className="overflow-x-auto">
             <table className="w-full text-[13px]">
             <thead>
               <tr className="text-left text-muted">
-                {["SKU", "Size", "Color", "Hex", "Stock", "Low@", "Price ৳", ""].map((h) => (
+                {["SKU", "Size", "Color", "Hex", "Stock", "Low@", "Price ৳", "Preorder ৳", ""].map((h) => (
                   <th key={h} className="font-label pb-1.5">
                     {h}
                   </th>
@@ -283,6 +306,19 @@ export function ProductEditorForm({
                       placeholder={String(basePrice)}
                       onChange={(e) => updateVariant(i, { priceOverride: e.target.value ? Number(e.target.value) : null })}
                       className={`${cellClass} w-20`}
+                    />
+                  </td>
+                  <td className="pr-1.5 py-1">
+                    <input
+                      type="number"
+                      min={0}
+                      value={v.preorderAdvanceAmount ?? ""}
+                      placeholder="off"
+                      title="Advance due online once this size sells out — blank disables preorder for it, 0 means free to reserve."
+                      onChange={(e) =>
+                        updateVariant(i, { preorderAdvanceAmount: e.target.value ? Number(e.target.value) : null })
+                      }
+                      className={`${cellClass} w-20 ${v.preorderAdvanceAmount != null ? "border-yellow" : ""}`}
                     />
                   </td>
                   <td className="py-1">

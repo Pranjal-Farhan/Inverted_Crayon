@@ -34,6 +34,7 @@ const variantSchema = z.object({
   stockQty: z.number().int().min(0),
   lowStockThreshold: z.number().int().min(0).default(5),
   priceOverride: z.number().positive().nullable().optional(),
+  preorderAdvanceAmount: z.number().min(0).nullable().optional(),
 });
 
 const productSchema = z.object({
@@ -131,6 +132,7 @@ export async function saveProduct(input: ProductFormInput): Promise<ProductSaveR
             // page's setVariantStock instead; new variants still get their initial count below.
             lowStockThreshold: v.lowStockThreshold,
             priceOverride: v.priceOverride ?? null,
+            preorderAdvanceAmount: v.preorderAdvanceAmount ?? null,
           },
           create: {
             productId: productRecord.id,
@@ -141,6 +143,7 @@ export async function saveProduct(input: ProductFormInput): Promise<ProductSaveR
             stockQty: v.stockQty,
             lowStockThreshold: v.lowStockThreshold,
             priceOverride: v.priceOverride ?? null,
+            preorderAdvanceAmount: v.preorderAdvanceAmount ?? null,
           },
         });
         keepIds.push(record.id);

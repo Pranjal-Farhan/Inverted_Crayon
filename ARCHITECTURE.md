@@ -168,7 +168,7 @@ Full schema: `prisma/schema.prisma`. Every model below, grouped the way the sche
 ### 5.1 Catalog
 
 - **`Product`** — the core listing. `status` (`DRAFT`/`ACTIVE`) gates storefront visibility everywhere (every storefront query filters `status: "ACTIVE"`). `freeDelivery` (`NONE`/`INSIDE_DHAKA`/`NATIONWIDE`) drives the PDP delivery tag (§8.4). `publishedAt` is stamped once, on first activation, never re-stamped on later edits — this is what makes the 21-day "New" window (§2.3) mean anything.
-- **`Variant`** — size × color, uniquely constrained on `(productId, size, color)`. `stockQty` is the single number every stock check reads; `lowStockThreshold` drives the admin dashboard's "Low stock" KPI.
+- **`Variant`** — size × color, uniquely constrained on `(productId, size, color)`. `stockQty` is the single number every stock check reads; `lowStockThreshold` drives the admin dashboard's "Low stock" KPI. `preorderAdvanceAmount` (nullable) is the whole preorder philosophy in one field — see §9.6.
 - **`ProductImage`** — ordered (`position`) list per product, up to 20 (§12). An empty `url: ""` is the seed data's placeholder sentinel — `PlaceholderFrame` renders instead of an `<img>` wherever `url` is falsy.
 - **`Category`** — one flat list of 8, shared by both genders (`src/lib/categories.ts` — the hard-coded canonical list, matching seeded `Category.slug` values). Gender is a *filter*, not a separate category tree — an explicit Build Spec decision recorded in the schema comment.
 - **`Collection`** / **`ProductCollection`** — curated drop pages (`/drops/[slug]`), many-to-many with Product, independently schedulable (`startsAt`/`endsAt`) and toggleable (`active`).
@@ -182,7 +182,7 @@ Full schema: `prisma/schema.prisma`. Every model below, grouped the way the sche
 ### 5.3 Orders
 
 - **`Order`** — the biggest model. Money fields (`subtotal`, `shippingCost`, `discountAmount`, `total`, `advanceAmount`, `balanceDue`) are all `Decimal(10,2)`, never floats, at the storage layer (application-layer arithmetic still uses plain `number`, rounded after every step — see §9.5's note on this). `status` (`OrderStatus`) tracks *fulfillment* (PENDING → PAID → PROCESSING → SHIPPED → DELIVERED, or CANCELLED/REFUNDED/RETURNED); `paymentStatus` tracks *payment* independently (PENDING/PAID/FAILED/REFUNDED). `paymentTransactionId` is the gateway's own reference (bKash `paymentID`, SSLCommerz `val_id`) for reconciliation. The `advancePercent`/`advanceAmount`/`balanceDue`/`balanceCollected` group exists only for preorders — see §9.6.
-- **`OrderItem`** — deliberately **denormalized**: `productTitleSnapshot` and `variantLabelSnapshot` freeze the product's name/variant label *as it was at purchase time*, independent of `productId`/`variantId` (both nullable, so an order survives a product later being deleted). This is why a receipt or order-history page never shows a renamed or deleted product's current title — it shows what the customer actually bought.
+- **`OrderItem`** — deliberately **denormalized**: `productTitleSnapshot` and `variantLabelSnapshot` freeze the product's name/variant label *as it was at purchase time*, independent of `productId`/`variantId` (both nullable, so an order survives a product later being deleted). This is why a receipt or order-history page never shows a renamed or deleted product's current title — it shows what the customer actually bought. `preorderAdvanceAmount` is the same snapshot idea applied to §9.6's per-unit advance.
 - **`ReturnRequest`** / **`ReturnItem`** — a return references specific order items, not the whole order.
 
 ### 5.4 Marketing
@@ -340,9 +340,9 @@ Every price the customer has seen up to this point — on a card, on the PDP, in
 
 ### 9.2 The checkout form (`CheckoutView.tsx`)
 
-A 4–6 step single-page form (contact → shipping address → shipping method → **preorder advance payment, only if the cart has a preorder item** → payment method → **mixed-cart ship-mode, only if the cart mixes preorder and in-stock items**), driving one `placeOrder()` call on submit. Field-level validation happens client-side first (`validate()`) purely for UX; the server re-validates everything with the same rules via `zod`.
+A 4–6 step single-page form (contact → shipping address → shipping method → **preorder advance, only if the cart has a preorder item — informational, not a choice, see §9.6** → payment method → **mixed-cart ship-mode, only if the cart mixes preorder and in-stock items**), driving one `placeOrder()` call on submit. Field-level validation happens client-side first (`validate()`) purely for UX; the server re-validates everything with the same rules via `zod`.
 
-The **available payment methods list is computed reactively** from store settings (`payment_gateways`) and cart contents: COD is excluded entirely whenever the cart contains a preorder item (§9.6), and further gated by the `codRule` setting (inside-Dhaka-only vs. nationwide) against the selected shipping zone.
+The **available payment methods list is computed reactively** from store settings (`payment_gateways`) and cart contents: COD is excluded whenever *any* preorder line in the cart has a nonzero admin-set advance (§9.6) — if every preorder line is configured free-to-reserve (৳0 advance), COD stays available, same as an ordinary in-stock order. Further gated by the `codRule` setting (inside-Dhaka-only vs. nationwide) against the selected shipping zone.
 
 ### 9.3 The order-creation transaction
 
@@ -361,16 +361,23 @@ Everything inside `db.$transaction()` in `placeOrder()`:
 
 All checkout arithmetic is plain JS `number`, rounded to 2 decimals (`Math.round(x * 100) / 100`) after every single arithmetic step — subtotal, each discount calculation, the final total, the advance amount, the balance. Storage is `Decimal(10,2)` at the Postgres layer regardless. If anything goes wrong after the transaction opens — a stock conflict, a discount conflict, an order-number collision that exhausts all 5 retries, an unexpected DB error — the customer gets an explicit **"you have not been charged"** in the error message. This is accurate specifically because of how payment is sequenced: for a mocked/COD order nothing is charged before the transaction commits; for a real gateway order (§9.7) the order row is created *first*, then the gateway session — so a failure past that point triggers `restockAndCancelOrder()` (§9.7) rather than leaving a paid-but-broken order.
 
-### 9.6 Preorders and partial advance payment
+### 9.6 Preorders — the admin-set-advance philosophy
 
-If **any** line in the cart is tagged `PREORDER` (§2.3), checkout enters preorder mode:
+A variant is a preorder **the moment it's out of stock and the admin has configured an advance for it** — `variantPreorderEligible()` in `product-view.ts`: `stockQty <= 0 && preorderAdvanceAmount != null`. This is the *only* rule; it applies uniformly whether the variant belongs to a genuinely pre-launch product (every size starts at 0 stock, tagged `PREORDER` for the ship-date banner, §2.3) or an ordinary product where one size just sold out. There is no customer choice involved — the advance owed per unit is whatever the admin typed into the "Preorder ৳" column of that variant's row in the product editor (§10.3), set per size/color at insertion or any time after. `0` is a valid, meaningful value: free to reserve, everything collected on delivery. Leaving the field blank (`null`) means the variant just shows "Out of stock" / "Notify me" as before — nothing preorder-shaped happens automatically.
 
-- **COD is rejected outright** as the payment method — a `CheckoutConflictError`-style early return, before the transaction even opens, with the message "Preorders need an online advance payment (bKash or card) — the rest is collected on delivery." COD can't fund a partial online capture, so it's structurally excluded rather than silently mishandled.
-- The customer picks an **advance percentage**, 20–100% (`MIN_PREORDER_ADVANCE_PERCENT = 20`), via preset buttons or a slider in `CheckoutView.tsx`'s preorder step.
-- `advanceAmount = total × advancePercent / 100`; `balanceDue = total − advanceAmount`. Both are stored on the `Order` row. `advancePercent` is `null` for non-preorder orders (the field only means something in preorder context).
-- The **advance** is what actually gets sent to the payment gateway (bKash/SSLCommerz) — never the full `total`.
-- The **balance**, if any, is collected as cash on delivery; admins mark it via the order-detail page (`balanceCollected`, not yet wired to a dedicated UI toggle as of this writing — visible on the order but not a one-click admin action, a known gap, see §21).
-- Order `status` becomes `PAID` once the *advance* is captured (whether that's 100% or 20%) — the fulfillment pipeline (PROCESSING → SHIPPED → DELIVERED) doesn't wait for the balance; only the receipt/order-detail surfaces the outstanding balance.
+**On the storefront**, `AddToCartForm.tsx` re-derives this per *currently selected* size/color, not once for the whole product: picking a sold-out size that has an advance configured swaps the Add-to-cart button to "Preorder" (yellow), disables nothing, and shows a banner — the product's own ship date if it's tag-based and one was set, otherwise the standard "ships in 7–15 days · Free delivery" copy — plus a price line spelling out the per-unit split ("pay ৳X now, ৳Y on delivery", or "pay ৳0 now — reserve it" when the advance is 0). A size with no admin-configured advance stays disabled/struck-through exactly as before. `ProductCard.tsx` mirrors this at the product level: a product that's *fully* sold out with every remaining variant preorder-configured shows a "Preorder" tag and overlay instead of "Sold out" (`hasPreorderableVariant` on `ProductDisplay`).
+
+**At checkout**, `placeOrder()` recomputes everything server-side from a fresh `Variant` read — never trusts the cart's `isPreorder`/`preorderAdvanceAmount` claims. For each preorder line, `preorderHoldback += (unitPrice − advancePerUnit) × qty` — the only part of the order that can ever be deferred to COD. Everything else (shipping, any discount, every non-preorder line) is always part of what's paid now:
+
+- `advanceAmount = paymentMethod === "COD" ? 0 : total − preorderHoldback`. Forcing it to 0 for COD matters: nothing is ever actually captured through a gateway on that path, so the stored "advance" has to say so, whatever the per-line math would otherwise suggest — the whole order becomes due on delivery.
+- `balanceDue = total − advanceAmount`.
+- **COD is only available when every preorder line's advance is 0** (`allPreorderLinesFree` in `CheckoutView.tsx`, mirrored server-side as `anyMandatoryPreorderAdvance`) — otherwise bKash/SSLCommerz is required for the (nonzero) advance, the same "COD can't fund a partial online capture" reasoning as before, just scoped per-line instead of per-cart.
+- The **advance** (however it was computed) is what's actually sent to the payment gateway — never the full `total` when there's a holdback.
+- The **balance**, if any, is collected as cash on delivery; admins mark it collected from the order-detail page's **"Mark COD balance collected"** button (`markBalanceCollected` in `admin-orders.ts`, sets `Order.balanceCollected` — this closes what was previously a documented-but-missing gap).
+- Order `status` becomes `PAID` once the *advance* is captured (`0` counts — a free-to-reserve order still needs COD's normal `PENDING` → fulfillment path, same as any other COD order) — the fulfillment pipeline doesn't wait for the balance; only the receipt/order-detail/SMS/email surface the outstanding balance.
+- `OrderItem.preorderAdvanceAmount` snapshots the per-unit advance at purchase time (same reasoning as `productTitleSnapshot` — the variant's own value can change later without rewriting history), letting the receipt show a per-item "(advance ৳X/unit)" breakdown, not just an order-level total.
+
+SMS (§13a) and the order-confirmation email both read `advanceAmount`/`balanceDue` straight off the `Order` row, so they're correct by construction once the row is — no separate preorder-aware branching needed beyond the wording (§13a's `classifyOrderSmsType` puts every preorder, including ৳0-advance ones, into its own message type rather than lumping a free-to-reserve preorder in with plain COD, since the reservation framing and longer wait are real differences worth saying).
 
 ### 9.7 Real payment gateways, and the mock fallback
 
@@ -411,7 +418,7 @@ List page: filterable by status/payment method, searchable by order number or em
 
 ### 10.3 Products (`/admin/products`, `/admin/products/[id]`, `/admin/products/new`)
 
-`ProductEditorForm.tsx` — the biggest form in the app. Basics (title/description/image upload dropzone), variant table (SKU/size/color/hex/stock/low-threshold/price-override — **stock is only editable here for brand-new variant rows**; editing an existing variant's stock through this form is disabled by design, because the form loads stock at page-open time and a sale between then and save would silently clobber a live number — stock changes for existing variants go through Inventory, §10.4 instead), Organize (gender/category/collections/base price/**free-delivery dropdown**), Tags (New/Preorder+ship-date/Limited/Bestseller), Status & SEO.
+`ProductEditorForm.tsx` — the biggest form in the app. Basics (title/description/image upload dropzone), variant table (SKU/size/color/hex/stock/low-threshold/price-override/**preorder ৳** — **stock is only editable here for brand-new variant rows**; editing an existing variant's stock through this form is disabled by design, because the form loads stock at page-open time and a sale between then and save would silently clobber a live number — stock changes for existing variants go through Inventory, §10.4 instead), Organize (gender/category/collections/base price/**free-delivery dropdown**), Tags (New/Preorder+ship-date/Limited/Bestseller), Status & SEO. The **Preorder ৳** column is per size/color (blank = not preorder-eligible once sold out, 0 = free to reserve) — this is the actual preorder-purchasability control (§9.6); the Tags panel's Preorder checkbox is purely the ship-date-banner/marketing flag now, not a gate on whether the item can be bought.
 
 Image upload: drag-and-drop or click-to-browse, up to 20 images per product, 12 per request, 8MB per file, 40MB per request total, SVG rejected outright (stored-XSS risk — an uploaded SVG can embed `<script>` and would be served back from its own URL). Files land on local disk at `public/uploads/products/<productId>/<uuid>.<ext>` (§12) and become `ProductImage` rows.
 
@@ -530,9 +537,9 @@ Unlike email, there's no per-type admin toggle or editable copy — SMS content 
 
 | `SmsType` | When | What it says |
 |---|---|---|
-| `ORDER_CONFIRMED_COD` | `paymentMethod === "COD"` | Order #, items, full total, "pay cash on delivery to `<area>, <district>`" |
-| `ORDER_CONFIRMED_PARTIAL` | `isPreorder` and `balanceDue > 0` | Order #, items ("preorder"), advance amount paid, balance due as COD, delivery location |
-| `ORDER_CONFIRMED_PAID` | everything else (paid online, nothing outstanding — includes a preorder paid 100% upfront) | Order #, items, total paid in full, shipping location |
+| `ORDER_CONFIRMED_COD` | `paymentMethod === "COD"` and not a preorder | Order #, items, full total, "pay cash on delivery to `<area>, <district>`" |
+| `ORDER_CONFIRMED_PARTIAL` | `isPreorder` (checked first — even a ৳0-advance preorder paid via COD lands here, not in `_COD`, since the reservation framing differs) | Order #, items ("preorder"), advance paid (or "Nothing to pay now — reserved" when the advance is ৳0) — balance due as COD (or "fully paid" when there's none), delivery location |
+| `ORDER_CONFIRMED_PAID` | everything else (paid online, nothing outstanding) | Order #, items, total paid in full, shipping location |
 
 `composeOrderConfirmationSms()` builds the message from the order + its items (title/qty, truncated to "first item & N more" beyond two lines) plus `StoreInfo.name`/`.phone` (§5.5) for branding and a help contact. The recipient is `Order.phone` specifically — the checkout form's "Phone (delivery SMS)" field (Step 1, distinct from `shippingPhone`, which is who physically receives the parcel and may be a different person for a gift order) — not `shippingPhone`.
 
@@ -615,7 +622,7 @@ Every non-trivial claim in this document — the stock-race guard actually preve
 - **Payments, real email, real SMS, and OAuth** all need externally-provisioned credentials to go live — see §14, §13, §13a, §7.3, and the table in `README.md`'s "Going live" section for exactly which env vars.
 - **Order-confirmation SMS has no per-type admin toggle** the way email does (§13a) — it's always on if SSL Wireless is configured, since it's a single generated message rather than an editable template.
 - **Free-delivery tag is presentational only** — it doesn't currently zero out the shipping line at checkout.
-- **`balanceCollected`** (the preorder COD-balance flag) has no dedicated one-click admin UI yet — it exists on the model but isn't surfaced as a toggle.
+- **No per-variant ship-date for auto-preorder-on-stockout items** — only tag-based (pre-launch) preorders carry a ship date; a size that sold out and became preorder-eligible mid-life just shows the generic "7–15 days" window, not a specific date.
 - **OAuth account linking is by email match** — a Google account with a different email than an existing password account creates a second, separate customer record rather than prompting a merge.
 - **No session revocation** beyond cookie expiry or rotating `SESSION_SECRET` (§7.1).
 - **Abandoned-checkout reminders are admin-triggered**, not on an automatic schedule (`sendAllAbandonedReminders` would need a cron job wired to it for real automation).

@@ -5,6 +5,7 @@ import { useCart } from "@/context/cart-context";
 import { Button } from "@/components/ui/Button";
 import { formatTaka } from "@/lib/money";
 import { subscribeBackInStock } from "@/actions/back-in-stock";
+import { Crown } from "@/components/brand/Crown";
 
 export type VariantOption = {
   id: string;
@@ -13,14 +14,20 @@ export type VariantOption = {
   colorHex: string | null;
   stockQty: number;
   price: number;
+  /** Null = this variant isn't preorder-eligible once sold out. Set (incl. 0) = it is. */
+  preorderAdvanceAmount: number | null;
 };
+
+function variantPreorderEligible(v: VariantOption): boolean {
+  return v.stockQty <= 0 && v.preorderAdvanceAmount != null;
+}
 
 export function AddToCartForm({
   productId,
   slug,
   title,
   variants,
-  isPreorder,
+  isPreorder: productIsPreorder,
   preorderShipDate,
   accentColor,
 }: {
@@ -28,14 +35,13 @@ export function AddToCartForm({
   slug: string;
   title: string;
   variants: VariantOption[];
+  /** Product-level Preorder tag — drives ship-date messaging when a variant also carries a real ship date. */
   isPreorder: boolean;
   preorderShipDate: string | null;
   accentColor: string;
 }) {
   const colors = useMemo(() => [...new Set(variants.map((v) => v.color))], [variants]);
   const sizes = useMemo(() => [...new Set(variants.map((v) => v.size))], [variants]);
-  const totalStock = variants.reduce((s, v) => s + v.stockQty, 0);
-  const soldOut = totalStock === 0 && !isPreorder;
 
   const [color, setColor] = useState(colors[0]);
   const [size, setSize] = useState(sizes[0]);
@@ -46,7 +52,10 @@ export function AddToCartForm({
 
   const variant = variants.find((v) => v.color === color && v.size === size);
   const variantStock = variant?.stockQty ?? 0;
-  const canAdd = Boolean(variant) && (isPreorder || variantStock > 0);
+  const preorderEligible = Boolean(variant) && variantPreorderEligible(variant!);
+  const soldOut = Boolean(variant) && variantStock <= 0 && !preorderEligible;
+  const canAdd = Boolean(variant) && (variantStock > 0 || preorderEligible);
+  const advancePerUnit = preorderEligible ? (variant!.preorderAdvanceAmount ?? variant!.price) : 0;
 
   return (
     <div>
@@ -75,14 +84,15 @@ export function AddToCartForm({
       <div className="mb-5.5 flex flex-wrap gap-2">
         {sizes.map((s) => {
           const v = variants.find((x) => x.size === s && x.color === color);
-          const disabled = !isPreorder && (!v || v.stockQty === 0);
+          const vEligible = Boolean(v) && variantPreorderEligible(v!);
+          const disabled = !v || (v.stockQty <= 0 && !vEligible);
           return (
             <button
               key={s}
               onClick={() => !disabled && setSize(s)}
               disabled={disabled}
               className={`grid h-[46px] w-[46px] place-items-center border font-label text-[17px] ${
-                size === s ? "border-lime bg-lime text-ink" : "border-line-2"
+                size === s ? "border-lime bg-lime text-ink" : vEligible && v!.stockQty <= 0 ? "border-yellow text-yellow" : "border-line-2"
               } ${disabled ? "text-muted-2 line-through border-dashed" : ""}`}
             >
               {s}
@@ -90,6 +100,18 @@ export function AddToCartForm({
           );
         })}
       </div>
+
+      {preorderEligible && (
+        <div className="mb-4 flex items-center gap-2.5 border border-dashed border-yellow bg-yellow/[0.07] px-3.5 py-2.5 text-sm">
+          <Crown className="h-[22px] w-6 shrink-0 text-yellow" />
+          <span>
+            {productIsPreorder && preorderShipDate
+              ? `Preorder — ships ${preorderShipDate}.`
+              : "This size just sold out — preorder it and we'll ship in 7–15 days."}{" "}
+            <span className="text-lime">Free delivery.</span>
+          </span>
+        </div>
+      )}
 
       <div className="mb-4.5 flex gap-3">
         <div className="flex border border-line-2">
@@ -99,7 +121,7 @@ export function AddToCartForm({
           <span className="grid w-11 place-items-center font-impact">{qty}</span>
           <button
             className="w-10 font-impact text-lg"
-            onClick={() => setQty((q) => Math.min(variant ? (isPreorder ? 99 : variant.stockQty) : 99, q + 1))}
+            onClick={() => setQty((q) => Math.min(variant ? (preorderEligible ? 99 : variant.stockQty) : 99, q + 1))}
           >
             +
           </button>
@@ -111,8 +133,7 @@ export function AddToCartForm({
           </Button>
         ) : (
           <Button
-            variant={isPreorder ? "primary" : "primary"}
-            className={`min-w-0 flex-1 ${isPreorder ? "!bg-yellow" : ""}`}
+            className={`min-w-0 flex-1 ${preorderEligible ? "!bg-yellow" : ""}`}
             disabled={!canAdd}
             onClick={() => {
               if (!variant) return;
@@ -127,19 +148,28 @@ export function AddToCartForm({
                 accentColor,
                 unitPrice: variant.price,
                 qty,
-                isPreorder,
-                preorderShipDate,
-                maxQty: isPreorder ? 99 : variant.stockQty,
+                isPreorder: preorderEligible,
+                preorderShipDate: productIsPreorder ? preorderShipDate : null,
+                preorderAdvanceAmount: preorderEligible ? advancePerUnit : null,
+                maxQty: preorderEligible ? 99 : variant.stockQty,
               });
             }}
           >
-            {isPreorder ? "Preorder" : "Add to cart"}
+            {preorderEligible ? "Preorder" : "Add to cart"}
           </Button>
         )}
       </div>
       {variant && (
         <p className="text-[13px] text-muted">
-          {formatTaka(variant.price)} · {isPreorder ? "ships " + (preorderShipDate ?? "TBA") : variantStock > 0 ? `${variantStock} in stock` : "Out of stock in this size"}
+          {formatTaka(variant.price)}
+          {" · "}
+          {preorderEligible
+            ? advancePerUnit > 0
+              ? `pay ${formatTaka(advancePerUnit)} now, ${formatTaka(variant.price - advancePerUnit)} on delivery`
+              : "pay ৳0 now — reserve it, full amount on delivery"
+            : variantStock > 0
+              ? `${variantStock} in stock`
+              : "Out of stock in this size"}
         </p>
       )}
 

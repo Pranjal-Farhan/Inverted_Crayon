@@ -7,9 +7,22 @@ import {
   markOrderProcessing,
   refundOrder,
   updateOrderNotes,
+  markBalanceCollected,
 } from "@/actions/admin-orders";
 
-export function OrderActions({ orderId, status, notes }: { orderId: string; status: string; notes: string }) {
+export function OrderActions({
+  orderId,
+  status,
+  notes,
+  balanceDue,
+  balanceCollected,
+}: {
+  orderId: string;
+  status: string;
+  notes: string;
+  balanceDue?: number;
+  balanceCollected?: boolean;
+}) {
   const [pending, startTransition] = useTransition();
   const [shipOpen, setShipOpen] = useState(false);
   const [courier, setCourier] = useState("Pathao");
@@ -19,6 +32,15 @@ export function OrderActions({ orderId, status, notes }: { orderId: string; stat
   return (
     <div>
       <div className="flex flex-wrap gap-2">
+        {Boolean(balanceDue) && balanceDue! > 0 && !balanceCollected && (
+          <button
+            disabled={pending}
+            onClick={() => startTransition(() => markBalanceCollected(orderId))}
+            className="border border-yellow px-3.5 py-2 text-sm text-yellow hover:bg-yellow/[0.08] disabled:opacity-50"
+          >
+            Mark COD balance collected
+          </button>
+        )}
         {status === "PAID" && (
           <button
             disabled={pending}

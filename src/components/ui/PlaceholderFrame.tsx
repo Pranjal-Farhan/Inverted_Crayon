@@ -12,6 +12,7 @@ export function PlaceholderFrame({
   shape = "x",
   label,
   soldOut = false,
+  soldOutLabel = "SOLD OUT",
   stamp = true,
   className = "",
 }: {
@@ -19,6 +20,8 @@ export function PlaceholderFrame({
   shape?: "x" | "circle" | "square" | "underline" | "arrow";
   label?: string;
   soldOut?: boolean;
+  /** Overlay text shown when soldOut — override to "PREORDER" when the item can still be reserved. */
+  soldOutLabel?: string;
   stamp?: boolean;
   className?: string;
 }) {
@@ -35,7 +38,7 @@ export function PlaceholderFrame({
       )}
       {soldOut && (
         <div className="absolute inset-0 z-[5] grid place-items-center bg-[rgba(8,8,9,.55)]">
-          <span className="font-impact text-[22px] tracking-[2px] text-paper">SOLD OUT</span>
+          <span className="font-impact text-[22px] tracking-[2px] text-paper">{soldOutLabel}</span>
         </div>
       )}
     </div>
