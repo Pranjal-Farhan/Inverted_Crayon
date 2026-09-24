@@ -557,6 +557,29 @@ model EmailLog {
   @@index([type])
 }
 
+// ---------- sms (mocked outbox) ----------
+// Same "always log, optionally really send" pattern as EmailLog. relatedOrderId is a plain string
+// (the human-facing order number), not a real FK — same reasoning as EmailLog: the log should
+// survive an order later being deleted.
+
+enum SmsType {
+  ORDER_CONFIRMED_PAID
+  ORDER_CONFIRMED_COD
+  ORDER_CONFIRMED_PARTIAL
+}
+
+model SmsLog {
+  id             String   @id @default(cuid())
+  to             String
+  body           String
+  type           SmsType
+  relatedOrderId String?
+  sentAt         DateTime @default(now())
+
+  @@index([to])
+  @@index([type])
+}
+
 // Captured at checkout (on contact-step blur) so an abandoned session can be
 // followed up on. Cleared once that email completes an order.
 model AbandonedCheckout {

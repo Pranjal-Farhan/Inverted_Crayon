@@ -137,6 +137,7 @@ src/
     plp.ts / parse-plp-params.ts / plp-url.ts   PLP filtering/sorting/pagination + URL-state helpers
     discount.ts                 discount-code validation rules
     mail.ts                     the email outbox + optional real send
+    sms.ts                      the order-confirmation SMS outbox + optional real send
     money.ts                    Taka formatting + Decimal-to-number conversion
     order-number.ts             human-facing order number generator
     login-lockout.ts            shared brute-force guard for admin + customer login
@@ -144,6 +145,7 @@ src/
     oauth/                      google.ts, facebook.ts — provider-specific OAuth code
     payments/                   bkash.ts, sslcommerz.ts, rollback.ts
     email-provider.ts           Resend integration
+    sms-provider.ts             SSL Wireless SMS Plus integration
     site-url.ts                 resolves the app's own origin for callback URLs
     hero-defaults.ts            homepage CMS default content + types
     store-settings.ts           typed StoreSetting (JSON-in-DB) accessors
@@ -199,9 +201,10 @@ Full schema: `prisma/schema.prisma`. Every model below, grouped the way the sche
 - **`StoreSetting`** — same `key → JSON` shape as `ContentBlock`, used for store-wide operational settings instead of content: `shipping_rates`, `payment_gateways`, `store_info`, `tax_settings`, `email_templates`, `chat_widget`. Typed accessors for every key live in `src/lib/store-settings.ts` (`getShippingRates()`, etc.), each with a hard-coded default so a fresh database with no seeded settings still renders something sane.
 - **`Post`** — the journal/blog, independently publishable (`PostStatus`, `publishedAt` stamped once on first publish, same pattern as `Product`).
 
-### 5.6 Email & abandoned-checkout
+### 5.6 Email, SMS & abandoned-checkout
 
 - **`EmailLog`** — the outbox. Every `sendMail()` call writes one row here *unconditionally*, whether or not a real provider is configured (§13).
+- **`SmsLog`** — same outbox shape as `EmailLog`, for order-confirmation SMS (§13a). `relatedOrderId` is a plain string (the order number), not a real FK, same reasoning as `EmailLog.relatedOrderId`: the log should survive an order later being deleted.
 - **`AbandonedCheckout`** — one row per email address (unique), holding a JSON snapshot of the cart at the moment the customer typed their email into checkout and blurred the field. Cleared automatically on a completed order for that email.
 
 ---
@@ -471,6 +474,10 @@ Full CRUD for `Post` via `PostEditorForm.tsx` and `admin-posts.ts` — same publ
 
 A read-only view of the `EmailLog` table — the outbox. Every email the app has ever "sent," whether or not a real provider delivered it.
 
+### 10.15 SMS (`/admin/sms`)
+
+Same shape as Emails, one level down: a read-only, filterable (by type/recipient) view of `SmsLog` — every order-confirmation text the app has ever "sent" (§13a), whether or not SSL Wireless actually delivered it.
+
 ---
 
 ## 11. The homepage CMS
@@ -514,6 +521,22 @@ Every `EmailType` and its exact trigger:
 | `CONTACT_RECEIVED` | `contact.ts` | Contact form submission acknowledgement |
 
 Each type can be individually disabled (skipping the outbox write entirely, checked at the top of `sendMail()`) and has an editable subject line, both from Settings → Emails (§10.13).
+
+### 13a. Order-confirmation SMS
+
+Same outbox-first shape as email, in `src/lib/sms.ts`. `sendSms()` always writes an `SmsLog` row (visible at `/admin/sms`, §10.14) and, when `smsProviderConfigured()` (`src/lib/sms-provider.ts` — checks `SSLWIRELESS_SMS_API_TOKEN` + `SSLWIRELESS_SMS_SID`) is true, also POSTs to SSL Wireless's SMS Plus API to actually deliver it — a real-send failure is caught and logged, never thrown, same reasoning as email. Every call site wraps `sendOrderConfirmationSms()` in `.catch()` too, so an SMS-gateway hiccup can never fail an order.
+
+Unlike email, there's no per-type admin toggle or editable copy — SMS content is generated, not templated, because it has to react to which of three mutually-exclusive payment scenarios the order is actually in (`classifyOrderSmsType()`):
+
+| `SmsType` | When | What it says |
+|---|---|---|
+| `ORDER_CONFIRMED_COD` | `paymentMethod === "COD"` | Order #, items, full total, "pay cash on delivery to `<area>, <district>`" |
+| `ORDER_CONFIRMED_PARTIAL` | `isPreorder` and `balanceDue > 0` | Order #, items ("preorder"), advance amount paid, balance due as COD, delivery location |
+| `ORDER_CONFIRMED_PAID` | everything else (paid online, nothing outstanding — includes a preorder paid 100% upfront) | Order #, items, total paid in full, shipping location |
+
+`composeOrderConfirmationSms()` builds the message from the order + its items (title/qty, truncated to "first item & N more" beyond two lines) plus `StoreInfo.name`/`.phone` (§5.5) for branding and a help contact. The recipient is `Order.phone` specifically — the checkout form's "Phone (delivery SMS)" field (Step 1, distinct from `shippingPhone`, which is who physically receives the parcel and may be a different person for a gift order) — not `shippingPhone`.
+
+`sendOrderConfirmationSms(orderNumber)` is the one call site every checkout path shares, fired from the same three places `ORDER_CONFIRMED` email fires from: the instant-paid/COD branch of `placeOrder` (`checkout.ts`), and both the bKash and SSLCommerz payment-success callback routes (`api/payments/{bkash,sslcommerz}/...`) — i.e. exactly where an order actually becomes confirmed, not at initial (pending) creation when a live gateway redirect is still in flight.
 
 ---
 
@@ -589,7 +612,8 @@ Every non-trivial claim in this document — the stock-race guard actually preve
 ## 20. Known limitations / what's still mocked
 
 - **Local-disk image storage** doesn't survive serverless/ephemeral deploys or multi-instance setups without a shared volume (§12).
-- **Payments, real email, and OAuth** all need externally-provisioned credentials to go live — see §14, §13, §7.3, and the table in `README.md`'s "Going live" section for exactly which env vars.
+- **Payments, real email, real SMS, and OAuth** all need externally-provisioned credentials to go live — see §14, §13, §13a, §7.3, and the table in `README.md`'s "Going live" section for exactly which env vars.
+- **Order-confirmation SMS has no per-type admin toggle** the way email does (§13a) — it's always on if SSL Wireless is configured, since it's a single generated message rather than an editable template.
 - **Free-delivery tag is presentational only** — it doesn't currently zero out the shipping line at checkout.
 - **`balanceCollected`** (the preorder COD-balance flag) has no dedicated one-click admin UI yet — it exists on the model but isn't surfaced as a toggle.
 - **OAuth account linking is by email match** — a Google account with a different email than an existing password account creates a second, separate customer record rather than prompting a merge.
@@ -616,6 +640,7 @@ Every non-trivial claim in this document — the stock-race guard actually preve
 | `BKASH_APP_KEY`, `BKASH_APP_SECRET`, `BKASH_USERNAME`, `BKASH_PASSWORD`, `BKASH_BASE_URL` | No | Real bKash payments (base URL defaults to bKash's sandbox) |
 | `SSLCOMMERZ_STORE_ID`, `SSLCOMMERZ_STORE_PASSWORD`, `SSLCOMMERZ_SANDBOX` | No | Real card/mobile-banking payments |
 | `RESEND_API_KEY`, `EMAIL_FROM` | No | Real email delivery |
+| `SSLWIRELESS_SMS_API_TOKEN`, `SSLWIRELESS_SMS_SID`, `SSLWIRELESS_SMS_BASE_URL` | No | Real order-confirmation SMS delivery (base URL defaults to SSL Wireless's SMS Plus host) |
 
 Full annotated template: `.env.example`.
 
@@ -626,7 +651,7 @@ Full annotated template: `.env.example`.
 For "what touches what" at a glance:
 
 - **A price appears anywhere** → traces back to `deriveProductDisplay()` in `product-view.ts`, or — at checkout specifically — to the same campaign logic re-run server-side in `checkout.ts`.
-- **An order is created** → `checkout.ts` → decrements `Variant.stockQty`, increments `Discount.usedCount`, deletes any matching `AbandonedCheckout`, creates `Order`+`OrderItem`, optionally calls out to `lib/payments/*`, calls `sendMail()` → writes `EmailLog` (+ real Resend call if configured).
+- **An order is created** → `checkout.ts` → decrements `Variant.stockQty`, increments `Discount.usedCount`, deletes any matching `AbandonedCheckout`, creates `Order`+`OrderItem`, optionally calls out to `lib/payments/*`. Once it's actually confirmed (immediately for instant-paid/COD, or from the payment callback route once a live gateway redirect resolves) it calls `sendMail()` → writes `EmailLog` (+ real Resend call if configured) and `sendOrderConfirmationSms()` → writes `SmsLog` (+ real SSL Wireless call if configured), §13a.
 - **Stock changes** → `admin-inventory.ts`'s `setVariantStock` (manual correction, also fires back-in-stock/wishlist emails), `checkout.ts`'s guarded decrement (a sale), `admin-orders.ts`'s `refundOrder` (a restock), or `admin-finance.ts`'s `recordStockPurchase` (an accountable increase, alongside a `StockPurchase` row — §10.4a).
 - **A product is saved** → `admin-products.ts`'s `saveProduct` → touches `Product`, `Variant` (upsert/delete), `ProductCollection` (replace), `ProductTag` (replace), and conditionally emails everyone with an active preorder order for it if the ship date changed.
 - **An image is uploaded** (product or site) → writes to `public/uploads/...` and a `ProductImage` row or the `home_hero` `ContentBlock`'s `logoImageUrl`/`heroImages` array — same validation/storage pattern either way (`§12`).

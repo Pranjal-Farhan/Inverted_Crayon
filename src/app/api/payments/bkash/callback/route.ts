@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { executeBkashPayment } from "@/lib/payments/bkash";
 import { restockAndCancelOrder } from "@/lib/payments/rollback";
 import { sendMail } from "@/lib/mail";
+import { sendOrderConfirmationSms } from "@/lib/sms";
 import { formatTaka, toNumber } from "@/lib/money";
 
 // bKash redirects the customer's browser back here with ?paymentID=...&status=success|failure|cancel
@@ -38,6 +39,8 @@ export async function GET(req: NextRequest) {
     type: "ORDER_CONFIRMED",
     relatedOrderId: order.number,
   }).catch((e) => console.error("order-confirmation email failed", e));
+
+  await sendOrderConfirmationSms(order.number).catch((e) => console.error("order-confirmation SMS failed", e));
 
   return NextResponse.redirect(`${origin}/order/${order.number}`);
 }

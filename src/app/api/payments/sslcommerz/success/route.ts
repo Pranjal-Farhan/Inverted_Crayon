@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { validateSslcommerzTransaction } from "@/lib/payments/sslcommerz";
 import { restockAndCancelOrder } from "@/lib/payments/rollback";
 import { sendMail } from "@/lib/mail";
+import { sendOrderConfirmationSms } from "@/lib/sms";
 import { formatTaka, toNumber } from "@/lib/money";
 
 // SSLCommerz POSTs (application/x-www-form-urlencoded) back to this URL after a successful payment.
@@ -37,6 +38,8 @@ export async function POST(req: NextRequest) {
     type: "ORDER_CONFIRMED",
     relatedOrderId: order.number,
   }).catch((e) => console.error("order-confirmation email failed", e));
+
+  await sendOrderConfirmationSms(order.number).catch((e) => console.error("order-confirmation SMS failed", e));
 
   return NextResponse.redirect(`${origin}/order/${order.number}`);
 }

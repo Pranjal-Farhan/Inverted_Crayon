@@ -10,6 +10,7 @@ import { getShippingRates } from "@/lib/store-settings";
 import { getCustomerSession } from "@/lib/session";
 import { findActiveCampaign } from "@/lib/product-view";
 import { sendMail } from "@/lib/mail";
+import { sendOrderConfirmationSms } from "@/lib/sms";
 import { getSiteOrigin } from "@/lib/site-url";
 import { restockAndCancelOrder } from "@/lib/payments/rollback";
 import { bkashConfigured, createBkashPayment } from "@/lib/payments/bkash";
@@ -298,6 +299,8 @@ export async function placeOrder(input: CheckoutInput): Promise<CheckoutResult> 
     type: "ORDER_CONFIRMED",
     relatedOrderId: orderNumber,
   }).catch((e) => console.error("order-confirmation email failed", e));
+
+  await sendOrderConfirmationSms(orderNumber).catch((e) => console.error("order-confirmation SMS failed", e));
 
   return { ok: true, orderNumber };
 }

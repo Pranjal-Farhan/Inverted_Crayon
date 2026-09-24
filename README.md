@@ -12,6 +12,7 @@ Streetwear storefront + admin, built from the [Build Specification v1.0](.) — 
 - **Auth**: Signed JWT session cookies (`jose`) — separate admin and customer sessions. Email/password always works; Google and Facebook sign-in work too once you add OAuth credentials (see below) — until then the buttons bounce back with a clear message instead of erroring. Admin/staff accounts can additionally turn on TOTP two-factor authentication (Google Authenticator-compatible) from `/admin/settings` → Security.
 - **Payments**: bKash and SSLCommerz (cards/mobile banking) go live the moment you add real merchant credentials (see below); without them, checkout falls back to instantly marking the order paid so local dev needs no external accounts. COD is always available for non-preorder orders. Preorders require a 20–100% online advance via bKash/card, with the rest collected as COD at delivery.
 - **Emails**: Every "send" always writes to an `EmailLog` outbox (viewable at `/admin/emails`); add a Resend API key (see below) and it also actually sends. See `src/lib/mail.ts`.
+- **Order-confirmation SMS**: same outbox pattern as email — every confirmed order writes to an `SmsLog` outbox (viewable at `/admin/sms`); add SSL Wireless credentials (see below) and it also actually sends. See `src/lib/sms.ts`.
 
 ## Getting started
 
@@ -48,6 +49,7 @@ Everything below is fully wired in code and falls back to a safe mock when its e
 | bKash payments | `BKASH_APP_KEY`, `BKASH_APP_SECRET`, `BKASH_USERNAME`, `BKASH_PASSWORD`, optional `BKASH_BASE_URL` | bKash merchant/PGW onboarding. Defaults to bKash's sandbox host |
 | Card / mobile banking | `SSLCOMMERZ_STORE_ID`, `SSLCOMMERZ_STORE_PASSWORD`, optional `SSLCOMMERZ_SANDBOX=false` for production | SSLCommerz merchant account. Sandbox credentials work against the sandbox host by default |
 | Real email delivery | `RESEND_API_KEY`, `EMAIL_FROM` | resend.com — `EMAIL_FROM` must be a verified sender/domain on that account |
+| Real SMS delivery | `SSLWIRELESS_SMS_API_TOKEN`, `SSLWIRELESS_SMS_SID`, optional `SSLWIRELESS_SMS_BASE_URL` | SSL Wireless SMS Plus — `SSLWIRELESS_SMS_SID` is your approved Sender ID |
 | Payment-gateway callback URLs | `SITE_URL` (e.g. `https://yourstore.com`) | Recommended in production so callback URLs are stable and correct behind any proxy; without it the app derives the origin from request headers |
 
 Google/Facebook sign-in for **admin and staff accounts** only ever logs in to an account that already exists (matched by email) — it never self-registers a new admin, so there's no privilege-escalation path from someone else's OAuth login. Customer sign-in, by contrast, creates a new customer account on first login, same as registering with a password.
@@ -88,6 +90,16 @@ Both P1 (launch-critical) and P2 (fast-follow) from the spec's §13 checklist ar
 ## Preorders & partial payment
 
 A product tagged **Preorder** (in its admin editor's Tags panel) requires checkout to collect a 20–100% advance via bKash or card — COD alone isn't accepted as full payment for a preorder, since there'd be nothing to charge online. Whatever isn't paid upfront becomes `balanceDue`, collected as cash on delivery; admins can see and mark it collected from the order detail page. Non-preorder items check out exactly as before (any of bKash/card/COD, no advance concept).
+
+## Order-confirmation SMS
+
+Every confirmed order texts the customer's contact number (the "Phone (delivery SMS)" field from checkout) with order details, amount, and delivery location — content differs by how the order is paid:
+
+- **Full paid** (bKash/card, nothing outstanding): order number, item(s), total paid, shipping location.
+- **Cash on delivery**: order number, item(s), total due at delivery, delivery location.
+- **Preorder partial payment**: order number, item(s), advance amount paid online, balance due as COD, delivery location.
+
+Fires at every point an order actually becomes confirmed: the instant-paid/COD path in `placeOrder`, and both the bKash and SSLCommerz payment-success callbacks. Like email, it's mocked by default (every "send" lands in the `SmsLog` outbox at `/admin/sms`) and switches to real delivery once SSL Wireless credentials are set (see above).
 
 ## Free delivery tags
 
