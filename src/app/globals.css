@@ -318,39 +318,30 @@ button {
   stroke-dashoffset: 0;
 }
 
-/* Hover scribble on Button.tsx — a draw-on underline below the button, or (on
-   roughly a third of buttons, chosen per-label so it's consistent, not random-
-   each-render) a rough oval ring scribbled loosely around it instead. Either
-   way it's invisible until hover/focus, same draw-on technique as the nav's
-   scribble-link underline, just bigger and unconstrained to text width. */
+/* Hover scribble on Button.tsx — a draw-on underline spanning the button's full
+   width (edge to edge, via preserveAspectRatio="none" on the Scribble underline
+   SVG so it stretches to match instead of centering at its own aspect ratio).
+   Invisible until hover/focus, same draw-on technique as the nav's scribble-link
+   underline, just sized to the button instead of to text width. */
 .btn-scribble {
   position: relative;
 }
-.btn-scribble-underline,
-.btn-scribble-oval {
+.btn-scribble-underline {
   position: absolute;
   pointer-events: none;
   overflow: visible;
-}
-.btn-scribble-underline {
-  left: 3%;
-  right: 3%;
+  left: 0;
+  right: 0;
   bottom: -12px;
   height: 14px;
 }
-.btn-scribble-oval {
-  inset: -11px;
-}
-.btn-scribble-underline path,
-.btn-scribble-oval path {
+.btn-scribble-underline path {
   stroke-dasharray: 420;
   stroke-dashoffset: 420;
   transition: stroke-dashoffset 0.5s cubic-bezier(0.65, 0, 0.35, 1);
 }
 .btn-scribble:hover .btn-scribble-underline path,
-.btn-scribble:focus-visible .btn-scribble-underline path,
-.btn-scribble:hover .btn-scribble-oval path,
-.btn-scribble:focus-visible .btn-scribble-oval path {
+.btn-scribble:focus-visible .btn-scribble-underline path {
   stroke-dashoffset: 0;
 }
 

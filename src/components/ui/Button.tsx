@@ -42,20 +42,22 @@ const glowClass: Record<Variant, string> = {
 
 const SCRIBBLE_COLORS = ["#c3f53a", "#ff2d84", "#26a7e6", "#ffd23b"];
 
-// Deterministic per-button hash — same button always gets the same scribble kind/color
-// (no hydration mismatch, no re-roll on re-render), but different buttons vary.
+// Both primary and ghost already lean on lime somewhere in their own hover state
+// (fill and border respectively) — excluded here so the underline reads as a distinct
+// accent instead of "more of the same" color.
+const OWN_COLOR: Record<Variant, string> = { primary: "#c3f53a", ghost: "#c3f53a", text: "" };
+
+// Deterministic per-button hash — same button always gets the same scribble color (no
+// hydration mismatch, no re-roll on re-render), but different buttons vary.
 function hashSeed(seed: string): number {
   let h = 0;
   for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
   return h;
 }
 
-function pickScribble(seed: string): { kind: "underline" | "oval"; color: string } {
-  const h = hashSeed(seed);
-  return {
-    kind: h % 3 === 0 ? "oval" : "underline",
-    color: SCRIBBLE_COLORS[h % SCRIBBLE_COLORS.length],
-  };
+function pickScribbleColor(seed: string, exclude: string): string {
+  const palette = SCRIBBLE_COLORS.filter((c) => c !== exclude);
+  return palette[hashSeed(seed) % palette.length];
 }
 
 function Content({ children, arrow, loading }: { children: ReactNode; arrow?: boolean; loading?: boolean }) {
@@ -83,8 +85,8 @@ export function Button({
 }: ButtonProps) {
   const magnetic = variant !== "text" && !loading && !rest.disabled;
   const hasScribble = variant !== "text";
-  const scribble = hasScribble
-    ? pickScribble(`${variant}:${href ?? (typeof children === "string" ? children : "btn")}`)
+  const scribbleColor = hasScribble
+    ? pickScribbleColor(`${variant}:${href ?? (typeof children === "string" ? children : "btn")}`, OWN_COLOR[variant])
     : null;
   const classes = `${base} ${variantClass[variant]} ${variant === "text" ? "" : sizeClass[size]} ${magnetic ? glowClass[variant] : ""} ${hasScribble ? "btn-scribble" : ""} ${className}`;
   const ref = useRef<HTMLElement>(null);
@@ -106,12 +108,8 @@ export function Button({
     if (ref.current) ref.current.style.transform = "";
   }
 
-  const scribbleEl = scribble && (
-    <Scribble
-      shape={scribble.kind}
-      color={scribble.color}
-      className={scribble.kind === "oval" ? "btn-scribble-oval" : "btn-scribble-underline"}
-    />
+  const scribbleEl = scribbleColor && (
+    <Scribble shape="underline" color={scribbleColor} className="btn-scribble-underline" />
   );
 
   if (href) {

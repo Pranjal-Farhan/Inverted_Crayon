@@ -3,7 +3,7 @@
  * Used across placeholder image wells (Appendix A). CSS/SVG, not raster,
  * so it stays crisp at any size (§11 performance note).
  */
-type Shape = "x" | "circle" | "square" | "underline" | "arrow" | "oval";
+type Shape = "x" | "circle" | "square" | "underline" | "arrow";
 
 export function Scribble({
   shape,
@@ -41,20 +41,8 @@ export function Scribble({
       );
     case "underline":
       return (
-        <svg viewBox="0 0 200 40" className={className} aria-hidden="true">
+        <svg viewBox="0 0 200 40" className={className} preserveAspectRatio="none" aria-hidden="true">
           <path d="M8 20 Q100 4 192 20" stroke={color} strokeWidth="7" fill="none" strokeLinecap="round" />
-        </svg>
-      );
-    case "oval":
-      return (
-        <svg viewBox="0 0 200 100" className={className} preserveAspectRatio="none" aria-hidden="true">
-          <path
-            d="M14,52 C9,21 62,3 101,5 C147,7 196,17 190,49 C195,83 138,98 99,96 C53,94 7,87 14,52 Z"
-            stroke={color}
-            strokeWidth="6"
-            fill="none"
-            strokeLinecap="round"
-          />
         </svg>
       );
     case "arrow":
