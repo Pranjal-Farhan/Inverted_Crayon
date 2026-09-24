@@ -127,16 +127,20 @@ A floating chat button (bottom-right, every storefront page) offers direct Whats
 
 The storefront carries a small ambient/interactive motion layer, all opt-out via `prefers-reduced-motion` (CSS-driven effects are neutralized automatically by the global reduced-motion rule in `globals.css`; JS-driven ones check `window.matchMedia` themselves):
 
-- **Background wall** — a fixed, low-opacity scatter of the site's own circle/square/X marks (`.site-wall` in `globals.css`, same fixed-div pattern as the film grain, mounted once in the storefront layout, negative `z-index` so it always stays behind content).
+- **Background wall** — a fixed scatter of the site's own circle/square/X marks (`.site-wall` in `globals.css`, same fixed-div pattern as the film grain, mounted once in the storefront layout, negative `z-index` so it always stays behind content). Tuned to read clearly as a deliberate wallpaper without competing with foreground content.
+- **Crayon scribble accents** — `CrayonScribble.tsx`, a fan of textured crayon strokes (SVG `feTurbulence`/`feDisplacementMap` for the hand-drawn roughness) scattered across open space on the homepage hero, the three homepage section headers, the gender-hub PLP header, and the footer — each a distinct brand color, each `id` unique per page for its SVG filter.
 - **Film grain** — a fixed, near-invisible animated grain overlay (`.site-grain` in `globals.css`, mounted once in the storefront layout).
 - **Marquee ticker** — an endless-scroll brand strip (`MarqueeTicker.tsx`) between the header and page content.
 - **Magnetic buttons** — `Button.tsx` pulls slightly toward the cursor on hover (pointer-move only, skipped on touch) with a lime glow; falls back to the existing CSS hover styles with the pointer away or reduced motion on.
+- **Button hover scribble** — every non-text `Button` draws in a hand-scribbled underline below it on hover/focus, or (about a third of the time, chosen by a deterministic hash of the button's own label so it's stable, not random-each-render) a rough oval scribbled loosely around it instead — color also varies per button across the brand palette. Pure CSS `:hover`/`:focus-visible` stroke-dashoffset draw-on, same technique as the nav's scribble-link underline.
 - **Scroll reveal + 3D tilt** — `ProductCard.tsx` fades/slides in as it enters the viewport (`IntersectionObserver`, defaults visible so it never breaks with JS off) and tilts toward the cursor on hover.
 - **Glitch / RGB-split hover** — `.glitch-text` (`globals.css`) applied via `className` + `data-text` on the homepage hero badge and the sale tag pill; pure CSS, no client JS. It doesn't set its own `position` — each usage site supplies one (already-`absolute`, or add `relative`), since forcing it in the shared rule would fight an already-positioned caller.
 - **Scribble draw-on underline** — `ScribbleLink.tsx`, used for the header nav and footer legal links; pure CSS `:hover`/`:focus-visible`, no client JS.
 - **Text scramble reveal** — `ScrambleHeadline.tsx` decodes the homepage hero headline in on mount; renders the real text immediately (SSR-safe) and only scrambles as a flourish on top.
 - **Ink-splat click burst** — `AddToCartForm.tsx` spawns a brief colored splat at the click point on Add to cart / Preorder.
 - **Preorder banner pulse** — the preorder-eligible banner in `AddToCartForm.tsx` pulses once when it appears, keyed to the selected variant so it only replays on a genuinely new preorder-eligible selection.
+
+The `Button` scribble treatment covers the shared `Button.tsx` component, which is what every real storefront CTA (Shop now, Add to cart, Preorder, Notify me, Checkout, etc.) is built from. Smaller account/admin-area raw `<button>` elements (form saves, qty steppers, accordion toggles) intentionally don't carry it — the effect is sized and paced for a primary call-to-action, not a utility control.
 
 ## Notes for further work
 

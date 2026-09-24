@@ -1,6 +1,7 @@
 import { Monogram } from "@/components/brand/Monogram";
 import { NewsletterForm } from "@/components/layout/NewsletterForm";
 import { ScribbleLink } from "@/components/ui/ScribbleLink";
+import { CrayonScribble } from "@/components/brand/CrayonScribble";
 
 const VALUE_PROPS = [
   {
@@ -89,7 +90,12 @@ export function Footer({
           ))}
         </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-5 py-6">
+        <div className="relative flex flex-wrap items-center justify-between gap-5 py-6">
+          <CrayonScribble
+            id="footer"
+            color="var(--color-ic-cyan)"
+            className="pointer-events-none absolute -top-2 right-0 hidden h-14 w-20 rotate-3 opacity-75 desktop:block"
+          />
           <div className="flex items-center gap-3.5">
             {logoImageUrl ? (
               <img src={logoImageUrl} alt={brandName} className="h-9 w-auto object-contain" />

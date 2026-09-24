@@ -185,16 +185,16 @@ button {
 
 /* Fixed background wall — one div in the storefront layout, painted behind everything
    (negative z-index) so it never competes with content. A loose scatter of the same
-   circle/square/X marks PlaceholderFrame already draws, at low opacity so it reads as
-   mood, not as a graphic. */
+   circle/square/X marks PlaceholderFrame already draws — visible enough to read as a
+   deliberate wallpaper, not just texture, while staying well behind foreground content. */
 .site-wall {
   position: fixed;
   inset: -10%;
   z-index: -1;
   pointer-events: none;
-  opacity: 0.075;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Ccircle cx='50' cy='60' r='13' fill='none' stroke='%23c3f53a' stroke-width='2.5' opacity='.7'/%3E%3Crect x='178' y='33' width='24' height='24' fill='none' stroke='%23ff2d84' stroke-width='2.5' opacity='.7' transform='rotate(10 190 45)'/%3E%3Cline x1='89' y1='149' x2='111' y2='171' stroke='%2326a7e6' stroke-width='2.5' opacity='.7'/%3E%3Cline x1='111' y1='149' x2='89' y2='171' stroke='%2326a7e6' stroke-width='2.5' opacity='.7'/%3E%3Ccircle cx='245' cy='130' r='15' fill='none' stroke='%23ffd23b' stroke-width='2.5' opacity='.7'/%3E%3Crect x='50' y='220' width='20' height='20' fill='none' stroke='%23c3f53a' stroke-width='2.5' opacity='.7' transform='rotate(-14 60 230)'/%3E%3Cline x1='158' y1='238' x2='182' y2='262' stroke='%23ff2d84' stroke-width='2.5' opacity='.7'/%3E%3Cline x1='182' y1='238' x2='158' y2='262' stroke='%23ff2d84' stroke-width='2.5' opacity='.7'/%3E%3Ccircle cx='250' cy='235' r='11' fill='none' stroke='%2326a7e6' stroke-width='2.5' opacity='.7'/%3E%3Crect x='131.5' y='86.5' width='17' height='17' fill='none' stroke='%23ffd23b' stroke-width='2.5' opacity='.7' transform='rotate(18 140 95)'/%3E%3Cline x1='25' y1='130' x2='45' y2='150' stroke='%23c3f53a' stroke-width='2.5' opacity='.7'/%3E%3Cline x1='45' y1='130' x2='25' y2='150' stroke='%23c3f53a' stroke-width='2.5' opacity='.7'/%3E%3C/svg%3E");
-  background-size: 420px 420px;
+  opacity: 0.17;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Ccircle cx='50' cy='60' r='13' fill='none' stroke='%23c3f53a' stroke-width='2.5' opacity='.85'/%3E%3Crect x='178' y='33' width='24' height='24' fill='none' stroke='%23ff2d84' stroke-width='2.5' opacity='.85' transform='rotate(10 190 45)'/%3E%3Cline x1='89' y1='149' x2='111' y2='171' stroke='%2326a7e6' stroke-width='2.5' opacity='.85'/%3E%3Cline x1='111' y1='149' x2='89' y2='171' stroke='%2326a7e6' stroke-width='2.5' opacity='.85'/%3E%3Ccircle cx='245' cy='130' r='15' fill='none' stroke='%23ffd23b' stroke-width='2.5' opacity='.85'/%3E%3Crect x='50' y='220' width='20' height='20' fill='none' stroke='%23c3f53a' stroke-width='2.5' opacity='.85' transform='rotate(-14 60 230)'/%3E%3Cline x1='158' y1='238' x2='182' y2='262' stroke='%23ff2d84' stroke-width='2.5' opacity='.85'/%3E%3Cline x1='182' y1='238' x2='158' y2='262' stroke='%23ff2d84' stroke-width='2.5' opacity='.85'/%3E%3Ccircle cx='250' cy='235' r='11' fill='none' stroke='%2326a7e6' stroke-width='2.5' opacity='.85'/%3E%3Crect x='131.5' y='86.5' width='17' height='17' fill='none' stroke='%23ffd23b' stroke-width='2.5' opacity='.85' transform='rotate(18 140 95)'/%3E%3Cline x1='25' y1='130' x2='45' y2='150' stroke='%23c3f53a' stroke-width='2.5' opacity='.85'/%3E%3Cline x1='45' y1='130' x2='25' y2='150' stroke='%23c3f53a' stroke-width='2.5' opacity='.85'/%3E%3C/svg%3E");
+  background-size: 340px 340px;
 }
 
 /* Fixed, near-invisible film grain — one div in the storefront layout. */
@@ -315,6 +315,42 @@ button {
 }
 .scribble-link:hover path,
 .scribble-link:focus-visible path {
+  stroke-dashoffset: 0;
+}
+
+/* Hover scribble on Button.tsx — a draw-on underline below the button, or (on
+   roughly a third of buttons, chosen per-label so it's consistent, not random-
+   each-render) a rough oval ring scribbled loosely around it instead. Either
+   way it's invisible until hover/focus, same draw-on technique as the nav's
+   scribble-link underline, just bigger and unconstrained to text width. */
+.btn-scribble {
+  position: relative;
+}
+.btn-scribble-underline,
+.btn-scribble-oval {
+  position: absolute;
+  pointer-events: none;
+  overflow: visible;
+}
+.btn-scribble-underline {
+  left: 3%;
+  right: 3%;
+  bottom: -12px;
+  height: 14px;
+}
+.btn-scribble-oval {
+  inset: -11px;
+}
+.btn-scribble-underline path,
+.btn-scribble-oval path {
+  stroke-dasharray: 420;
+  stroke-dashoffset: 420;
+  transition: stroke-dashoffset 0.5s cubic-bezier(0.65, 0, 0.35, 1);
+}
+.btn-scribble:hover .btn-scribble-underline path,
+.btn-scribble:focus-visible .btn-scribble-underline path,
+.btn-scribble:hover .btn-scribble-oval path,
+.btn-scribble:focus-visible .btn-scribble-oval path {
   stroke-dashoffset: 0;
 }
 

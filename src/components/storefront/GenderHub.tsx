@@ -6,6 +6,7 @@ import { ProductCard } from "@/components/ui/ProductCard";
 import { Button } from "@/components/ui/Button";
 import { CATEGORIES } from "@/lib/categories";
 import { pickAccent } from "@/lib/accent-color";
+import { CrayonScribble } from "@/components/brand/CrayonScribble";
 
 export async function GenderHub({ gender }: { gender: "MEN" | "WOMEN" }) {
   const path = gender === "MEN" ? "men" : "women";
@@ -25,10 +26,15 @@ export async function GenderHub({ gender }: { gender: "MEN" | "WOMEN" }) {
 
   return (
     <section className="pg pb-16">
-      <div className="pagehead pb-1.5">
+      <div className="pagehead relative pb-1.5">
         <span className="font-scrawl text-[15px] text-pink">The {label.toLowerCase()}&apos;s floor</span>
         <h1 className="font-impact text-[clamp(40px,6vw,72px)] uppercase leading-[0.85] tracking-[1px]">{label}</h1>
         <p className="mt-3 max-w-[52ch] text-muted">Eight categories, zero rules. Pick your fit.</p>
+        <CrayonScribble
+          id={`gender-hub-${gender}`}
+          color={gender === "MEN" ? "var(--color-ic-cyan)" : "var(--color-ic-pink)"}
+          className="pointer-events-none absolute -top-3 right-2 hidden h-16 w-24 rotate-6 opacity-80 desktop:block"
+        />
       </div>
 
       <div className="relative my-4.5 aspect-[5/1.4]">

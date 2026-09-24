@@ -10,6 +10,7 @@ import { toNumber } from "@/lib/money";
 import { AddToCartForm } from "@/components/storefront/AddToCartForm";
 import { HeroCarousel } from "@/components/storefront/HeroCarousel";
 import { ScrambleHeadline } from "@/components/storefront/ScrambleHeadline";
+import { CrayonScribble } from "@/components/brand/CrayonScribble";
 import { DEFAULT_HERO, type HeroData } from "@/lib/hero-defaults";
 
 const COLLECTION_TILES = [
@@ -55,7 +56,7 @@ export default async function HomePage() {
         className="grid grid-cols-1 gap-7 py-10 desktop:grid-cols-[1.05fr_1fr]"
         style={hero.backgroundColor ? { backgroundColor: hero.backgroundColor } : undefined}
       >
-        <div>
+        <div className="relative">
           <span className="font-scrawl flex items-center gap-2 text-[15px]">
             {hero.eyebrow} <Crown className="h-6 w-8 text-white" />
           </span>
@@ -74,6 +75,11 @@ export default async function HomePage() {
             <span className="h-0.5 w-10 bg-line-2" />
             02<span className="h-0.5 w-10 bg-line-2" />03
           </div>
+          <CrayonScribble
+            id="hero"
+            color="var(--color-ic-lime)"
+            className="pointer-events-none absolute bottom-0 right-2 hidden h-20 w-28 -rotate-[8deg] opacity-90 desktop:block"
+          />
         </div>
         <div className="relative">
           <div className="aspect-[3/3.3]">
@@ -102,6 +108,7 @@ export default async function HomePage() {
       {/* COLLECTIONS */}
       <div className="sh my-8 flex items-center gap-3 font-scrawl text-[30px]">
         Collections <Crown className="h-6 w-[34px] text-cyan" />
+        <CrayonScribble id="collections-h" color="var(--color-ic-cyan)" className="h-6 w-10 -rotate-3 opacity-80" />
       </div>
       <div className="grid grid-cols-1 gap-4 desktop:grid-cols-3">
         {COLLECTION_TILES.map((t) => (
@@ -117,6 +124,7 @@ export default async function HomePage() {
         <>
           <div className="sh my-8 flex items-center gap-3 font-scrawl text-[30px]">
             Featured drop <Crown className="h-6 w-[34px] text-yellow" />
+            <CrayonScribble id="featured-h" color="var(--color-ic-yellow)" className="h-6 w-10 rotate-2 opacity-80" />
           </div>
           <div className="grid grid-cols-1 gap-8 desktop:grid-cols-[1fr_1.2fr] items-center border border-line bg-panel p-6">
             <div className="aspect-square">
@@ -154,6 +162,7 @@ export default async function HomePage() {
       {/* NEW IN */}
       <div className="sh my-8 flex items-center gap-3 font-scrawl text-[30px]">
         New In <Crown className="h-6 w-[34px] text-pink" />
+        <CrayonScribble id="newin-h" color="var(--color-ic-pink)" className="h-6 w-10 -rotate-2 opacity-80" />
       </div>
       <div className="grid grid-cols-2 desktop:grid-cols-4 gap-5 pb-16">
         {newProducts.map((p) => (

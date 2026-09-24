@@ -40,6 +40,24 @@ const glowClass: Record<Variant, string> = {
   text: "",
 };
 
+const SCRIBBLE_COLORS = ["#c3f53a", "#ff2d84", "#26a7e6", "#ffd23b"];
+
+// Deterministic per-button hash — same button always gets the same scribble kind/color
+// (no hydration mismatch, no re-roll on re-render), but different buttons vary.
+function hashSeed(seed: string): number {
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
+  return h;
+}
+
+function pickScribble(seed: string): { kind: "underline" | "oval"; color: string } {
+  const h = hashSeed(seed);
+  return {
+    kind: h % 3 === 0 ? "oval" : "underline",
+    color: SCRIBBLE_COLORS[h % SCRIBBLE_COLORS.length],
+  };
+}
+
 function Content({ children, arrow, loading }: { children: ReactNode; arrow?: boolean; loading?: boolean }) {
   return (
     <>
@@ -64,7 +82,11 @@ export function Button({
   ...rest
 }: ButtonProps) {
   const magnetic = variant !== "text" && !loading && !rest.disabled;
-  const classes = `${base} ${variantClass[variant]} ${variant === "text" ? "" : sizeClass[size]} ${magnetic ? glowClass[variant] : ""} ${className}`;
+  const hasScribble = variant !== "text";
+  const scribble = hasScribble
+    ? pickScribble(`${variant}:${href ?? (typeof children === "string" ? children : "btn")}`)
+    : null;
+  const classes = `${base} ${variantClass[variant]} ${variant === "text" ? "" : sizeClass[size]} ${magnetic ? glowClass[variant] : ""} ${hasScribble ? "btn-scribble" : ""} ${className}`;
   const ref = useRef<HTMLElement>(null);
 
   // Pulls the button a few px toward the cursor and lets it spring back — the primary
@@ -84,6 +106,14 @@ export function Button({
     if (ref.current) ref.current.style.transform = "";
   }
 
+  const scribbleEl = scribble && (
+    <Scribble
+      shape={scribble.kind}
+      color={scribble.color}
+      className={scribble.kind === "oval" ? "btn-scribble-oval" : "btn-scribble-underline"}
+    />
+  );
+
   if (href) {
     return (
       <Link
@@ -94,6 +124,7 @@ export function Button({
         onPointerLeave={magnetic ? onPointerLeave : undefined}
       >
         <Content arrow={arrow}>{children}</Content>
+        {scribbleEl}
       </Link>
     );
   }
@@ -110,6 +141,7 @@ export function Button({
       <Content arrow={arrow} loading={loading}>
         {loading ? "…" : children}
       </Content>
+      {scribbleEl}
     </button>
   );
 }
