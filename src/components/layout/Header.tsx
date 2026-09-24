@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { Monogram } from "@/components/brand/Monogram";
+import { RainbowWord } from "@/components/brand/RainbowWord";
 import { CATEGORIES } from "@/lib/categories";
 import { useCart } from "@/context/cart-context";
 import { SearchOverlay } from "@/components/layout/SearchOverlay";
@@ -41,9 +42,13 @@ export function Header({
             ) : (
               <>
                 <Monogram className="h-[26px] w-[30px]" />
-                <span className="font-scrawl text-[19px] uppercase leading-[0.85]">
+                <span className="font-scrawl text-[19px] uppercase leading-[0.85] text-paper">
                   {brandFirst}
-                  {brandRestText && <small className="block text-[13px]">{brandRestText}</small>}
+                  {brandRestText && (
+                    <small className="block text-[13px]">
+                      <RainbowWord text={brandRestText} />
+                    </small>
+                  )}
                 </span>
               </>
             )}
