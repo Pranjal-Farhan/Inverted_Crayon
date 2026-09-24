@@ -4,6 +4,7 @@ import { Header } from "@/components/layout/Header";
 import { Footer } from "@/components/layout/Footer";
 import { CartDrawer } from "@/components/layout/CartDrawer";
 import { ChatBubble } from "@/components/layout/ChatBubble";
+import { MarqueeTicker } from "@/components/layout/MarqueeTicker";
 import { DEFAULT_HERO, type HeroData } from "@/lib/hero-defaults";
 import { getChatWidgetSettings } from "@/lib/store-settings";
 
@@ -29,12 +30,14 @@ export default async function StorefrontLayout({ children }: { children: React.R
 
   return (
     <>
+      <div className="site-grain" aria-hidden="true" />
       <Header
         saleActive={Boolean(activeCampaign)}
         customerName={session?.name ?? null}
         brandName={hero.brandName}
         logoImageUrl={hero.logoImageUrl}
       />
+      <MarqueeTicker />
       <main className="wrap flex-1">{children}</main>
       <Footer brandName={hero.brandName} motto={hero.motto} logoImageUrl={hero.logoImageUrl} />
       <CartDrawer />

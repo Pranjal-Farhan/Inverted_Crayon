@@ -9,6 +9,7 @@ import { pickAccent } from "@/lib/accent-color";
 import { toNumber } from "@/lib/money";
 import { AddToCartForm } from "@/components/storefront/AddToCartForm";
 import { HeroCarousel } from "@/components/storefront/HeroCarousel";
+import { ScrambleHeadline } from "@/components/storefront/ScrambleHeadline";
 import { DEFAULT_HERO, type HeroData } from "@/lib/hero-defaults";
 
 const COLLECTION_TILES = [
@@ -59,7 +60,7 @@ export default async function HomePage() {
             {hero.eyebrow} <Crown className="h-6 w-8 text-white" />
           </span>
           <h1 className="font-impact mt-3 text-[clamp(54px,7.5vw,110px)] uppercase leading-[0.82]">
-            {headlineFirst} <span className="text-lime">{headlineRestText}</span>
+            <ScrambleHeadline first={headlineFirst} rest={headlineRestText} />
           </h1>
           <div className="my-5 h-[5px] w-[min(400px,78%)] -rotate-[0.6deg] bg-white" />
           <p className="mb-6.5 max-w-[32ch] text-[#dcdcda]">
@@ -82,7 +83,10 @@ export default async function HomePage() {
               <PlaceholderFrame accentColor="#26a7e6" shape="circle" label="HERO · MODEL / BACK PRINT" className="h-full w-full" />
             )}
           </div>
-          <div className="font-scrawl absolute right-[2%] top-[3%] z-[6] text-right text-lg">
+          <div
+            className="font-scrawl glitch-text absolute right-[2%] top-[3%] z-[6] text-right text-lg"
+            data-text="Not NORMAL Never was."
+          >
             Not <span className="relative text-[#cfcfcd] after:absolute after:-left-1 after:right-0 after:top-1/2 after:h-[3px] after:-rotate-[4deg] after:bg-pink after:content-['']">NORMAL</span>
             <br />
             <span className="text-yellow">Never</span> was.

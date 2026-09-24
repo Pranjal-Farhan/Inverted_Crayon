@@ -1,5 +1,8 @@
+"use client";
+
 import Link from "next/link";
-import type { ButtonHTMLAttributes, ReactNode } from "react";
+import type { ButtonHTMLAttributes, PointerEvent, ReactNode } from "react";
+import { useRef } from "react";
 import { Scribble } from "@/components/brand/Scribble";
 
 type Variant = "primary" | "ghost" | "text";
@@ -31,6 +34,12 @@ const sizeClass: Record<Size, string> = {
   sm: "text-[13px] px-4 py-2",
 };
 
+const glowClass: Record<Variant, string> = {
+  primary: "magnet-glow mg-primary",
+  ghost: "magnet-glow mg-ghost",
+  text: "",
+};
+
 function Content({ children, arrow, loading }: { children: ReactNode; arrow?: boolean; loading?: boolean }) {
   return (
     <>
@@ -54,18 +63,50 @@ export function Button({
   children,
   ...rest
 }: ButtonProps) {
-  const classes = `${base} ${variantClass[variant]} ${variant === "text" ? "" : sizeClass[size]} ${className}`;
+  const magnetic = variant !== "text" && !loading && !rest.disabled;
+  const classes = `${base} ${variantClass[variant]} ${variant === "text" ? "" : sizeClass[size]} ${magnetic ? glowClass[variant] : ""} ${className}`;
+  const ref = useRef<HTMLElement>(null);
+
+  // Pulls the button a few px toward the cursor and lets it spring back — the primary
+  // variant's own hover lift is a CSS rotate(-1deg), which this preserves by folding it
+  // into the same inline transform (an inline style otherwise overrides the CSS rule).
+  function onPointerMove(e: PointerEvent) {
+    if (!magnetic || e.pointerType !== "mouse") return;
+    if (typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const el = ref.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const mx = (e.clientX - (r.left + r.width / 2)) * 0.22;
+    const my = (e.clientY - (r.top + r.height / 2)) * 0.28;
+    el.style.transform = variant === "primary" ? `translate(${mx}px, ${my}px) rotate(-1deg)` : `translate(${mx}px, ${my}px)`;
+  }
+  function onPointerLeave() {
+    if (ref.current) ref.current.style.transform = "";
+  }
 
   if (href) {
     return (
-      <Link href={href} className={classes}>
+      <Link
+        ref={ref as React.Ref<HTMLAnchorElement>}
+        href={href}
+        className={classes}
+        onPointerMove={magnetic ? onPointerMove : undefined}
+        onPointerLeave={magnetic ? onPointerLeave : undefined}
+      >
         <Content arrow={arrow}>{children}</Content>
       </Link>
     );
   }
 
   return (
-    <button className={classes} disabled={loading || rest.disabled} {...rest}>
+    <button
+      ref={ref as React.Ref<HTMLButtonElement>}
+      className={classes}
+      disabled={loading || rest.disabled}
+      onPointerMove={magnetic ? onPointerMove : undefined}
+      onPointerLeave={magnetic ? onPointerLeave : undefined}
+      {...rest}
+    >
       <Content arrow={arrow} loading={loading}>
         {loading ? "…" : children}
       </Content>

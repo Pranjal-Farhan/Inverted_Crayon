@@ -1,11 +1,14 @@
 "use client";
 
-import { useActionState, useMemo, useState } from "react";
+import { useActionState, useMemo, useRef, useState, type MouseEvent } from "react";
 import { useCart } from "@/context/cart-context";
 import { Button } from "@/components/ui/Button";
 import { formatTaka } from "@/lib/money";
 import { subscribeBackInStock } from "@/actions/back-in-stock";
 import { Crown } from "@/components/brand/Crown";
+
+const SPLAT_COLORS = ["#ff2d84", "#c3f53a", "#26a7e6", "#ffd23b"];
+type Splat = { id: number; x: number; y: number; size: number; color: string };
 
 export type VariantOption = {
   id: string;
@@ -49,6 +52,26 @@ export function AddToCartForm({
   const [notifyOpen, setNotifyOpen] = useState(false);
   const { addLine } = useCart();
   const [notifyState, notifyAction, notifyPending] = useActionState(subscribeBackInStock, null);
+
+  const splatZoneRef = useRef<HTMLDivElement>(null);
+  const [splats, setSplats] = useState<Splat[]>([]);
+  const splatIdRef = useRef(0);
+
+  function spawnSplat(e: MouseEvent) {
+    const zone = splatZoneRef.current;
+    if (!zone) return;
+    const r = zone.getBoundingClientRect();
+    const id = splatIdRef.current++;
+    const splat: Splat = {
+      id,
+      x: e.clientX - r.left,
+      y: e.clientY - r.top,
+      size: 50 + Math.random() * 50,
+      color: SPLAT_COLORS[Math.floor(Math.random() * SPLAT_COLORS.length)],
+    };
+    setSplats((prev) => [...prev, splat]);
+    setTimeout(() => setSplats((prev) => prev.filter((s) => s.id !== id)), 750);
+  }
 
   const variant = variants.find((v) => v.color === color && v.size === size);
   const variantStock = variant?.stockQty ?? 0;
@@ -102,7 +125,7 @@ export function AddToCartForm({
       </div>
 
       {preorderEligible && (
-        <div className="mb-4 flex items-center gap-2.5 border border-dashed border-yellow bg-yellow/[0.07] px-3.5 py-2.5 text-sm">
+        <div key={variant?.id ?? "none"} className="preorder-pulse mb-4 flex items-center gap-2.5 border border-dashed border-yellow bg-yellow/[0.07] px-3.5 py-2.5 text-sm">
           <Crown className="h-[22px] w-6 shrink-0 text-yellow" />
           <span>
             {productIsPreorder && preorderShipDate
@@ -113,7 +136,14 @@ export function AddToCartForm({
         </div>
       )}
 
-      <div className="mb-4.5 flex gap-3">
+      <div ref={splatZoneRef} className="relative mb-4.5 flex gap-3">
+        {splats.map((s) => (
+          <span
+            key={s.id}
+            className="ink-splat"
+            style={{ left: s.x, top: s.y, width: s.size, height: s.size, background: s.color }}
+          />
+        ))}
         <div className="flex border border-line-2">
           <button className="w-10 font-impact text-lg" onClick={() => setQty((q) => Math.max(1, q - 1))}>
             −
@@ -135,8 +165,9 @@ export function AddToCartForm({
           <Button
             className={`min-w-0 flex-1 ${preorderEligible ? "!bg-yellow" : ""}`}
             disabled={!canAdd}
-            onClick={() => {
+            onClick={(e) => {
               if (!variant) return;
+              spawnSplat(e);
               addLine({
                 variantId: variant.id,
                 productId,

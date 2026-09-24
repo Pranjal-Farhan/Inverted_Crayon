@@ -174,3 +174,168 @@ button {
   font-family: var(--font-impact);
   letter-spacing: 0.5px;
 }
+
+/* ============================================================
+   Motion & lighting — storefront-only ambient/interactive layer.
+   Everything here is neutralized by the prefers-reduced-motion
+   block above (animation-duration/transition-duration → ~0), so
+   no effect needs its own reduced-motion guard beyond what any
+   JS-driven one (magnetic pull, text scramble, tilt) checks itself.
+   ============================================================ */
+
+/* Fixed, near-invisible film grain — one div in the storefront layout. */
+.site-grain {
+  position: fixed;
+  inset: -10%;
+  z-index: 1;
+  pointer-events: none;
+  opacity: 0.035;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  animation: grain-shift 8s steps(8) infinite;
+}
+@keyframes grain-shift {
+  0% { transform: translate(0, 0); }
+  20% { transform: translate(-2%, 3%); }
+  40% { transform: translate(3%, -2%); }
+  60% { transform: translate(-3%, -3%); }
+  80% { transform: translate(2%, 2%); }
+  100% { transform: translate(0, 0); }
+}
+
+/* Magnetic buttons (Button.tsx) — the pull itself is JS-driven inline transform;
+   this just supplies the glow that blooms in on hover. */
+.magnet-glow {
+  transition-property: color, background-color, border-color, transform, box-shadow;
+}
+.magnet-glow.mg-primary:hover {
+  box-shadow: 0 0 30px -4px rgba(195, 245, 58, 0.55);
+}
+.magnet-glow.mg-ghost:hover {
+  box-shadow: 0 0 26px -8px rgba(195, 245, 58, 0.45);
+}
+
+/* Scroll-reveal cards (ProductCard.tsx) */
+.reveal-card {
+  opacity: 0;
+  transform: translateY(28px);
+  transition: opacity 0.6s ease, transform 0.6s ease;
+}
+.reveal-card.in {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Glitch / RGB-split hover — applied directly via className + data-text where needed.
+   Deliberately doesn't set `position` itself: the ::before/::after below just need *some*
+   positioning context on this element, and forcing `relative` here would override an
+   element that's already `absolute`-positioned elsewhere (same specificity, cascade order
+   would win) — each usage site supplies its own position (already-absolute, or add `relative`). */
+.glitch-text {
+  display: inline-block;
+}
+.glitch-text::before,
+.glitch-text::after {
+  content: attr(data-text);
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+}
+.glitch-text:hover::before {
+  color: var(--color-ic-pink);
+  left: 3px;
+  opacity: 0.85;
+  mix-blend-mode: screen;
+  animation: glitch-1 0.5s steps(2, end) 2;
+}
+.glitch-text:hover::after {
+  color: var(--color-ic-cyan);
+  left: -3px;
+  opacity: 0.85;
+  mix-blend-mode: screen;
+  animation: glitch-2 0.5s steps(2, end) 2;
+}
+@keyframes glitch-1 {
+  0% { clip-path: inset(0 0 80% 0); }
+  20% { clip-path: inset(60% 0 5% 0); }
+  40% { clip-path: inset(10% 0 70% 0); }
+  60% { clip-path: inset(80% 0 2% 0); }
+  80% { clip-path: inset(30% 0 45% 0); }
+  100% { clip-path: inset(0 0 90% 0); }
+}
+@keyframes glitch-2 {
+  0% { clip-path: inset(70% 0 5% 0); }
+  20% { clip-path: inset(5% 0 80% 0); }
+  40% { clip-path: inset(45% 0 30% 0); }
+  60% { clip-path: inset(10% 0 65% 0); }
+  80% { clip-path: inset(85% 0 3% 0); }
+  100% { clip-path: inset(20% 0 60% 0); }
+}
+
+/* Scribble draw-on underline (ScribbleLink.tsx) */
+.scribble-link {
+  position: relative;
+  display: inline-block;
+  text-decoration: none;
+}
+.scribble-link svg {
+  position: absolute;
+  left: -4%;
+  bottom: -6px;
+  width: 108%;
+  height: 10px;
+  overflow: visible;
+  pointer-events: none;
+}
+.scribble-link path {
+  fill: none;
+  stroke: var(--scribble-stroke, currentColor);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-dasharray: 160;
+  stroke-dashoffset: 160;
+  transition: stroke-dashoffset 0.45s cubic-bezier(0.65, 0, 0.35, 1);
+}
+.scribble-link:hover path,
+.scribble-link:focus-visible path {
+  stroke-dashoffset: 0;
+}
+
+/* Ink-splat click burst (AddToCartForm.tsx) */
+.ink-splat {
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+  transform: translate(-50%, -50%) scale(0);
+  animation: splat-pop 0.7s cubic-bezier(0.2, 0.9, 0.3, 1) forwards;
+  z-index: 5;
+}
+@keyframes splat-pop {
+  0% { transform: translate(-50%, -50%) scale(0); opacity: 1; }
+  70% { opacity: 0.85; }
+  100% { transform: translate(-50%, -50%) scale(1); opacity: 0; }
+}
+
+/* Marquee ticker */
+.marquee-track {
+  display: flex;
+  width: max-content;
+  animation: marquee-scroll 22s linear infinite;
+}
+@keyframes marquee-scroll {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
+/* Preorder banner pulse-once (AddToCartForm.tsx) */
+.preorder-pulse {
+  animation: preorder-glow 1.6s ease-out 1;
+}
+@keyframes preorder-glow {
+  0% { box-shadow: 0 0 0 0 rgba(255, 210, 59, 0.55); }
+  70% { box-shadow: 0 0 0 14px rgba(255, 210, 59, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(255, 210, 59, 0); }
+}

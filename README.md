@@ -123,6 +123,20 @@ A floating chat button (bottom-right, every storefront page) offers direct Whats
 - **Stock purchases** — recording one (owner, product variant, quantity, unit cost, supplier, date) both logs the purchase and increments that variant's stock in the same transaction, so it's the accountable way stock goes up.
 - **Financial summary** — capital invested (all-time, by owner), revenue from paid orders, cost of goods sold (weighted-average unit cost per variant from purchase history × units sold), gross profit/margin, each owner's proportional share of capital and profit, and current inventory value at cost. Sold or in-stock units with no recorded purchase history are called out explicitly rather than silently treated as zero-cost.
 
+## Motion & lighting
+
+The storefront carries a small ambient/interactive motion layer, all opt-out via `prefers-reduced-motion` (CSS-driven effects are neutralized automatically by the global reduced-motion rule in `globals.css`; JS-driven ones check `window.matchMedia` themselves):
+
+- **Film grain** — a fixed, near-invisible animated grain overlay (`.site-grain` in `globals.css`, mounted once in the storefront layout).
+- **Marquee ticker** — an endless-scroll brand strip (`MarqueeTicker.tsx`) between the header and page content.
+- **Magnetic buttons** — `Button.tsx` pulls slightly toward the cursor on hover (pointer-move only, skipped on touch) with a lime glow; falls back to the existing CSS hover styles with the pointer away or reduced motion on.
+- **Scroll reveal + 3D tilt** — `ProductCard.tsx` fades/slides in as it enters the viewport (`IntersectionObserver`, defaults visible so it never breaks with JS off) and tilts toward the cursor on hover.
+- **Glitch / RGB-split hover** — `.glitch-text` (`globals.css`) applied via `className` + `data-text` on the homepage hero badge and the sale tag pill; pure CSS, no client JS. It doesn't set its own `position` — each usage site supplies one (already-`absolute`, or add `relative`), since forcing it in the shared rule would fight an already-positioned caller.
+- **Scribble draw-on underline** — `ScribbleLink.tsx`, used for the header nav and footer legal links; pure CSS `:hover`/`:focus-visible`, no client JS.
+- **Text scramble reveal** — `ScrambleHeadline.tsx` decodes the homepage hero headline in on mount; renders the real text immediately (SSR-safe) and only scrambles as a flourish on top.
+- **Ink-splat click burst** — `AddToCartForm.tsx` spawns a brief colored splat at the click point on Add to cart / Preorder.
+- **Preorder banner pulse** — the preorder-eligible banner in `AddToCartForm.tsx` pulses once when it appears, keyed to the selected variant so it only replays on a genuinely new preorder-eligible selection.
+
 ## Notes for further work
 
 - Abandoned-checkout reminders are admin-triggered (`/admin/campaigns` → "Send all pending reminders") rather than on an automatic schedule — wire that button's action (`sendAllAbandonedReminders` in `src/actions/admin-marketing.ts`) into a cron job for real automation.

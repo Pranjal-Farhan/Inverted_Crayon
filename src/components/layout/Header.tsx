@@ -6,6 +6,7 @@ import { Monogram } from "@/components/brand/Monogram";
 import { CATEGORIES } from "@/lib/categories";
 import { useCart } from "@/context/cart-context";
 import { SearchOverlay } from "@/components/layout/SearchOverlay";
+import { ScribbleLink } from "@/components/ui/ScribbleLink";
 
 const GENDERS = [
   { key: "men", label: "Men" },
@@ -76,18 +77,15 @@ export function Header({
                 </div>
               </div>
             ))}
-            <Link href="/new" className="inline-block py-2 font-label text-[17px] tracking-[1.4px] hover:text-lime">
+            <ScribbleLink href="/new" stroke="var(--color-ic-yellow)" className="py-2 font-label text-[17px] tracking-[1.4px] hover:text-lime">
               NEW
-            </Link>
-            <Link href="/sale" className="inline-block py-2 font-label text-[17px] tracking-[1.4px] hover:text-lime">
+            </ScribbleLink>
+            <ScribbleLink href="/sale" stroke="var(--color-ic-pink)" className="py-2 font-label text-[17px] tracking-[1.4px] hover:text-lime">
               SALE {saleActive && <span className="text-pink animate-pulse">●</span>}
-            </Link>
-            <Link
-              href="/lookbook"
-              className="inline-block py-2 font-label text-[17px] tracking-[1.4px] hover:text-lime"
-            >
+            </ScribbleLink>
+            <ScribbleLink href="/lookbook" stroke="var(--color-ic-cyan)" className="py-2 font-label text-[17px] tracking-[1.4px] hover:text-lime">
               LOOKBOOK
-            </Link>
+            </ScribbleLink>
           </nav>
 
           <div className="ml-auto flex shrink-0 items-center gap-4">

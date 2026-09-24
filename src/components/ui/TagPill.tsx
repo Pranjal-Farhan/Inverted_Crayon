@@ -22,9 +22,11 @@ const CLASS: Record<TagKind, string> = {
 };
 
 export function TagPill({ kind, className = "" }: { kind: TagKind; className?: string }) {
+  const glitch = kind === "sale";
   return (
     <span
-      className={`inline-block font-label text-[12px] tracking-[0.7px] px-[9px] py-[2px] ${CLASS[kind]} ${className}`}
+      className={`inline-block font-label text-[12px] tracking-[0.7px] px-[9px] py-[2px] ${CLASS[kind]} ${glitch ? "glitch-text relative" : ""} ${className}`}
+      data-text={glitch ? LABEL[kind] : undefined}
     >
       {LABEL[kind]}
     </span>

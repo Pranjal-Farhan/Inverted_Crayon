@@ -1,4 +1,7 @@
+"use client";
+
 import Link from "next/link";
+import { useEffect, useRef, useState, type PointerEvent } from "react";
 import { PlaceholderFrame } from "@/components/ui/PlaceholderFrame";
 import { TagPill } from "@/components/ui/TagPill";
 import { formatTaka } from "@/lib/money";
@@ -10,6 +13,48 @@ export function ProductCard({ product }: { product: ProductDisplay }) {
   const accent = pickAccent(product.id);
   const href = `/product/${product.slug}`;
   const primaryImage = product.images.find((img) => img.url)?.url;
+
+  const cardRef = useRef<HTMLAnchorElement>(null);
+  const frameRef = useRef<HTMLDivElement>(null);
+  // Visible by default — matches the server-rendered markup and keeps the card usable with
+  // no JS. The effect below only hides it, briefly, if it's below the fold at mount time.
+  const [revealed, setRevealed] = useState(true);
+
+  useEffect(() => {
+    const el = cardRef.current;
+    if (!el || typeof IntersectionObserver === "undefined") return;
+    const rect = el.getBoundingClientRect();
+    const alreadyOnScreen = rect.top < window.innerHeight && rect.bottom > 0;
+    if (alreadyOnScreen) return;
+    setRevealed(false);
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            setRevealed(true);
+            observer.disconnect();
+          }
+        });
+      },
+      { threshold: 0.15, rootMargin: "0px 0px -40px 0px" },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  function onFrameMove(e: PointerEvent<HTMLDivElement>) {
+    if (e.pointerType !== "mouse") return;
+    if (typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const el = frameRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const px = (e.clientX - r.left) / r.width - 0.5;
+    const py = (e.clientY - r.top) / r.height - 0.5;
+    el.style.transform = `perspective(600px) rotateX(${py * -8}deg) rotateY(${px * 8}deg)`;
+  }
+  function onFrameLeave() {
+    if (frameRef.current) frameRef.current.style.transform = "";
+  }
 
   const soldOutButPreorderable = product.soldOut && product.hasPreorderableVariant;
   const primaryTag = product.soldOut && !soldOutButPreorderable
@@ -27,8 +72,14 @@ export function ProductCard({ product }: { product: ProductDisplay }) {
               : null;
 
   return (
-    <Link href={href} className="card group block">
-      <div className="relative mb-2.5 aspect-[1/1.16] overflow-hidden">
+    <Link ref={cardRef} href={href} className={`card group block reveal-card ${revealed ? "in" : ""}`}>
+      <div
+        ref={frameRef}
+        onPointerMove={onFrameMove}
+        onPointerLeave={onFrameLeave}
+        style={{ transformStyle: "preserve-3d", transition: "transform .15s ease-out" }}
+        className="relative mb-2.5 aspect-[1/1.16] overflow-hidden"
+      >
         {primaryImage ? (
           <>
             <img

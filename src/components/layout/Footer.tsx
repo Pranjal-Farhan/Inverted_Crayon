@@ -1,6 +1,6 @@
-import Link from "next/link";
 import { Monogram } from "@/components/brand/Monogram";
 import { NewsletterForm } from "@/components/layout/NewsletterForm";
+import { ScribbleLink } from "@/components/ui/ScribbleLink";
 
 const VALUE_PROPS = [
   {
@@ -118,9 +118,9 @@ export function Footer({
 
         <div className="flex flex-wrap gap-4 border-t border-line pt-4">
           {LEGAL_LINKS.map((l) => (
-            <Link key={l.href} href={l.href} className="font-label text-[13px] tracking-[1px] text-muted hover:text-paper">
+            <ScribbleLink key={l.href} href={l.href} stroke="var(--color-ic-lime)" className="font-label text-[13px] tracking-[1px] text-muted hover:text-paper">
               {l.label}
-            </Link>
+            </ScribbleLink>
           ))}
         </div>
         <div className="mt-3 font-label text-xs tracking-[1px] text-muted-2">
