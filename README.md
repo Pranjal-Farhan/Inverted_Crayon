@@ -9,7 +9,7 @@ Streetwear storefront + admin, built from the [Build Specification v1.0](.) — 
 - **Framework**: Next.js 16 (App Router, Turbopack, Server Actions)
 - **Database**: PostgreSQL via Prisma 7 (`@prisma/adapter-pg` driver adapter)
 - **Styling**: Tailwind CSS v4, design tokens in `src/app/globals.css` matching Build Spec §02–§04
-- **Auth**: Signed JWT session cookies (`jose`) — separate admin and customer sessions. Email/password always works; Google and Facebook sign-in work too once you add OAuth credentials (see below) — until then the buttons bounce back with a clear message instead of erroring.
+- **Auth**: Signed JWT session cookies (`jose`) — separate admin and customer sessions. Email/password always works; Google and Facebook sign-in work too once you add OAuth credentials (see below) — until then the buttons bounce back with a clear message instead of erroring. Admin/staff accounts can additionally turn on TOTP two-factor authentication (Google Authenticator-compatible) from `/admin/settings` → Security.
 - **Payments**: bKash and SSLCommerz (cards/mobile banking) go live the moment you add real merchant credentials (see below); without them, checkout falls back to instantly marking the order paid so local dev needs no external accounts. COD is always available for non-preorder orders. Preorders require a 20–100% online advance via bKash/card, with the rest collected as COD at delivery.
 - **Emails**: Every "send" always writes to an `EmailLog` outbox (viewable at `/admin/emails`); add a Resend API key (see below) and it also actually sends. See `src/lib/mail.ts`.
 
@@ -92,6 +92,18 @@ A product tagged **Preorder** (in its admin editor's Tags panel) requires checko
 ## Free delivery tags
 
 Each product's admin editor (Organize panel) has a **Free delivery** field — None / Inside Dhaka / Nationwide — that renders as a tag on that product's PDP next to Add to cart. Purely informational (it doesn't currently zero out the shipping line at checkout, which is calculated per-order from the shipping zone).
+
+## Two-factor authentication (admin/staff)
+
+`/admin/settings` → **Security** lets any admin or staff account turn on TOTP-based 2FA (compatible with Google Authenticator, Authy, 1Password, etc.) for their own login — scan the QR code (generated locally via the `qrcode` package; the secret is never sent to any third party) or enter the manual key, confirm with a 6-digit code, and save the one-time backup codes shown afterward. Once enabled, email/password login requires a second step: a live 6-digit code or an unused backup code (each usable once). Failed code attempts count against the same 5-attempt/15-minute lockout as password login. 2FA applies only to the email/password login path — Google/Facebook admin sign-in is unaffected, consistent with OAuth admin login never being a privilege-escalation route. The TOTP implementation (`src/lib/totp.ts`) is a from-scratch RFC 6238 implementation with no third-party dependency for the cryptographic core.
+
+## Inventory finance
+
+`/admin/finance` tracks who actually paid for stock and what it cost, separately from the day-to-day stock-quantity edits on `/admin/inventory`:
+
+- **Stock owners** — the people/entities who fund inventory purchases.
+- **Stock purchases** — recording one (owner, product variant, quantity, unit cost, supplier, date) both logs the purchase and increments that variant's stock in the same transaction, so it's the accountable way stock goes up.
+- **Financial summary** — capital invested (all-time, by owner), revenue from paid orders, cost of goods sold (weighted-average unit cost per variant from purchase history × units sold), gross profit/margin, each owner's proportional share of capital and profit, and current inventory value at cost. Sold or in-stock units with no recorded purchase history are called out explicitly rather than silently treated as zero-cost.
 
 ## Notes for further work
 

@@ -96,13 +96,13 @@ enum ReturnStatus {
 // ---------- catalog ----------
 
 model Product {
-  id             String        @id @default(cuid())
-  slug           String        @unique
+  id             String            @id @default(cuid())
+  slug           String            @unique
   title          String
   description    String
   gender         Gender
-  basePrice      Decimal       @db.Decimal(10, 2)
-  status         ProductStatus @default(DRAFT)
+  basePrice      Decimal           @db.Decimal(10, 2)
+  status         ProductStatus     @default(DRAFT)
   seoTitle       String?
   seoDescription String?
   freeDelivery   FreeDeliveryScope @default(NONE)
@@ -110,13 +110,14 @@ model Product {
   categoryId String
   category   Category @relation(fields: [categoryId], references: [id])
 
-  variants     Variant[]
-  images       ProductImage[]
-  collections  ProductCollection[]
-  tags         ProductTag[]
-  reviews      Review[]
-  orderItems   OrderItem[]
-  wishlistedBy WishlistItem[]
+  variants       Variant[]
+  images         ProductImage[]
+  collections    ProductCollection[]
+  tags           ProductTag[]
+  reviews        Review[]
+  orderItems     OrderItem[]
+  wishlistedBy   WishlistItem[]
+  stockPurchases StockPurchase[]
 
   publishedAt DateTime?
   createdAt   DateTime  @default(now())
@@ -127,19 +128,20 @@ model Product {
 }
 
 model Variant {
-  id                String  @id @default(cuid())
+  id                String   @id @default(cuid())
   productId         String
-  product           Product @relation(fields: [productId], references: [id], onDelete: Cascade)
-  sku               String  @unique
+  product           Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  sku               String   @unique
   size              String
   color             String
   colorHex          String?
   priceOverride     Decimal? @db.Decimal(10, 2)
-  stockQty          Int     @default(0)
-  lowStockThreshold Int     @default(5)
+  stockQty          Int      @default(0)
+  lowStockThreshold Int      @default(5)
 
   orderItems      OrderItem[]
   backInStockSubs BackInStockSubscription[]
+  stockPurchases  StockPurchase[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -166,16 +168,16 @@ model Category {
 }
 
 model Collection {
-  id          String   @id @default(cuid())
+  id          String              @id @default(cuid())
   title       String
-  slug        String   @unique
+  slug        String              @unique
   description String?
   heroCopy    String?
-  active      Boolean  @default(true)
+  active      Boolean             @default(true)
   startsAt    DateTime?
   endsAt      DateTime?
   products    ProductCollection[]
-  createdAt   DateTime @default(now())
+  createdAt   DateTime            @default(now())
 }
 
 model ProductCollection {
@@ -262,8 +264,8 @@ model Order {
   discountAmount Decimal     @default(0) @db.Decimal(10, 2)
   total          Decimal     @db.Decimal(10, 2)
 
-  paymentMethod     PaymentMethod
-  paymentStatus     PaymentStatus @default(PENDING)
+  paymentMethod        PaymentMethod
+  paymentStatus        PaymentStatus @default(PENDING)
   paymentTransactionId String? // gateway reference (bKash paymentID / SSLCommerz val_id) for reconciliation
 
   // Preorder partial payment: advancePercent/advanceAmount is what was actually captured online
@@ -282,7 +284,7 @@ model Order {
   shippingPostcode String
   shippingCountry  String       @default("Bangladesh")
 
-  isPreorder       Boolean  @default(false)
+  isPreorder       Boolean @default(false)
   preorderShipMode String? // "together" | "split"
   discountCode     String?
 
@@ -333,12 +335,12 @@ model ReturnRequest {
 }
 
 model ReturnItem {
-  id           String        @id @default(cuid())
-  returnId     String
-  returnReq    ReturnRequest @relation(fields: [returnId], references: [id], onDelete: Cascade)
-  orderItemId  String
-  orderItem    OrderItem     @relation(fields: [orderItemId], references: [id])
-  qty          Int
+  id          String        @id @default(cuid())
+  returnId    String
+  returnReq   ReturnRequest @relation(fields: [returnId], references: [id], onDelete: Cascade)
+  orderItemId String
+  orderItem   OrderItem     @relation(fields: [orderItemId], references: [id])
+  qty         Int
 }
 
 // ---------- marketing ----------
@@ -360,16 +362,16 @@ model Discount {
 }
 
 model Campaign {
-  id               String    @id @default(cuid())
+  id               String   @id @default(cuid())
   name             String
-  percentOff       Decimal?  @db.Decimal(5, 2)
-  fixedSalePrice   Decimal?  @db.Decimal(10, 2)
+  percentOff       Decimal? @db.Decimal(5, 2)
+  fixedSalePrice   Decimal? @db.Decimal(10, 2)
   targetCategoryId String?
-  targetProductIds String[]  @default([])
+  targetProductIds String[] @default([])
   startsAt         DateTime
   endsAt           DateTime
-  active           Boolean   @default(true)
-  createdAt        DateTime  @default(now())
+  active           Boolean  @default(true)
+  createdAt        DateTime @default(now())
 }
 
 model Review {
@@ -427,6 +429,47 @@ model NewsletterSubscriber {
   createdAt DateTime @default(now())
 }
 
+// ---------- inventory finance ----------
+// Who actually paid for a batch of stock, and what it cost — separate from Variant.stockQty
+// (the live count) and from Order/OrderItem (the sell side). Recording a purchase here also
+// increments the variant's stockQty, so this becomes the accountable way stock goes up.
+
+model StockOwner {
+  id        String   @id @default(cuid())
+  name      String
+  contact   String?
+  notes     String?
+  createdAt DateTime @default(now())
+
+  purchases StockPurchase[]
+}
+
+model StockPurchase {
+  id      String     @id @default(cuid())
+  ownerId String
+  owner   StockOwner @relation(fields: [ownerId], references: [id])
+
+  // Nullable + snapshotted so a purchase record survives the product/variant later being deleted
+  // — same pattern as OrderItem on the sell side.
+  productId            String?
+  product              Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  variantId            String?
+  variant              Variant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+  productTitleSnapshot String
+  variantLabelSnapshot String
+
+  quantity     Int
+  unitCost     Decimal  @db.Decimal(10, 2)
+  totalCost    Decimal  @db.Decimal(10, 2)
+  supplierName String?
+  purchaseDate DateTime @default(now())
+  notes        String?
+  createdAt    DateTime @default(now())
+
+  @@index([ownerId])
+  @@index([variantId])
+}
+
 // ---------- admin / CMS ----------
 
 model AdminUser {
@@ -442,7 +485,15 @@ model AdminUser {
   lockedUntil      DateTime?
   googleId         String?   @unique
   facebookId       String?   @unique
-  createdAt        DateTime  @default(now())
+
+  // TOTP two-factor auth (RFC 6238, e.g. Google Authenticator). twoFactorSecret is only meaningful
+  // once twoFactorEnabled is true — a secret can exist mid-setup (QR shown, not yet confirmed)
+  // without turning enforcement on. Backup codes are stored bcrypt-hashed, each single-use.
+  twoFactorSecret      String?
+  twoFactorEnabled     Boolean  @default(false)
+  twoFactorBackupCodes String[] @default([])
+
+  createdAt DateTime @default(now())
 }
 
 // Freeform CMS blocks keyed by slot (home_hero, home_featured_drop, men_hero, ...)
@@ -473,12 +524,12 @@ model Post {
   title       String
   excerpt     String
   body        String
-  accentColor String      @default("#ff2d84")
-  authorName  String      @default("Inverted Crayon")
-  status      PostStatus  @default(DRAFT)
+  accentColor String     @default("#ff2d84")
+  authorName  String     @default("Inverted Crayon")
+  status      PostStatus @default(DRAFT)
   publishedAt DateTime?
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
 }
 
 // ---------- email (mocked outbox) ----------
@@ -494,13 +545,13 @@ enum EmailType {
 }
 
 model EmailLog {
-  id            String    @id @default(cuid())
-  to            String
-  subject       String
-  body          String
-  type          EmailType
+  id             String    @id @default(cuid())
+  to             String
+  subject        String
+  body           String
+  type           EmailType
   relatedOrderId String?
-  sentAt        DateTime  @default(now())
+  sentAt         DateTime  @default(now())
 
   @@index([to])
   @@index([type])

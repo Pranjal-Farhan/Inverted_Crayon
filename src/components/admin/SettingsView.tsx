@@ -10,9 +10,10 @@ import {
 } from "@/actions/admin-settings";
 import { Panel } from "@/components/admin/Panel";
 import { StaffManager } from "@/components/admin/StaffManager";
+import { TwoFactorSetup } from "@/components/admin/TwoFactorSetup";
 import type { EmailTemplates, PaymentGatewaySettings, ShippingRates, StoreInfo, TaxSettings } from "@/lib/store-settings";
 
-const TABS = ["Payments", "Shipping", "Tax", "Emails", "Roles", "Store"] as const;
+const TABS = ["Payments", "Shipping", "Tax", "Emails", "Roles", "Security", "Store"] as const;
 
 const EMAIL_TYPE_LABEL: Record<keyof EmailTemplates, string> = {
   WELCOME: "Newsletter welcome",
@@ -32,6 +33,7 @@ export function SettingsView({
   emailTemplates: initialTemplates,
   staff,
   selfId,
+  twoFactorEnabled,
 }: {
   rates: ShippingRates;
   gateways: PaymentGatewaySettings;
@@ -40,6 +42,7 @@ export function SettingsView({
   emailTemplates: EmailTemplates;
   staff: { id: string; email: string; name: string; role: "ADMIN" | "STAFF" }[];
   selfId: string;
+  twoFactorEnabled: boolean;
 }) {
   const [tab, setTab] = useState<(typeof TABS)[number]>("Payments");
   const [rates, setRates] = useState(initialRates);
@@ -190,6 +193,8 @@ export function SettingsView({
       )}
 
       {tab === "Roles" && <StaffManager users={staff} selfId={selfId} />}
+
+      {tab === "Security" && <TwoFactorSetup enabled={twoFactorEnabled} />}
 
       {tab === "Store" && (
         <Panel title="Store info">

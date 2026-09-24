@@ -117,6 +117,8 @@ src/
 
   actions/                    every "use server" mutation, one file per domain
                                (checkout, admin-*, customer-*, back-in-stock, contact, newsletter)
+                               admin-2fa.ts       2FA setup/confirm/disable
+                               admin-finance.ts   stock owners + stock purchases (inventory ledger)
 
   components/
     storefront/                customer-facing UI
@@ -138,6 +140,7 @@ src/
     money.ts                    Taka formatting + Decimal-to-number conversion
     order-number.ts             human-facing order number generator
     login-lockout.ts            shared brute-force guard for admin + customer login
+    totp.ts                     RFC 6238 TOTP (Google Authenticator-compatible 2FA) — hand-rolled, no dependency
     oauth/                      google.ts, facebook.ts — provider-specific OAuth code
     payments/                   bkash.ts, sslcommerz.ts, rollback.ts
     email-provider.ts           Resend integration
@@ -190,7 +193,8 @@ Full schema: `prisma/schema.prisma`. Every model below, grouped the way the sche
 
 ### 5.5 Admin / CMS
 
-- **`AdminUser`** — `role` is `ADMIN` or `STAFF` (no finer-grained permissions today — see §10.12 for what STAFF can't do). Same OAuth-link fields as Customer, with one critical asymmetry: OAuth sign-in for this model **never creates a row** — see §7.3.
+- **`AdminUser`** — `role` is `ADMIN` or `STAFF` (no finer-grained permissions today — see §10.12 for what STAFF can't do). Same OAuth-link fields as Customer, with one critical asymmetry: OAuth sign-in for this model **never creates a row** — see §7.3. `twoFactorSecret`/`twoFactorEnabled`/`twoFactorBackupCodes` back TOTP 2FA (§7.5) — a secret can exist while `twoFactorEnabled` is still `false` (mid-setup, QR shown but not yet confirmed); backup codes are stored bcrypt-hashed, each single-use.
+- **`StockOwner`** / **`StockPurchase`** — the inventory finance ledger (§10.4a). `StockOwner` is just who funds stock (name/contact/notes). `StockPurchase` follows the same denormalized snapshot pattern as `OrderItem` (§5.3): `productTitleSnapshot`/`variantLabelSnapshot` freeze the product's identity at purchase time, and `productId`/`variantId` are nullable (`onDelete: SetNull`) so a purchase record survives the product/variant later being deleted. `ownerId` is `onDelete: Restrict` — an owner with recorded purchases can't be deleted out from under its financial history. Recording a purchase increments `Variant.stockQty` in the same transaction, making this the accountable counterpart to `setVariantStock`'s manual correction (§10.4).
 - **`ContentBlock`** — a generic `key → JSON` slot store. Today used for exactly two keys: `home_hero` (the full homepage CMS payload — brand identity, hero text, images, background) and `home_featured_drop` (`{ productId }`). New CMS slots (e.g. a "men hero", per the code's own comment) would follow the same pattern.
 - **`StoreSetting`** — same `key → JSON` shape as `ContentBlock`, used for store-wide operational settings instead of content: `shipping_rates`, `payment_gateways`, `store_info`, `tax_settings`, `email_templates`. Typed accessors for every key live in `src/lib/store-settings.ts` (`getShippingRates()`, etc.), each with a hard-coded default so a fresh database with no seeded settings still renders something sane.
 - **`Post`** — the journal/blog, independently publishable (`PostStatus`, `publishedAt` stamped once on first publish, same pattern as `Product`).
@@ -258,6 +262,14 @@ When `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` (or the Facebook equivalents) are
 ### 7.4 Security headers
 
 `src/proxy.ts` (Next.js 16's renamed `middleware.ts` — the framework flags the old filename as deprecated, and this repo follows that) sets on every response: `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, a locked-down default `Permissions-Policy`, and HSTS when served over HTTPS. No CSP is set (deliberately — a wrong CSP silently breaks pages rather than erroring, and none was judged necessary yet).
+
+### 7.5 Admin two-factor authentication (TOTP)
+
+Optional, per-account, email/password-login only — OAuth admin sign-in (§7.3) never asks for a 2FA code, since it's already a second factor.
+
+- **`src/lib/totp.ts`** — a from-scratch RFC 6238 implementation (HMAC-SHA1 HOTP, 30s step, 6 digits, RFC 4648 base32) with no third-party dependency for the cryptographic core, so the secret never passes through code this repo didn't write. `verifyTotpCode` accepts the current 30s step plus one step either side, to tolerate normal clock drift. `generateBackupCodes()` produces 8 human-typeable one-time codes (e.g. `7K3F-9QXZ`), stored bcrypt-hashed on the `AdminUser` row and each usable once.
+- **Setup** (`src/actions/admin-2fa.ts`, UI in `TwoFactorSetup.tsx` under `/admin/settings` → Security): `initiateTwoFactorSetup()` generates and saves a secret (without enabling enforcement) and returns a QR code — rendered as a data URI via the `qrcode` package, generated entirely server-side and never transmitted to any third-party service — plus the manual base32 key. `confirmTwoFactorSetup()` verifies a code against that pending secret, and only then sets `twoFactorEnabled: true` and generates the backup codes (shown once, on this one response). `disableTwoFactor()` requires the current password and clears all three fields.
+- **Login** (`src/actions/admin-auth.ts`): after a correct password, `adminLogin` checks `twoFactorEnabled`. If true, instead of setting the real session it sets a short-lived (5-minute) signed `ic_admin_2fa_pending` cookie (`{ adminId }`, same `jose`/`SESSION_SECRET` signing as the real session cookies — see §7.1) and returns `needsTwoFactor: true` rather than redirecting. `AdminLoginForm.tsx` then swaps to a second step, submitting to `verifyAdminTwoFactor()`, which reads the pending cookie, accepts either a live TOTP code or an unused backup code (bcrypt-compared and removed from the array on use), and only then sets the real session and redirects. Failed attempts at this step share the exact same lockout counter/window as password login (§7.2) — a stolen password alone still can't be brute-forced against the 6-digit code.
 
 ---
 
@@ -376,7 +388,7 @@ If **any** line in the cart is tagged `PREORDER` (§2.3), checkout enters preord
 
 ## 10. Admin panel walkthrough
 
-Every page lives under `src/app/admin/(dashboard)/`, wrapped by `(dashboard)/layout.tsx` which enforces an admin session (redirects to `/admin/login` otherwise) and renders `AdminSidebar` + `AdminTopbar`. The sidebar (`AdminSidebar.tsx`) is the map of every section, grouped exactly as: **Overview** (Dashboard) · **Sell** (Orders, Products, Inventory, Categories) · **Grow** (Customers, Discounts, Campaigns, Content CMS, Journal, Analytics, Reviews) · **System** (Emails, Settings).
+Every page lives under `src/app/admin/(dashboard)/`, wrapped by `(dashboard)/layout.tsx` which enforces an admin session (redirects to `/admin/login` otherwise) and renders `AdminSidebar` + `AdminTopbar`. The sidebar (`AdminSidebar.tsx`) is the map of every section, grouped exactly as: **Overview** (Dashboard) · **Sell** (Orders, Products, Inventory, Finance, Categories) · **Grow** (Customers, Discounts, Campaigns, Content CMS, Journal, Analytics, Reviews) · **System** (Emails, Settings).
 
 ### 10.1 Dashboard (`/admin/dashboard`)
 
@@ -397,6 +409,21 @@ Image upload: drag-and-drop or click-to-browse, up to 20 images per product, 12 
 ### 10.4 Inventory (`/admin/inventory`)
 
 A flat table of every variant across every product, filterable by SKU search and a "low stock" toggle. Each row's stock is a `StockCell.tsx` — an inline number input with a "Save" button that only appears once the value's actually been changed, calling `setVariantStock()`. This is the **only** place stock is meant to be edited for an existing variant (see §10.3's note on why the product editor deliberately can't). `setVariantStock` is also where the wishlist/back-in-stock notification emails fire (§13.2).
+
+### 10.4a Finance (`/admin/finance`)
+
+The inventory finance ledger (§5.5) — separate from Inventory's live stock-count edits (§10.4). `src/actions/admin-finance.ts`: `createStockOwner()` (name/contact/notes) and `recordStockPurchase()` (owner, variant, quantity, unit cost, supplier, date, notes) — the latter, inside one `$transaction`, both creates the `StockPurchase` row (with the `OrderItem`-style title/variant snapshot) and increments `Variant.stockQty` by the purchased quantity, making this the accountable way stock goes up (vs. `setVariantStock`'s manual correction).
+
+The page itself (`(dashboard)/finance/page.tsx`) does its aggregation the same way `/admin/analytics` does (§10.10) — plain `db` queries and in-memory reduction in the Server Component, no separate query layer:
+
+- **Weighted-average unit cost per variant**, from every `StockPurchase` on record for it (`Σ totalCost / Σ quantity`) — the chosen costing method; FIFO/LIFO lot-tracking was explicitly out of scope.
+- **Revenue** — `Σ Order.total` over `paymentStatus: "PAID"` orders.
+- **COGS** — `Σ (qty × that variant's avg unit cost)` per sold `OrderItem`, summed across every paid order's items.
+- **Gross profit / margin** — `revenue − COGS`, and that as a percent of revenue.
+- **Capital by owner** — `Σ StockPurchase.totalCost` grouped by `ownerId`, each owner's share of the all-time total, and that share applied to gross profit as a proportional profit split.
+- **Current inventory value at cost** — `Σ (remaining stockQty × avg unit cost)` across variants.
+
+A sold or in-stock unit whose variant has **no** purchase history has no known cost basis — rather than silently treating that as zero-cost (which would overstate profit), those units are excluded from COGS/inventory-value and the page surfaces an explicit count of how many, in-panel.
 
 ### 10.5 Categories (`/admin/categories`)
 
@@ -432,7 +459,7 @@ Full CRUD for `Post` via `PostEditorForm.tsx` and `admin-posts.ts` — same publ
 
 ### 10.13 Settings (`/admin/settings`)
 
-`SettingsView.tsx` — a tabbed single component covering everything in `StoreSetting`: **Payments** (which gateways are enabled + COD rule), **Shipping** (per-zone label/cost/ETA for all 3 zones), **Tax** (inclusive toggle, rate, label — informational only, see the code comment: Bangladesh apparel pricing is typically tax-inclusive, so this doesn't add a separate line at checkout unless switched to exclusive), **Emails** (per-type enable toggle + subject line, for all 7 `EmailType`s), **Roles** (embeds `StaffManager.tsx` — invite/remove staff, change role, with guards: an admin can't demote or remove *themselves*, and the last remaining `ADMIN` can't be removed by anyone), **Store** (name/email/phone/address — used in the receipt and in emails).
+`SettingsView.tsx` — a tabbed single component covering everything in `StoreSetting`: **Payments** (which gateways are enabled + COD rule), **Shipping** (per-zone label/cost/ETA for all 3 zones), **Tax** (inclusive toggle, rate, label — informational only, see the code comment: Bangladesh apparel pricing is typically tax-inclusive, so this doesn't add a separate line at checkout unless switched to exclusive), **Emails** (per-type enable toggle + subject line, for all 7 `EmailType`s), **Roles** (embeds `StaffManager.tsx` — invite/remove staff, change role, with guards: an admin can't demote or remove *themselves*, and the last remaining `ADMIN` can't be removed by anyone), **Security** (embeds `TwoFactorSetup.tsx` — per-account TOTP 2FA setup/disable, §7.5; the `findMany` backing the Roles tab now explicitly `select`s only non-sensitive `AdminUser` columns, precisely so `twoFactorSecret`/`passwordHash` are never serialized into that client component's props), **Store** (name/email/phone/address — used in the receipt and in emails).
 
 ### 10.14 Emails (`/admin/emails`)
 
@@ -540,6 +567,8 @@ A running list of hardening measures, each with the reasoning:
 - **Refund race-safety** (§10.2) — atomic claim on the `REFUNDED` transition.
 - **OAuth admin non-self-registration** (§7.3) — the one privilege-escalation path that was explicitly designed against.
 - **Price tampering closed** (§9.1) — checkout never trusts a client-supplied price.
+- **Admin 2FA secret/backup codes never reach the client** (§7.5, §10.13) — `TwoFactorSetup.tsx` only ever receives a boolean `enabled` prop from the server; the secret and hashed backup codes stay server-side, read only inside the `"use server"` actions in `admin-2fa.ts`.
+- **TOTP built from the RFC, not a dependency** (§7.5) — verified against RFC 6238's official Appendix B test vector before being wired into login.
 - **Seed-script production guard** (`prisma/seed.ts`) — refuses to run against `NODE_ENV=production` unless explicitly opted into with `ALLOW_PRODUCTION_SEED=true`, because it creates demo accounts with passwords published in this repo's README.
 - **Graceful error handling** on public-facing mutations (contact, newsletter, discount save, product delete) — wrapped so a transient DB error or a double-submit returns a clean `{ok:false}` instead of crashing to a raw error page.
 
@@ -562,6 +591,8 @@ Every non-trivial claim in this document — the stock-race guard actually preve
 - **Abandoned-checkout reminders are admin-triggered**, not on an automatic schedule (`sendAllAbandonedReminders` would need a cron job wired to it for real automation).
 - **Tax is informational only** unless switched from inclusive to exclusive pricing.
 - **No CSP** (security headers stop short of one — §7.4).
+- **Inventory costing is weighted-average only** (§10.4a) — no FIFO/LIFO lot tracking; a sold/in-stock unit with no recorded `StockPurchase` history has no cost basis and is explicitly excluded from COGS/inventory-value rather than assumed to be zero-cost.
+- **2FA has no recovery path beyond backup codes** — if an admin loses both their authenticator app and their backup codes, another `ADMIN` must disable 2FA for them via direct database access (there's no admin-to-admin "reset this user's 2FA" UI today).
 
 ---
 
@@ -590,8 +621,8 @@ For "what touches what" at a glance:
 
 - **A price appears anywhere** → traces back to `deriveProductDisplay()` in `product-view.ts`, or — at checkout specifically — to the same campaign logic re-run server-side in `checkout.ts`.
 - **An order is created** → `checkout.ts` → decrements `Variant.stockQty`, increments `Discount.usedCount`, deletes any matching `AbandonedCheckout`, creates `Order`+`OrderItem`, optionally calls out to `lib/payments/*`, calls `sendMail()` → writes `EmailLog` (+ real Resend call if configured).
-- **Stock changes** → either `admin-inventory.ts`'s `setVariantStock` (manual, also fires back-in-stock/wishlist emails) or `checkout.ts`'s guarded decrement (a sale) or `admin-orders.ts`'s `refundOrder` (a restock).
+- **Stock changes** → `admin-inventory.ts`'s `setVariantStock` (manual correction, also fires back-in-stock/wishlist emails), `checkout.ts`'s guarded decrement (a sale), `admin-orders.ts`'s `refundOrder` (a restock), or `admin-finance.ts`'s `recordStockPurchase` (an accountable increase, alongside a `StockPurchase` row — §10.4a).
 - **A product is saved** → `admin-products.ts`'s `saveProduct` → touches `Product`, `Variant` (upsert/delete), `ProductCollection` (replace), `ProductTag` (replace), and conditionally emails everyone with an active preorder order for it if the ship date changed.
 - **An image is uploaded** (product or site) → writes to `public/uploads/...` and a `ProductImage` row or the `home_hero` `ContentBlock`'s `logoImageUrl`/`heroImages` array — same validation/storage pattern either way (`§12`).
 - **The homepage renders** → `(storefront)/layout.tsx` and `(storefront)/page.tsx` both independently read the same `home_hero` `ContentBlock` (layout for Header/Footer branding, page for the hero itself) — editing it in `/admin/content` invalidates both via `revalidatePath("/")`.
-- **A login happens** (any of email/password, Google, Facebook — customer or admin) → always ends at `setCustomerSession()`/`setAdminSession()` in `session.ts`, the one place either cookie is ever written.
+- **A login happens** (any of email/password, Google, Facebook — customer or admin) → always ends at `setCustomerSession()`/`setAdminSession()` in `session.ts`, the one place either cookie is ever written — except an admin with 2FA enabled, which detours through `setAdmin2FAPending()` and a second `verifyAdminTwoFactor()` step first (§7.5).

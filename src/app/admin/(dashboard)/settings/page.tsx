@@ -11,8 +11,13 @@ export default async function AdminSettingsPage() {
     getStoreInfo(),
     getTaxSettings(),
     getEmailTemplates(),
-    db.adminUser.findMany({ orderBy: { createdAt: "asc" } }),
+    db.adminUser.findMany({
+      orderBy: { createdAt: "asc" },
+      select: { id: true, email: true, name: true, role: true, twoFactorEnabled: true },
+    }),
   ]);
+
+  const self = staff.find((s) => s.id === session!.adminId);
 
   return (
     <SettingsView
@@ -23,6 +28,7 @@ export default async function AdminSettingsPage() {
       emailTemplates={emailTemplates}
       staff={staff}
       selfId={session!.adminId}
+      twoFactorEnabled={self?.twoFactorEnabled ?? false}
     />
   );
 }

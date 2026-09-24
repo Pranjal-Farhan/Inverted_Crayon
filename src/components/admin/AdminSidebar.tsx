@@ -12,6 +12,7 @@ const NAV: { group: string; items: { href: string; label: string; icon: string }
       { href: "/admin/orders", label: "Orders", icon: "▤" },
       { href: "/admin/products", label: "Products", icon: "▦" },
       { href: "/admin/inventory", label: "Inventory", icon: "▣" },
+      { href: "/admin/finance", label: "Finance", icon: "৳" },
       { href: "/admin/categories", label: "Categories", icon: "☰" },
     ],
   },
