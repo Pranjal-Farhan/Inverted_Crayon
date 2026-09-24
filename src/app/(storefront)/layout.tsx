@@ -30,6 +30,7 @@ export default async function StorefrontLayout({ children }: { children: React.R
 
   return (
     <>
+      <div className="site-wall" aria-hidden="true" />
       <div className="site-grain" aria-hidden="true" />
       <Header
         saleActive={Boolean(activeCampaign)}

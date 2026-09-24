@@ -127,6 +127,7 @@ A floating chat button (bottom-right, every storefront page) offers direct Whats
 
 The storefront carries a small ambient/interactive motion layer, all opt-out via `prefers-reduced-motion` (CSS-driven effects are neutralized automatically by the global reduced-motion rule in `globals.css`; JS-driven ones check `window.matchMedia` themselves):
 
+- **Background wall** — a fixed, low-opacity scatter of the site's own circle/square/X marks (`.site-wall` in `globals.css`, same fixed-div pattern as the film grain, mounted once in the storefront layout, negative `z-index` so it always stays behind content).
 - **Film grain** — a fixed, near-invisible animated grain overlay (`.site-grain` in `globals.css`, mounted once in the storefront layout).
 - **Marquee ticker** — an endless-scroll brand strip (`MarqueeTicker.tsx`) between the header and page content.
 - **Magnetic buttons** — `Button.tsx` pulls slightly toward the cursor on hover (pointer-move only, skipped on touch) with a lime glow; falls back to the existing CSS hover styles with the pointer away or reduced motion on.
