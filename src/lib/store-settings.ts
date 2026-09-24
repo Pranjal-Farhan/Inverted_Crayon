@@ -47,6 +47,20 @@ export const DEFAULT_STORE_INFO: StoreInfo = {
   address: "Dhaka, Bangladesh",
 };
 
+export type ChatWidgetSettings = {
+  enabled: boolean;
+  whatsappNumber: string; // digits only or with punctuation — normalized when building the link
+  whatsappMessage: string;
+  messengerUsername: string; // the page's username or numeric ID, as it appears in m.me/<this>
+};
+
+export const DEFAULT_CHAT_WIDGET_SETTINGS: ChatWidgetSettings = {
+  enabled: false,
+  whatsappNumber: "",
+  whatsappMessage: "Hi! I have a question about an order.",
+  messengerUsername: "",
+};
+
 export type TaxSettings = {
   rate: number;
   inclusive: boolean;
@@ -92,6 +106,10 @@ export async function getStoreInfo(): Promise<StoreInfo> {
 
 export async function getTaxSettings(): Promise<TaxSettings> {
   return getSetting("tax_settings", DEFAULT_TAX_SETTINGS);
+}
+
+export async function getChatWidgetSettings(): Promise<ChatWidgetSettings> {
+  return getSetting("chat_widget", DEFAULT_CHAT_WIDGET_SETTINGS);
 }
 
 export async function getEmailTemplates(): Promise<EmailTemplates> {

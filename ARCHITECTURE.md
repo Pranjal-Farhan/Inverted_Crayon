@@ -123,7 +123,7 @@ src/
   components/
     storefront/                customer-facing UI
     admin/                     admin-panel UI
-    layout/                    Header, Footer, CartDrawer, SearchOverlay
+    layout/                    Header, Footer, CartDrawer, SearchOverlay, ChatBubble
     ui/                        generic building blocks (Button, ProductCard, TagPill, Accordion)
     brand/                     Monogram, Wordmark, Crown, Scribble — pure SVG, no external assets
     auth/                      OAuthButtons
@@ -196,7 +196,7 @@ Full schema: `prisma/schema.prisma`. Every model below, grouped the way the sche
 - **`AdminUser`** — `role` is `ADMIN` or `STAFF` (no finer-grained permissions today — see §10.12 for what STAFF can't do). Same OAuth-link fields as Customer, with one critical asymmetry: OAuth sign-in for this model **never creates a row** — see §7.3. `twoFactorSecret`/`twoFactorEnabled`/`twoFactorBackupCodes` back TOTP 2FA (§7.5) — a secret can exist while `twoFactorEnabled` is still `false` (mid-setup, QR shown but not yet confirmed); backup codes are stored bcrypt-hashed, each single-use.
 - **`StockOwner`** / **`StockPurchase`** — the inventory finance ledger (§10.4a). `StockOwner` is just who funds stock (name/contact/notes). `StockPurchase` follows the same denormalized snapshot pattern as `OrderItem` (§5.3): `productTitleSnapshot`/`variantLabelSnapshot` freeze the product's identity at purchase time, and `productId`/`variantId` are nullable (`onDelete: SetNull`) so a purchase record survives the product/variant later being deleted. `ownerId` is `onDelete: Restrict` — an owner with recorded purchases can't be deleted out from under its financial history. Recording a purchase increments `Variant.stockQty` in the same transaction, making this the accountable counterpart to `setVariantStock`'s manual correction (§10.4).
 - **`ContentBlock`** — a generic `key → JSON` slot store. Today used for exactly two keys: `home_hero` (the full homepage CMS payload — brand identity, hero text, images, background) and `home_featured_drop` (`{ productId }`). New CMS slots (e.g. a "men hero", per the code's own comment) would follow the same pattern.
-- **`StoreSetting`** — same `key → JSON` shape as `ContentBlock`, used for store-wide operational settings instead of content: `shipping_rates`, `payment_gateways`, `store_info`, `tax_settings`, `email_templates`. Typed accessors for every key live in `src/lib/store-settings.ts` (`getShippingRates()`, etc.), each with a hard-coded default so a fresh database with no seeded settings still renders something sane.
+- **`StoreSetting`** — same `key → JSON` shape as `ContentBlock`, used for store-wide operational settings instead of content: `shipping_rates`, `payment_gateways`, `store_info`, `tax_settings`, `email_templates`, `chat_widget`. Typed accessors for every key live in `src/lib/store-settings.ts` (`getShippingRates()`, etc.), each with a hard-coded default so a fresh database with no seeded settings still renders something sane.
 - **`Post`** — the journal/blog, independently publishable (`PostStatus`, `publishedAt` stamped once on first publish, same pattern as `Product`).
 
 ### 5.6 Email & abandoned-checkout
@@ -318,6 +318,12 @@ The blog. Public list/detail pages read `Post` rows with `status: "PUBLISHED"`; 
 ### 8.10 Static/legal pages
 
 `/faq`, `/contact` (`ContactForm.tsx` → `sendContactMessage`, writes a `ContactMessage` row + triggers a `CONTACT_RECEIVED` email), `/privacy`, `/terms`, `/shipping-returns`, `/size-guide`, `/lookbook`, `/drops/[slug]` (a single `Collection`'s landing page). Mostly static copy with a handful of dynamic bits (payment methods list, preorder policy text) kept in sync with actual behavior.
+
+### 8.11 Chat bubble (every storefront page)
+
+`ChatBubble.tsx`, rendered once in `(storefront)/layout.tsx` alongside `CartDrawer`, so it's present on every page without each page needing to think about it. A fixed bottom-right button that expands to WhatsApp/Messenger links, backed by the `chat_widget` `StoreSetting` (§5.5, configured at `/admin/settings` → Chat, §10.13).
+
+The component itself is purely presentational — it receives two already-built URLs (`whatsappUrl`/`messengerUrl`, either possibly `null`) as props and renders nothing at all if both are `null`. All the logic of whether to show it lives in the Server Component layout: it reads `chat_widget`, and only builds a URL when `enabled` is true *and* that channel's field is non-empty — so an admin can offer just one channel by leaving the other blank, and the widget disappears entirely if disabled or unconfigured, rather than rendering dead buttons. The WhatsApp number is digit-stripped (`replace(/[^0-9]/g, "")`) before being placed in the `wa.me/<number>` URL, so it tolerates whatever punctuation an admin types (`+880 1XXX-XXXXXX`, etc.); the prefilled message is URL-encoded into `?text=`. The Messenger link is `m.me/<username-or-id>`, exactly as entered. Both links are plain `<a target="_blank" rel="noopener noreferrer">` — no Facebook/Meta SDK, no page-access-token, nothing that could leak into client bundle; that also means there's no unread-count or in-page chat *widget* in the Meta sense, just a fast path to the real WhatsApp/Messenger apps.
 
 ---
 
@@ -459,7 +465,7 @@ Full CRUD for `Post` via `PostEditorForm.tsx` and `admin-posts.ts` — same publ
 
 ### 10.13 Settings (`/admin/settings`)
 
-`SettingsView.tsx` — a tabbed single component covering everything in `StoreSetting`: **Payments** (which gateways are enabled + COD rule), **Shipping** (per-zone label/cost/ETA for all 3 zones), **Tax** (inclusive toggle, rate, label — informational only, see the code comment: Bangladesh apparel pricing is typically tax-inclusive, so this doesn't add a separate line at checkout unless switched to exclusive), **Emails** (per-type enable toggle + subject line, for all 7 `EmailType`s), **Roles** (embeds `StaffManager.tsx` — invite/remove staff, change role, with guards: an admin can't demote or remove *themselves*, and the last remaining `ADMIN` can't be removed by anyone), **Security** (embeds `TwoFactorSetup.tsx` — per-account TOTP 2FA setup/disable, §7.5; the `findMany` backing the Roles tab now explicitly `select`s only non-sensitive `AdminUser` columns, precisely so `twoFactorSecret`/`passwordHash` are never serialized into that client component's props), **Store** (name/email/phone/address — used in the receipt and in emails).
+`SettingsView.tsx` — a tabbed single component covering everything in `StoreSetting`: **Payments** (which gateways are enabled + COD rule), **Shipping** (per-zone label/cost/ETA for all 3 zones), **Tax** (inclusive toggle, rate, label — informational only, see the code comment: Bangladesh apparel pricing is typically tax-inclusive, so this doesn't add a separate line at checkout unless switched to exclusive), **Emails** (per-type enable toggle + subject line, for all 7 `EmailType`s), **Roles** (embeds `StaffManager.tsx` — invite/remove staff, change role, with guards: an admin can't demote or remove *themselves*, and the last remaining `ADMIN` can't be removed by anyone), **Security** (embeds `TwoFactorSetup.tsx` — per-account TOTP 2FA setup/disable, §7.5; the `findMany` backing the Roles tab now explicitly `select`s only non-sensitive `AdminUser` columns, precisely so `twoFactorSecret`/`passwordHash` are never serialized into that client component's props), **Chat** (the `chat_widget` `StoreSetting` — on/off toggle, WhatsApp number, WhatsApp prefilled message, Messenger page username/ID; see §8.11 for the storefront-facing bubble), **Store** (name/email/phone/address — used in the receipt and in emails).
 
 ### 10.14 Emails (`/admin/emails`)
 

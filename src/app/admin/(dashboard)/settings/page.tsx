@@ -1,16 +1,24 @@
-import { getShippingRates, getPaymentGateways, getStoreInfo, getTaxSettings, getEmailTemplates } from "@/lib/store-settings";
+import {
+  getShippingRates,
+  getPaymentGateways,
+  getStoreInfo,
+  getTaxSettings,
+  getEmailTemplates,
+  getChatWidgetSettings,
+} from "@/lib/store-settings";
 import { getAdminSession } from "@/lib/session";
 import { db } from "@/lib/db";
 import { SettingsView } from "@/components/admin/SettingsView";
 
 export default async function AdminSettingsPage() {
   const session = await getAdminSession();
-  const [rates, gateways, storeInfo, tax, emailTemplates, staff] = await Promise.all([
+  const [rates, gateways, storeInfo, tax, emailTemplates, chatWidget, staff] = await Promise.all([
     getShippingRates(),
     getPaymentGateways(),
     getStoreInfo(),
     getTaxSettings(),
     getEmailTemplates(),
+    getChatWidgetSettings(),
     db.adminUser.findMany({
       orderBy: { createdAt: "asc" },
       select: { id: true, email: true, name: true, role: true, twoFactorEnabled: true },
@@ -26,6 +34,7 @@ export default async function AdminSettingsPage() {
       storeInfo={storeInfo}
       tax={tax}
       emailTemplates={emailTemplates}
+      chatWidget={chatWidget}
       staff={staff}
       selfId={session!.adminId}
       twoFactorEnabled={self?.twoFactorEnabled ?? false}

@@ -7,13 +7,14 @@ import {
   saveStoreInfo,
   saveTaxSettings,
   saveEmailTemplates,
+  saveChatWidgetSettings,
 } from "@/actions/admin-settings";
 import { Panel } from "@/components/admin/Panel";
 import { StaffManager } from "@/components/admin/StaffManager";
 import { TwoFactorSetup } from "@/components/admin/TwoFactorSetup";
-import type { EmailTemplates, PaymentGatewaySettings, ShippingRates, StoreInfo, TaxSettings } from "@/lib/store-settings";
+import type { ChatWidgetSettings, EmailTemplates, PaymentGatewaySettings, ShippingRates, StoreInfo, TaxSettings } from "@/lib/store-settings";
 
-const TABS = ["Payments", "Shipping", "Tax", "Emails", "Roles", "Security", "Store"] as const;
+const TABS = ["Payments", "Shipping", "Tax", "Emails", "Roles", "Security", "Chat", "Store"] as const;
 
 const EMAIL_TYPE_LABEL: Record<keyof EmailTemplates, string> = {
   WELCOME: "Newsletter welcome",
@@ -31,6 +32,7 @@ export function SettingsView({
   storeInfo: initialInfo,
   tax: initialTax,
   emailTemplates: initialTemplates,
+  chatWidget: initialChatWidget,
   staff,
   selfId,
   twoFactorEnabled,
@@ -40,6 +42,7 @@ export function SettingsView({
   storeInfo: StoreInfo;
   tax: TaxSettings;
   emailTemplates: EmailTemplates;
+  chatWidget: ChatWidgetSettings;
   staff: { id: string; email: string; name: string; role: "ADMIN" | "STAFF" }[];
   selfId: string;
   twoFactorEnabled: boolean;
@@ -50,6 +53,7 @@ export function SettingsView({
   const [info, setInfo] = useState(initialInfo);
   const [tax, setTax] = useState(initialTax);
   const [templates, setTemplates] = useState(initialTemplates);
+  const [chatWidget, setChatWidget] = useState(initialChatWidget);
   const [pending, startTransition] = useTransition();
   const [saved, setSaved] = useState(false);
 
@@ -195,6 +199,60 @@ export function SettingsView({
       {tab === "Roles" && <StaffManager users={staff} selfId={selfId} />}
 
       {tab === "Security" && <TwoFactorSetup enabled={twoFactorEnabled} />}
+
+      {tab === "Chat" && (
+        <Panel title="Chat bubble">
+          <label className="mb-3 flex items-center gap-1.5 text-sm">
+            <input
+              type="checkbox"
+              checked={chatWidget.enabled}
+              onChange={(e) => setChatWidget((c) => ({ ...c, enabled: e.target.checked }))}
+            />
+            Show the chat bubble on the storefront
+          </label>
+          <p className="mb-3 text-[12px] text-muted">
+            The bubble only shows a button for whichever of these is filled in — leave one blank to offer just the
+            other.
+          </p>
+          <div className="grid grid-cols-1 gap-2.5 desktop:grid-cols-2">
+            <div>
+              <label className="font-label mb-1 block text-[12px] tracking-[1px] text-muted">WhatsApp number</label>
+              <input
+                value={chatWidget.whatsappNumber}
+                onChange={(e) => setChatWidget((c) => ({ ...c, whatsappNumber: e.target.value }))}
+                placeholder="+880 1XXX-XXXXXX"
+                className="w-full border border-line-2 bg-ink px-2.5 py-1.5 text-sm"
+              />
+            </div>
+            <div>
+              <label className="font-label mb-1 block text-[12px] tracking-[1px] text-muted">
+                Messenger page username or ID
+              </label>
+              <input
+                value={chatWidget.messengerUsername}
+                onChange={(e) => setChatWidget((c) => ({ ...c, messengerUsername: e.target.value }))}
+                placeholder="invertedcrayon"
+                className="w-full border border-line-2 bg-ink px-2.5 py-1.5 text-sm"
+              />
+            </div>
+          </div>
+          <div className="mt-2.5">
+            <label className="font-label mb-1 block text-[12px] tracking-[1px] text-muted">
+              WhatsApp prefilled message
+            </label>
+            <input
+              value={chatWidget.whatsappMessage}
+              onChange={(e) => setChatWidget((c) => ({ ...c, whatsappMessage: e.target.value }))}
+              className="w-full border border-line-2 bg-ink px-2.5 py-1.5 text-sm"
+            />
+          </div>
+          <SaveBtn
+            pending={pending}
+            saved={saved}
+            onClick={() => startTransition(async () => { await saveChatWidgetSettings(chatWidget); flashSaved(); })}
+          />
+        </Panel>
+      )}
 
       {tab === "Store" && (
         <Panel title="Store info">

@@ -93,6 +93,10 @@ A product tagged **Preorder** (in its admin editor's Tags panel) requires checko
 
 Each product's admin editor (Organize panel) has a **Free delivery** field — None / Inside Dhaka / Nationwide — that renders as a tag on that product's PDP next to Add to cart. Purely informational (it doesn't currently zero out the shipping line at checkout, which is calculated per-order from the shipping zone).
 
+## Chat bubble
+
+A floating chat button (bottom-right, every storefront page) offers direct WhatsApp and/or Messenger links to the store's contact accounts. Off by default — turn it on and fill in a WhatsApp number and/or a Facebook Messenger page username/ID at `/admin/settings` → Chat. Only the option(s) with a value filled in are shown, so either channel works alone. The WhatsApp link opens `wa.me` with your configured number and an optional prefilled message; the Messenger link opens `m.me/<page>` — both in a new tab, no page credentials or SDKs involved.
+
 ## Two-factor authentication (admin/staff)
 
 `/admin/settings` → **Security** lets any admin or staff account turn on TOTP-based 2FA (compatible with Google Authenticator, Authy, 1Password, etc.) for their own login — scan the QR code (generated locally via the `qrcode` package; the secret is never sent to any third party) or enter the manual key, confirm with a 6-digit code, and save the one-time backup codes shown afterward. Once enabled, email/password login requires a second step: a live 6-digit code or an unused backup code (each usable once). Failed code attempts count against the same 5-attempt/15-minute lockout as password login. 2FA applies only to the email/password login path — Google/Facebook admin sign-in is unaffected, consistent with OAuth admin login never being a privilege-escalation route. The TOTP implementation (`src/lib/totp.ts`) is a from-scratch RFC 6238 implementation with no third-party dependency for the cryptographic core.
