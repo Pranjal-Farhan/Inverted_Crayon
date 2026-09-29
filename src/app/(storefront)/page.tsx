@@ -71,7 +71,7 @@ export default async function HomePage() {
             <br />
             <b className="font-scrawl font-normal">{hero.subBold}</b>
           </p>
-          <Button href="/new"><span className="hero-shop-label">Shop now</span></Button>
+          <Button href="/new" className="text-ink">Shop now</Button>
           <div className="mt-5.5 flex items-center gap-3 font-label text-lg tracking-[2px] text-muted-2">
             <span className="text-lime">01</span>
             <span className="h-0.5 w-10 bg-line-2" />
