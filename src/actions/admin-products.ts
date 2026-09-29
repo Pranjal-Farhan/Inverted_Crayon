@@ -2,7 +2,6 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
@@ -10,13 +9,13 @@ import { db } from "@/lib/db";
 import { Prisma } from "@/generated/prisma/client";
 import { getAdminSession } from "@/lib/session";
 import { sendMail } from "@/lib/mail";
+import { fileToDataUrl } from "@/lib/image-data";
 
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const MAX_FILES_PER_UPLOAD = 12;
 const MAX_IMAGES_PER_PRODUCT = 20;
 const MAX_TOTAL_UPLOAD_BYTES = 40 * 1024 * 1024;
-// SVG is deliberately excluded even though it's an "image/*" type: it can embed <script>, and
-// since it's served back from /uploads at its own URL, an uploaded SVG would be stored XSS.
+// SVG is deliberately excluded even though it's an "image/*" type because it can embed scripts.
 const REJECTED_IMAGE_TYPES = new Set(["image/svg+xml"]);
 
 async function requireAdmin() {
@@ -74,9 +73,9 @@ export async function saveProduct(input: ProductFormInput): Promise<ProductSaveR
 
   const existing = data.id
     ? await db.product.findUnique({
-        where: { id: data.id },
-        include: { tags: { include: { tag: true } } },
-      })
+      where: { id: data.id },
+      include: { tags: { include: { tag: true } } },
+    })
     : null;
   const wasPreorderTag = existing?.tags.find((t) => t.tag.type === "PREORDER");
   const previousShipDate = (wasPreorderTag?.meta as { shipDate?: string } | null | undefined)?.shipDate;
@@ -246,18 +245,10 @@ export async function uploadProductImages(productId: string, formData: FormData)
     return { ok: false, error: `A product can have at most ${MAX_IMAGES_PER_PRODUCT} images (${position} already uploaded).` };
   }
 
-  const dir = path.join(process.cwd(), "public", "uploads", "products", productId);
-  await fs.mkdir(dir, { recursive: true });
-
   const created: ProductImageRow[] = [];
   for (const file of imageFiles) {
-    const nameExt = file.name.includes(".") ? file.name.split(".").pop() : null;
-    const mimeExt = file.type.split("/")[1]?.split("+")[0];
-    const ext = (nameExt || mimeExt || "jpg").toLowerCase().replace(/[^a-z0-9]/g, "") || "jpg";
-    const filename = `${randomUUID()}.${ext}`;
-    await fs.writeFile(path.join(dir, filename), Buffer.from(await file.arrayBuffer()));
     const row = await db.productImage.create({
-      data: { productId, url: `/uploads/products/${productId}/${filename}`, alt: product.title, position },
+      data: { productId, url: await fileToDataUrl(file), alt: product.title, position },
     });
     created.push(row);
     position += 1;
@@ -275,7 +266,7 @@ export async function deleteProductImage(id: string): Promise<{ ok: true } | { o
 
   await db.productImage.delete({ where: { id } });
   if (image.url.startsWith("/uploads/")) {
-    await fs.unlink(path.join(process.cwd(), "public", image.url)).catch(() => {});
+    await fs.unlink(path.join(process.cwd(), "public", image.url)).catch(() => { });
   }
 
   revalidatePath(`/admin/products/${image.productId}`);

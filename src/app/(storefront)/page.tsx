@@ -40,14 +40,15 @@ export default async function HomePage() {
   const featuredId = (featuredBlock?.data as { productId?: string } | undefined)?.productId;
   const featuredProduct = featuredId
     ? await db.product.findUnique({
-        where: { id: featuredId },
-        include: { variants: true, images: true, tags: { include: { tag: true } }, category: true },
-      })
+      where: { id: featuredId },
+      include: { variants: true, images: true, tags: { include: { tag: true } }, category: true },
+    })
     : newProductsRaw[0];
 
   const newProducts = newProductsRaw.map((p) => deriveProductDisplay(p, campaigns, now));
   const featuredDisplay = featuredProduct ? deriveProductDisplay(featuredProduct, campaigns, now) : null;
   const featuredAccent = featuredProduct ? pickAccent(featuredProduct.id) : null;
+  const featuredImage = featuredProduct?.images.find((img) => img.url)?.url;
 
   return (
     <>
@@ -128,12 +129,16 @@ export default async function HomePage() {
           </div>
           <div className="grid grid-cols-1 gap-8 desktop:grid-cols-[1fr_1.2fr] items-center border border-line bg-panel p-6">
             <div className="aspect-square">
-              <PlaceholderFrame
-                accentColor={featuredAccent.color}
-                shape={featuredAccent.shape}
-                label={featuredProduct.title.toUpperCase()}
-                className="h-full w-full"
-              />
+              {featuredImage ? (
+                <img src={featuredImage} alt={featuredProduct.title} className="h-full w-full object-cover" />
+              ) : (
+                <PlaceholderFrame
+                  accentColor={featuredAccent.color}
+                  shape={featuredAccent.shape}
+                  label={featuredProduct.title.toUpperCase()}
+                  className="h-full w-full"
+                />
+              )}
             </div>
             <div className="min-w-0">
               <h3 className="font-impact text-3xl uppercase">{featuredProduct.title}</h3>

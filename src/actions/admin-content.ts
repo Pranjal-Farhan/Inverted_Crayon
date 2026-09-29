@@ -1,11 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { randomUUID } from "node:crypto";
-import fs from "node:fs/promises";
-import path from "node:path";
 import { db } from "@/lib/db";
 import { getAdminSession } from "@/lib/session";
+import { fileToDataUrl } from "@/lib/image-data";
 import type { HeroData } from "@/lib/hero-defaults";
 
 async function requireAdmin() {
@@ -35,15 +33,8 @@ const MAX_SITE_IMAGE_BYTES = 8 * 1024 * 1024;
 const MAX_HERO_IMAGES = 8;
 const REJECTED_IMAGE_TYPES = new Set(["image/svg+xml"]);
 
-async function saveSiteImage(file: File, subdir: "logo" | "hero"): Promise<string> {
-  const dir = path.join(process.cwd(), "public", "uploads", "site", subdir);
-  await fs.mkdir(dir, { recursive: true });
-  const nameExt = file.name.includes(".") ? file.name.split(".").pop() : null;
-  const mimeExt = file.type.split("/")[1]?.split("+")[0];
-  const ext = (nameExt || mimeExt || "jpg").toLowerCase().replace(/[^a-z0-9]/g, "") || "jpg";
-  const filename = `${randomUUID()}.${ext}`;
-  await fs.writeFile(path.join(dir, filename), Buffer.from(await file.arrayBuffer()));
-  return `/uploads/site/${subdir}/${filename}`;
+async function saveSiteImage(file: File): Promise<string> {
+  return fileToDataUrl(file);
 }
 
 export type UploadSiteImageResult = { ok: true; url: string } | { ok: false; error: string };
@@ -56,7 +47,7 @@ export async function uploadLogoImage(formData: FormData): Promise<UploadSiteIma
   if (!file.type.startsWith("image/") || REJECTED_IMAGE_TYPES.has(file.type)) {
     return { ok: false, error: "Only JPG, PNG, WEBP, GIF or AVIF images are accepted." };
   }
-  const url = await saveSiteImage(file, "logo");
+  const url = await saveSiteImage(file);
   revalidatePath("/");
   revalidatePath("/admin/content");
   return { ok: true, url };
@@ -72,7 +63,7 @@ export async function uploadHeroImages(formData: FormData): Promise<{ ok: true; 
   const imageFiles = files.filter((f) => f.type.startsWith("image/") && !REJECTED_IMAGE_TYPES.has(f.type));
   if (imageFiles.length === 0) return { ok: false, error: "Only JPG, PNG, WEBP, GIF or AVIF images are accepted." };
 
-  const urls = await Promise.all(imageFiles.map((f) => saveSiteImage(f, "hero")));
+  const urls = await Promise.all(imageFiles.map((f) => saveSiteImage(f)));
   revalidatePath("/");
   revalidatePath("/admin/content");
   return { ok: true, urls };
