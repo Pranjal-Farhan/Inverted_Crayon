@@ -63,7 +63,7 @@ export function ProductGallery({
           const accent = pickAccent(img.id);
           return img.url ? (
             <>
-              <Image src={img.url} alt={img.alt ?? ""} fill sizes="(min-width: 1024px) 50vw, 100vw" className="object-cover" />
+              <Image src={img.url} alt={img.alt ?? ""} fill sizes="(min-width: 1024px) 50vw, 100vw" className="object-contain" />
               {soldOut && (
                 <div className="absolute inset-0 z-[5] grid place-items-center bg-[rgba(8,8,9,.55)]">
                   <span className="font-impact text-[22px] tracking-[2px] text-paper">SOLD OUT</span>
