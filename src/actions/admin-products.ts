@@ -26,9 +26,9 @@ async function requireAdmin() {
 
 const variantSchema = z.object({
   id: z.string().optional(),
-  sku: z.string().min(1),
-  size: z.string().min(1),
-  color: z.string().min(1),
+  sku: z.string().trim().min(1, "SKU is required."),
+  size: z.string().trim().min(1, "Size is required."),
+  color: z.string().trim().min(1, "Color is required."),
   colorHex: z.string().optional(),
   stockQty: z.number().int().min(0),
   lowStockThreshold: z.number().int().min(0).default(5),
@@ -38,9 +38,9 @@ const variantSchema = z.object({
 
 const productSchema = z.object({
   id: z.string().optional(),
-  title: z.string().min(2),
-  slug: z.string().min(2),
-  description: z.string().min(1),
+  title: z.string().trim().min(2, "Title must be at least 2 characters."),
+  slug: z.string().trim().min(2, "Slug must be at least 2 characters."),
+  description: z.string().trim().min(1, "Description is required."),
   gender: z.enum(["MEN", "WOMEN", "UNISEX"]),
   categoryId: z.string().min(1),
   basePrice: z.number().positive(),
@@ -60,11 +60,25 @@ const productSchema = z.object({
 export type ProductFormInput = z.infer<typeof productSchema>;
 export type ProductSaveResult = { ok: true; id: string } | { ok: false; error: string };
 
+function formatProductValidationError(issues: z.ZodIssue[]) {
+  return issues
+    .map((issue) => {
+      const [field, index] = issue.path;
+      if (field === "variants" && typeof index === "number") {
+        const variantField = issue.path[2];
+        const label = typeof variantField === "string" ? variantField.toUpperCase() : "VALUE";
+        return `Variant ${index + 1} ${label}: ${issue.message}`;
+      }
+      return `${typeof field === "string" ? field : "Product"}: ${issue.message}`;
+    })
+    .join(" ");
+}
+
 export async function saveProduct(input: ProductFormInput): Promise<ProductSaveResult> {
   await requireAdmin();
   const parsed = productSchema.safeParse(input);
   if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input." };
+    return { ok: false, error: formatProductValidationError(parsed.error.issues) };
   }
   const data = parsed.data;
 
