@@ -153,6 +153,11 @@ button {
 .btn-primary:active {
   transform: rotate(-1deg) translateY(0);
 }
+.hero-shop-label {
+  color: #fff;
+  -webkit-text-stroke: 1px #000;
+  paint-order: stroke fill;
+}
 
 .scrawl-underline {
   position: relative;

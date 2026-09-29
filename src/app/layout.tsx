@@ -23,7 +23,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       lang="en"
       className={`${anton.variable} ${marker.variable} ${bebas.variable} ${archivo.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col bg-ink text-paper">
+      <body className="min-h-full bg-ink text-paper">
         <ToastProvider>
           <CartProvider>{children}</CartProvider>
         </ToastProvider>
