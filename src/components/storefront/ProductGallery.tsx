@@ -47,7 +47,7 @@ export function ProductGallery({
       </div>
 
       <div
-        className="relative aspect-[1/1.14] touch-pan-y select-none"
+        className="relative aspect-[1/1.14] overflow-hidden touch-pan-y select-none"
         onTouchStart={(e) => {
           touchStartX.current = e.touches[0].clientX;
         }}
@@ -63,7 +63,7 @@ export function ProductGallery({
           const accent = pickAccent(img.id);
           return img.url ? (
             <>
-              <Image src={img.url} alt={img.alt ?? ""} fill sizes="(min-width: 1024px) 50vw, 100vw" className="object-contain" />
+              <Image src={img.url} alt={img.alt ?? ""} fill sizes="(min-width: 1024px) 50vw, 100vw" className="scale-110 object-contain" />
               {soldOut && (
                 <div className="absolute inset-0 z-[5] grid place-items-center bg-[rgba(8,8,9,.55)]">
                   <span className="font-impact text-[22px] tracking-[2px] text-paper">SOLD OUT</span>
