@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { db } from "@/lib/db";
 import { deriveProductDisplay } from "@/lib/product-view";
 import { PlaceholderFrame } from "@/components/ui/PlaceholderFrame";
@@ -128,9 +129,15 @@ export default async function HomePage() {
             <CrayonScribble id="featured-h" color="var(--color-ic-yellow)" className="h-6 w-10 rotate-2 opacity-80" />
           </div>
           <div className="grid grid-cols-1 gap-8 desktop:grid-cols-[1fr_1.2fr] items-center border border-line bg-panel p-6">
-            <div className="aspect-square">
+            <div className="relative aspect-square">
               {featuredImage ? (
-                <img src={featuredImage} alt={featuredProduct.title} className="h-full w-full object-cover" />
+                <Image
+                  src={featuredImage}
+                  alt={featuredProduct.title}
+                  fill
+                  sizes="(min-width: 1024px) 45vw, 100vw"
+                  className="object-cover"
+                />
               ) : (
                 <PlaceholderFrame
                   accentColor={featuredAccent.color}

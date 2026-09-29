@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useState } from "react";
 import { Monogram } from "@/components/brand/Monogram";
 import { RainbowWord } from "@/components/brand/RainbowWord";
@@ -38,7 +39,7 @@ export function Header({
         <div className="wrap flex h-[66px] items-center gap-6">
           <Link href="/" className="flex shrink-0 items-center gap-2.5 transition-opacity hover:opacity-80">
             {logoImageUrl ? (
-              <img src={logoImageUrl} alt={brandName} className="h-[34px] w-auto object-contain" />
+              <Image src={logoImageUrl} alt={brandName} width={200} height={34} className="h-[34px] w-auto object-contain" />
             ) : (
               <>
                 <Monogram className="h-[26px] w-[30px]" />
@@ -127,15 +128,13 @@ export function Header({
 
       {/* mobile drawer */}
       <div
-        className={`fixed inset-0 z-[220] bg-black/60 desktop:hidden transition-opacity ${
-          mobileOpen ? "opacity-100" : "pointer-events-none opacity-0"
-        }`}
+        className={`fixed inset-0 z-[220] bg-black/60 desktop:hidden transition-opacity ${mobileOpen ? "opacity-100" : "pointer-events-none opacity-0"
+          }`}
         onClick={() => setMobileOpen(false)}
       />
       <aside
-        className={`fixed left-0 top-0 z-[225] h-full w-[85vw] max-w-[360px] overflow-y-auto bg-panel transition-transform desktop:hidden ${
-          mobileOpen ? "translate-x-0" : "-translate-x-full"
-        }`}
+        className={`fixed left-0 top-0 z-[225] h-full w-[85vw] max-w-[360px] overflow-y-auto bg-panel transition-transform desktop:hidden ${mobileOpen ? "translate-x-0" : "-translate-x-full"
+          }`}
       >
         <div className="flex items-center justify-between border-b border-line px-5 py-4">
           <Monogram className="h-[22px] w-[26px]" />

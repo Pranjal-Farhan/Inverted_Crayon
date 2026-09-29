@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useEffect, useRef, useState, type PointerEvent } from "react";
 import { PlaceholderFrame } from "@/components/ui/PlaceholderFrame";
 import { TagPill } from "@/components/ui/TagPill";
@@ -82,14 +83,15 @@ export function ProductCard({ product }: { product: ProductDisplay }) {
       >
         {primaryImage ? (
           <>
-            <img
+            <Image
               src={primaryImage}
               alt={product.title}
-              className={`absolute inset-0 h-full w-full object-cover transition duration-300 ease-out ${
-                !product.soldOut
+              fill
+              sizes="(min-width: 1024px) 25vw, 50vw"
+              className={`absolute inset-0 h-full w-full object-cover transition duration-300 ease-out ${!product.soldOut
                   ? "group-hover:scale-[1.05] group-hover:outline group-hover:outline-2 group-hover:outline-offset-[-2px] group-hover:outline-lime"
                   : ""
-              }`}
+                }`}
             />
             {product.soldOut && (
               <div className="absolute inset-0 z-[5] grid place-items-center bg-[rgba(8,8,9,.55)]">
@@ -106,11 +108,10 @@ export function ProductCard({ product }: { product: ProductDisplay }) {
             label={product.title.toUpperCase()}
             soldOut={product.soldOut}
             soldOutLabel={soldOutButPreorderable ? "PREORDER" : "SOLD OUT"}
-            className={`absolute inset-0 h-full w-full transition duration-300 ease-out ${
-              !product.soldOut
+            className={`absolute inset-0 h-full w-full transition duration-300 ease-out ${!product.soldOut
                 ? "group-hover:scale-[1.05] group-hover:outline group-hover:outline-2 group-hover:outline-offset-[-2px] group-hover:outline-lime"
                 : ""
-            }`}
+              }`}
           />
         )}
         {primaryTag && (

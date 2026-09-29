@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useState } from "react";
 
 export function HeroCarousel({ images }: { images: string[] }) {
@@ -14,13 +15,14 @@ export function HeroCarousel({ images }: { images: string[] }) {
   return (
     <div className="relative h-full w-full overflow-hidden">
       {images.map((url, i) => (
-        <img
+        <Image
           key={url}
           src={url}
           alt=""
-          className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-700 ease-out ${
-            i === active ? "opacity-100" : "opacity-0"
-          }`}
+          fill
+          sizes="100vw"
+          className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-700 ease-out ${i === active ? "opacity-100" : "opacity-0"
+            }`}
         />
       ))}
       {images.length > 1 && (

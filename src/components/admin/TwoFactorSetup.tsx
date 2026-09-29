@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useActionState, useState } from "react";
 import { initiateTwoFactorSetup, confirmTwoFactorSetup, disableTwoFactor } from "@/actions/admin-2fa";
 import { Panel } from "@/components/admin/Panel";
@@ -93,8 +94,7 @@ export function TwoFactorSetup({ enabled: initialEnabled }: { enabled: boolean }
           with the 6-digit code it shows.
         </p>
         <div className="mb-3 flex flex-wrap items-start gap-4">
-          {/* eslint-disable-next-line @next/next/no-img-element -- runtime-generated data URI, not an optimizable asset */}
-          <img src={setupData.qrDataUrl} alt="2FA setup QR code" width={180} height={180} className="border border-line-2" />
+          <Image src={setupData.qrDataUrl} alt="2FA setup QR code" width={180} height={180} unoptimized className="border border-line-2" />
           <div>
             <p className="font-label mb-1 text-[12px] tracking-[1px] text-muted">Manual entry key</p>
             <p className="mb-3 break-all font-mono text-sm">{setupData.manualKey}</p>

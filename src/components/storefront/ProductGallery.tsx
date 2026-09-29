@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useRef, useState } from "react";
 import { PlaceholderFrame } from "@/components/ui/PlaceholderFrame";
 import { pickAccent } from "@/lib/accent-color";
@@ -32,11 +33,11 @@ export function ProductGallery({
             <button
               key={img.id}
               onClick={() => setActive(i)}
-              className={`aspect-square border ${active === i ? "border-lime" : "border-line"}`}
+              className={`relative aspect-square border ${active === i ? "border-lime" : "border-line"}`}
               aria-label={`View image ${i + 1}`}
             >
               {img.url ? (
-                <img src={img.url} alt={img.alt ?? ""} className="h-full w-full object-cover" />
+                <Image src={img.url} alt={img.alt ?? ""} fill sizes="70px" className="object-cover" />
               ) : (
                 <PlaceholderFrame accentColor={img.accentColor ?? accent.color} shape={accent.shape} stamp={false} className="h-full w-full" />
               )}
@@ -62,7 +63,7 @@ export function ProductGallery({
           const accent = pickAccent(img.id);
           return img.url ? (
             <>
-              <img src={img.url} alt={img.alt ?? ""} className="h-full w-full object-cover" />
+              <Image src={img.url} alt={img.alt ?? ""} fill sizes="(min-width: 1024px) 50vw, 100vw" className="object-cover" />
               {soldOut && (
                 <div className="absolute inset-0 z-[5] grid place-items-center bg-[rgba(8,8,9,.55)]">
                   <span className="font-impact text-[22px] tracking-[2px] text-paper">SOLD OUT</span>

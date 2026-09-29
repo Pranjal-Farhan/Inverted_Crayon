@@ -1,3 +1,4 @@
+import Image from "next/image";
 import { Monogram } from "@/components/brand/Monogram";
 import { NewsletterForm } from "@/components/layout/NewsletterForm";
 import { ScribbleLink } from "@/components/ui/ScribbleLink";
@@ -98,7 +99,7 @@ export function Footer({
           />
           <div className="flex items-center gap-3.5">
             {logoImageUrl ? (
-              <img src={logoImageUrl} alt={brandName} className="h-9 w-auto object-contain" />
+              <Image src={logoImageUrl} alt={brandName} width={200} height={36} className="h-9 w-auto object-contain" />
             ) : (
               <Monogram className="h-8 w-9" />
             )}

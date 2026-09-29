@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useRef, useState, useTransition } from "react";
 import { saveHomeHero, saveFeaturedDrop, uploadLogoImage, uploadHeroImages } from "@/actions/admin-content";
 import type { HeroData } from "@/lib/hero-defaults";
@@ -78,7 +79,7 @@ export function ContentCmsView({
           <label className="font-label mb-1 block text-[12px] tracking-[1px] text-muted">Logo image</label>
           <div className="flex items-center gap-3">
             {data.logoImageUrl ? (
-              <img src={data.logoImageUrl} alt="Logo" className="h-12 w-12 border border-line-2 object-contain bg-panel-2" />
+              <Image src={data.logoImageUrl} alt="Logo" width={48} height={48} className="h-12 w-12 border border-line-2 object-contain bg-panel-2" />
             ) : (
               <div className="grid h-12 w-12 place-items-center border border-dashed border-line-2 text-[10px] text-muted-2">
                 default
@@ -171,7 +172,7 @@ export function ContentCmsView({
           <div className="mb-2 flex flex-wrap gap-2">
             {data.heroImages.map((url) => (
               <div key={url} className="group relative h-16 w-16 overflow-hidden border border-line">
-                <img src={url} alt="" className="h-full w-full object-cover" />
+                <Image src={url} alt="" fill sizes="64px" className="object-cover" />
                 <button
                   type="button"
                   onClick={() => removeHeroImage(url)}

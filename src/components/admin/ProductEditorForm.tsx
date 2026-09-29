@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useRef, useState, useTransition } from "react";
 import {
@@ -65,17 +66,17 @@ export function ProductEditorForm({
     initial?.variants.length
       ? initial.variants
       : [
-          {
-            sku: "",
-            size: "M",
-            color: "Black",
-            colorHex: "#0c0c0d",
-            stockQty: 0,
-            lowStockThreshold: 5,
-            priceOverride: null,
-            preorderAdvanceAmount: null,
-          },
-        ],
+        {
+          sku: "",
+          size: "M",
+          color: "Black",
+          colorHex: "#0c0c0d",
+          stockQty: 0,
+          lowStockThreshold: 5,
+          priceOverride: null,
+          preorderAdvanceAmount: null,
+        },
+      ],
   );
 
   function updateVariant(i: number, patch: Partial<VariantRow>) {
@@ -194,9 +195,8 @@ export function ProductEditorForm({
               handleFiles(e.dataTransfer.files);
             }}
             onClick={() => fileInputRef.current?.click()}
-            className={`cursor-pointer border border-dashed p-4 text-center text-[13px] transition ${
-              dragActive ? "border-lime text-lime" : "border-line-2 text-muted-2"
-            }`}
+            className={`cursor-pointer border border-dashed p-4 text-center text-[13px] transition ${dragActive ? "border-lime text-lime" : "border-line-2 text-muted-2"
+              }`}
           >
             <input
               ref={fileInputRef}
@@ -218,7 +218,7 @@ export function ProductEditorForm({
             <div className="mt-3 grid grid-cols-4 gap-2">
               {images.map((img) => (
                 <div key={img.id} className="group relative aspect-square overflow-hidden border border-line">
-                  <img src={img.url} alt={img.alt ?? ""} className="h-full w-full object-cover" />
+                  <Image src={img.url} alt={img.alt ?? ""} fill sizes="25vw" className="object-cover" />
                   <button
                     type="button"
                     onClick={() => removeImage(img.id)}
@@ -231,7 +231,7 @@ export function ProductEditorForm({
               ))}
               {staged.map((s, i) => (
                 <div key={s.previewUrl} className="group relative aspect-square overflow-hidden border border-dashed border-yellow">
-                  <img src={s.previewUrl} alt="" className="h-full w-full object-cover" />
+                  <Image src={s.previewUrl} alt="" fill unoptimized sizes="25vw" className="object-cover" />
                   <button
                     type="button"
                     onClick={() => removeStaged(i)}
@@ -257,78 +257,78 @@ export function ProductEditorForm({
           </p>
           <div className="overflow-x-auto">
             <table className="w-full text-[13px]">
-            <thead>
-              <tr className="text-left text-muted">
-                {["SKU", "Size", "Color", "Hex", "Stock", "Low@", "Price ৳", "Preorder ৳", ""].map((h) => (
-                  <th key={h} className="font-label pb-1.5">
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {variants.map((v, i) => (
-                <tr key={i}>
-                  <td className="pr-1.5 py-1">
-                    <input value={v.sku} onChange={(e) => updateVariant(i, { sku: e.target.value })} className={cellClass} />
-                  </td>
-                  <td className="pr-1.5 py-1">
-                    <input value={v.size} onChange={(e) => updateVariant(i, { size: e.target.value })} className={`${cellClass} w-14`} />
-                  </td>
-                  <td className="pr-1.5 py-1">
-                    <input value={v.color} onChange={(e) => updateVariant(i, { color: e.target.value })} className={cellClass} />
-                  </td>
-                  <td className="pr-1.5 py-1">
-                    <input value={v.colorHex} onChange={(e) => updateVariant(i, { colorHex: e.target.value })} className={`${cellClass} w-20`} />
-                  </td>
-                  <td className="pr-1.5 py-1">
-                    <input
-                      type="number"
-                      value={v.stockQty}
-                      onChange={(e) => updateVariant(i, { stockQty: Number(e.target.value) })}
-                      disabled={Boolean(v.id)}
-                      title={v.id ? "Edit stock from the Inventory page — this field only sets the starting count for a new variant." : undefined}
-                      className={`${cellClass} w-16 ${v.id ? "cursor-not-allowed opacity-50" : ""}`}
-                    />
-                  </td>
-                  <td className="pr-1.5 py-1">
-                    <input
-                      type="number"
-                      value={v.lowStockThreshold}
-                      onChange={(e) => updateVariant(i, { lowStockThreshold: Number(e.target.value) })}
-                      className={`${cellClass} w-14`}
-                    />
-                  </td>
-                  <td className="pr-1.5 py-1">
-                    <input
-                      type="number"
-                      value={v.priceOverride ?? ""}
-                      placeholder={String(basePrice)}
-                      onChange={(e) => updateVariant(i, { priceOverride: e.target.value ? Number(e.target.value) : null })}
-                      className={`${cellClass} w-20`}
-                    />
-                  </td>
-                  <td className="pr-1.5 py-1">
-                    <input
-                      type="number"
-                      min={0}
-                      value={v.preorderAdvanceAmount ?? ""}
-                      placeholder="off"
-                      title="Advance due online once this size sells out — blank disables preorder for it, 0 means free to reserve."
-                      onChange={(e) =>
-                        updateVariant(i, { preorderAdvanceAmount: e.target.value ? Number(e.target.value) : null })
-                      }
-                      className={`${cellClass} w-20 ${v.preorderAdvanceAmount != null ? "border-yellow" : ""}`}
-                    />
-                  </td>
-                  <td className="py-1">
-                    <button onClick={() => removeVariant(i)} className="text-muted hover:text-error">
-                      ✕
-                    </button>
-                  </td>
+              <thead>
+                <tr className="text-left text-muted">
+                  {["SKU", "Size", "Color", "Hex", "Stock", "Low@", "Price ৳", "Preorder ৳", ""].map((h) => (
+                    <th key={h} className="font-label pb-1.5">
+                      {h}
+                    </th>
+                  ))}
                 </tr>
-              ))}
-            </tbody>
+              </thead>
+              <tbody>
+                {variants.map((v, i) => (
+                  <tr key={i}>
+                    <td className="pr-1.5 py-1">
+                      <input value={v.sku} onChange={(e) => updateVariant(i, { sku: e.target.value })} className={cellClass} />
+                    </td>
+                    <td className="pr-1.5 py-1">
+                      <input value={v.size} onChange={(e) => updateVariant(i, { size: e.target.value })} className={`${cellClass} w-14`} />
+                    </td>
+                    <td className="pr-1.5 py-1">
+                      <input value={v.color} onChange={(e) => updateVariant(i, { color: e.target.value })} className={cellClass} />
+                    </td>
+                    <td className="pr-1.5 py-1">
+                      <input value={v.colorHex} onChange={(e) => updateVariant(i, { colorHex: e.target.value })} className={`${cellClass} w-20`} />
+                    </td>
+                    <td className="pr-1.5 py-1">
+                      <input
+                        type="number"
+                        value={v.stockQty}
+                        onChange={(e) => updateVariant(i, { stockQty: Number(e.target.value) })}
+                        disabled={Boolean(v.id)}
+                        title={v.id ? "Edit stock from the Inventory page — this field only sets the starting count for a new variant." : undefined}
+                        className={`${cellClass} w-16 ${v.id ? "cursor-not-allowed opacity-50" : ""}`}
+                      />
+                    </td>
+                    <td className="pr-1.5 py-1">
+                      <input
+                        type="number"
+                        value={v.lowStockThreshold}
+                        onChange={(e) => updateVariant(i, { lowStockThreshold: Number(e.target.value) })}
+                        className={`${cellClass} w-14`}
+                      />
+                    </td>
+                    <td className="pr-1.5 py-1">
+                      <input
+                        type="number"
+                        value={v.priceOverride ?? ""}
+                        placeholder={String(basePrice)}
+                        onChange={(e) => updateVariant(i, { priceOverride: e.target.value ? Number(e.target.value) : null })}
+                        className={`${cellClass} w-20`}
+                      />
+                    </td>
+                    <td className="pr-1.5 py-1">
+                      <input
+                        type="number"
+                        min={0}
+                        value={v.preorderAdvanceAmount ?? ""}
+                        placeholder="off"
+                        title="Advance due online once this size sells out — blank disables preorder for it, 0 means free to reserve."
+                        onChange={(e) =>
+                          updateVariant(i, { preorderAdvanceAmount: e.target.value ? Number(e.target.value) : null })
+                        }
+                        className={`${cellClass} w-20 ${v.preorderAdvanceAmount != null ? "border-yellow" : ""}`}
+                      />
+                    </td>
+                    <td className="py-1">
+                      <button onClick={() => removeVariant(i)} className="text-muted hover:text-error">
+                        ✕
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
             </table>
           </div>
           <button onClick={addVariant} className="mt-2.5 border border-line-2 px-3 py-1.5 text-[13px] hover:border-lime">
