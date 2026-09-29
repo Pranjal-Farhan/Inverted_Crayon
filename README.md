@@ -13,6 +13,7 @@ Streetwear storefront + admin, built from the [Build Specification v1.0](.) — 
 - **Payments**: bKash and SSLCommerz (cards/mobile banking) go live the moment you add real merchant credentials (see below); without them, checkout falls back to instantly marking the order paid so local dev needs no external accounts. COD is always available for non-preorder orders. Preorders require a 20–100% online advance via bKash/card, with the rest collected as COD at delivery.
 - **Emails**: Every "send" always writes to an `EmailLog` outbox (viewable at `/admin/emails`); add a Resend API key (see below) and it also actually sends. See `src/lib/mail.ts`.
 - **Order-confirmation SMS**: same outbox pattern as email — every confirmed order writes to an `SmsLog` outbox (viewable at `/admin/sms`); add SSL Wireless credentials (see below) and it also actually sends. See `src/lib/sms.ts`.
+- **Image hosting**: Product photos, the CMS logo, and hero images upload to ImgBB when `IMGBB_API_KEY` is set. The database stores the returned CDN URL instead of Base64 or local files.
 
 ## Getting started
 
@@ -50,6 +51,7 @@ Everything below is fully wired in code and falls back to a safe mock when its e
 | Card / mobile banking | `SSLCOMMERZ_STORE_ID`, `SSLCOMMERZ_STORE_PASSWORD`, optional `SSLCOMMERZ_SANDBOX=false` for production | SSLCommerz merchant account. Sandbox credentials work against the sandbox host by default |
 | Real email delivery | `RESEND_API_KEY`, `EMAIL_FROM` | resend.com — `EMAIL_FROM` must be a verified sender/domain on that account |
 | Real SMS delivery | `SSLWIRELESS_SMS_API_TOKEN`, `SSLWIRELESS_SMS_SID`, optional `SSLWIRELESS_SMS_BASE_URL` | SSL Wireless SMS Plus — `SSLWIRELESS_SMS_SID` is your approved Sender ID |
+| Image hosting | `IMGBB_API_KEY` | imgbb.com — create an API key in your account settings |
 | Payment-gateway callback URLs | `SITE_URL` (e.g. `https://yourstore.com`) | Recommended in production so callback URLs are stable and correct behind any proxy; without it the app derives the origin from request headers |
 
 Google/Facebook sign-in for **admin and staff accounts** only ever logs in to an account that already exists (matched by email) — it never self-registers a new admin, so there's no privilege-escalation path from someone else's OAuth login. Customer sign-in, by contrast, creates a new customer account on first login, same as registering with a password.
@@ -62,7 +64,7 @@ Google/Facebook sign-in for **admin and staff accounts** only ever logs in to an
 - **Admin/customer login lock out after 5 failed attempts** for 15 minutes per account (`src/lib/login-lockout.ts`) — there's no rate limiting in front of the app otherwise (no WAF/CDN assumed), so this is the only brute-force guard.
 - **Security headers** (`X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, a permissive-by-default `Permissions-Policy`, and HSTS when served over HTTPS) are set for every response in `src/proxy.ts`. No CSP is set — add one if you need it, testing carefully since a wrong CSP silently breaks pages rather than erroring.
 - **Checkout is safe under concurrent load**: stock decrements and discount-code redemptions use guarded atomic updates inside the order transaction (not read-then-write), so two simultaneous checkouts for the last unit of stock (or the last use of a limited coupon) can't both succeed — one gets a clear "not enough stock" / "code fully redeemed" error instead of silently overselling.
-- **Product photo uploads are local disk** (`public/uploads/products/<id>/`, up to 20 images per product), fine for a persistent VPS/container with a stable filesystem, but they will not survive a serverless or ephemeral-disk deploy (e.g. plain Vercel) or work correctly if you run multiple app instances behind a load balancer without a shared volume — swap in S3/Cloudinary-backed storage first if that's your target. The homepage's logo/hero-carousel uploads (`/admin/content`) work the same way, under `public/uploads/site/`.
+- **Product photo uploads use ImgBB** when `IMGBB_API_KEY` is configured (up to 20 images per product). The homepage logo and hero-carousel uploads under `/admin/content` use the same ImgBB integration. Existing Base64 or legacy local-file URLs remain readable, but new uploads are stored as CDN URLs.
 
 ## Project structure
 
