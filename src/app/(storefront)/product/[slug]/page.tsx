@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { cache } from "react";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { getProductForPDP } from "@/lib/get-product";
@@ -19,26 +20,28 @@ import { db } from "@/lib/db";
 
 type Props = { params: Promise<{ slug: string }> };
 
+const getProductData = cache(getProductForPDP);
+
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
-  const data = await getProductForPDP(slug);
+  const data = await getProductData(slug);
   if (!data) return {};
   return { title: data.product.seoTitle ?? data.product.title, description: data.product.seoDescription ?? undefined };
 }
 
 export default async function ProductPage({ params }: Props) {
   const { slug } = await params;
-  const data = await getProductForPDP(slug);
+  const data = await getProductData(slug);
   if (!data) notFound();
   const { product, display, related } = data;
 
   const session = await getCustomerSession();
   const wishlisted = session
     ? Boolean(
-        await db.wishlistItem.findUnique({
-          where: { customerId_productId: { customerId: session.customerId, productId: product.id } },
-        }),
-      )
+      await db.wishlistItem.findUnique({
+        where: { customerId_productId: { customerId: session.customerId, productId: product.id } },
+      }),
+    )
     : false;
 
   const accent = pickAccent(product.id);

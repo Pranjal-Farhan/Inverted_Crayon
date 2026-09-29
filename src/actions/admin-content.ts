@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { getAdminSession } from "@/lib/session";
-import { fileToDataUrl } from "@/lib/image-data";
+import { uploadToImgBb } from "@/lib/imgbb";
 import type { HeroData } from "@/lib/hero-defaults";
 
 async function requireAdmin() {
@@ -34,7 +34,7 @@ const MAX_HERO_IMAGES = 8;
 const REJECTED_IMAGE_TYPES = new Set(["image/svg+xml"]);
 
 async function saveSiteImage(file: File): Promise<string> {
-  return fileToDataUrl(file);
+  return uploadToImgBb(file);
 }
 
 export type UploadSiteImageResult = { ok: true; url: string } | { ok: false; error: string };
@@ -47,7 +47,12 @@ export async function uploadLogoImage(formData: FormData): Promise<UploadSiteIma
   if (!file.type.startsWith("image/") || REJECTED_IMAGE_TYPES.has(file.type)) {
     return { ok: false, error: "Only JPG, PNG, WEBP, GIF or AVIF images are accepted." };
   }
-  const url = await saveSiteImage(file);
+  let url: string;
+  try {
+    url = await saveSiteImage(file);
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "Image upload failed." };
+  }
   revalidatePath("/");
   revalidatePath("/admin/content");
   return { ok: true, url };
@@ -63,7 +68,12 @@ export async function uploadHeroImages(formData: FormData): Promise<{ ok: true; 
   const imageFiles = files.filter((f) => f.type.startsWith("image/") && !REJECTED_IMAGE_TYPES.has(f.type));
   if (imageFiles.length === 0) return { ok: false, error: "Only JPG, PNG, WEBP, GIF or AVIF images are accepted." };
 
-  const urls = await Promise.all(imageFiles.map((f) => saveSiteImage(f)));
+  let urls: string[];
+  try {
+    urls = await Promise.all(imageFiles.map((f) => saveSiteImage(f)));
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "Image upload failed." };
+  }
   revalidatePath("/");
   revalidatePath("/admin/content");
   return { ok: true, urls };

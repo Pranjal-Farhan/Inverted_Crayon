@@ -9,7 +9,7 @@ import { db } from "@/lib/db";
 import { Prisma } from "@/generated/prisma/client";
 import { getAdminSession } from "@/lib/session";
 import { sendMail } from "@/lib/mail";
-import { fileToDataUrl } from "@/lib/image-data";
+import { uploadToImgBb } from "@/lib/imgbb";
 
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const MAX_FILES_PER_UPLOAD = 12;
@@ -259,13 +259,23 @@ export async function uploadProductImages(productId: string, formData: FormData)
     return { ok: false, error: `A product can have at most ${MAX_IMAGES_PER_PRODUCT} images (${position} already uploaded).` };
   }
 
+  let uploadedUrls: string[];
+  try {
+    uploadedUrls = await Promise.all(imageFiles.map((file) => uploadToImgBb(file)));
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "Image upload failed." };
+  }
+
   const created: ProductImageRow[] = [];
-  for (const file of imageFiles) {
-    const row = await db.productImage.create({
-      data: { productId, url: await fileToDataUrl(file), alt: product.title, position },
-    });
-    created.push(row);
-    position += 1;
+  for (const [index, url] of uploadedUrls.entries()) {
+    try {
+      const row = await db.productImage.create({
+        data: { productId, url, alt: product.title, position: position + index },
+      });
+      created.push(row);
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : "Image upload failed." };
+    }
   }
 
   revalidatePath(`/admin/products/${productId}`);
