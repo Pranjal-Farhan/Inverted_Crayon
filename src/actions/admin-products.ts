@@ -218,6 +218,25 @@ export async function saveProduct(input: ProductFormInput): Promise<ProductSaveR
       });
 
       // variants: upsert provided, delete removed
+      //
+      // Every existing variant is parked on a temporary, per-variant-unique (size, color)
+      // first, before any real value is written. Without this, two existing rows that swap
+      // sizes (A: M→L, B: L→M — a perfectly valid *final* state, no duplicate anywhere) can
+      // still fail: Postgres checks @@unique([productId, size, color]) immediately after each
+      // UPDATE, not deferred to commit, so writing A's new size while B still holds the old one
+      // collides mid-transaction even though nothing is actually wrong once both rows have
+      // landed. `__tmp_<id>` is unique by construction (variant ids are unique and real
+      // size/color values never contain one), so this first pass can never collide with
+      // anything, vacating every slot before the real pass risks touching one that's still "in
+      // use" by a row that hasn't been updated yet.
+      for (const v of data.variants) {
+        if (!v.id) continue;
+        await tx.variant.update({
+          where: { id: v.id },
+          data: { size: `__tmp_${v.id}`, color: `__tmp_${v.id}` },
+        });
+      }
+
       const keepIds: string[] = [];
       for (const v of data.variants) {
         // Only new variants need their SKU verified (an existing one keeps whatever it
