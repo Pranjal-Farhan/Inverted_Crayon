@@ -121,6 +121,10 @@ The storefront header's Men/Women dropdowns, `/men/[category]` and `/women/[cate
 
 The old flat `Category`-shared-by-both-genders model and the separate `Collection`/"drops" feature have both been removed — categories are now the only taxonomy, and they're the one driving navigation, filtering, and sorting across the whole site.
 
+## Auto-generated slug and SKU
+
+Neither field is manually typed by the admin, though both are kept — slug is the product's actual `/product/<slug>` URL (can't be dropped without breaking every product link), SKU is what Inventory search and Finance's variant picker key off of (dropping it would lose that, so it's generated instead). The **Slug** field under Status & SEO auto-fills from the title as it's typed, until the admin edits the slug directly — from then on (and always, when editing an already-saved product) it stops auto-syncing, so renaming a product later never silently changes a URL that might already be shared or indexed. **SKU** isn't an input at all any more — the variant table shows it as plain text, generated once at that variant's first save (`<product-slug>-<size>-<color>`, with a random suffix only if that collides with another product's variant) and left alone on every save after that.
+
 ## Chat bubble
 
 A floating chat button (bottom-right, every storefront page) offers direct WhatsApp and/or Messenger links to the store's contact accounts. Off by default — turn it on and fill in a WhatsApp number and/or a Facebook Messenger page username/ID at `/admin/settings` → Chat. Only the option(s) with a value filled in are shown, so either channel works alone. The WhatsApp link opens `wa.me` with your configured number and an optional prefilled message; the Messenger link opens `m.me/<page>` — both in a new tab, no page credentials or SDKs involved.

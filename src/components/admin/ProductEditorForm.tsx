@@ -14,6 +14,7 @@ import {
 import { Panel } from "@/components/admin/Panel";
 import { VariantStockStepper } from "@/components/admin/VariantStockStepper";
 import { DEFAULT_SIZE_GUIDE_COLUMNS, type SizeGuideRow } from "@/lib/size-guide";
+import { slugify } from "@/lib/slugify";
 
 type StagedImage = { file: File; previewUrl: string };
 type Branch = "MEN" | "WOMEN" | "UNISEX";
@@ -52,6 +53,18 @@ export function ProductEditorForm({
 
   const [title, setTitle] = useState(initial?.title ?? "");
   const [slug, setSlug] = useState(initial?.slug ?? "");
+  // Auto-derived from the title while the admin hasn't touched it directly — once they do
+  // (or when editing an already-saved product, where the slug is its live URL), title edits
+  // stop silently rewriting it, so renaming a product never breaks an already-shared link.
+  const [slugTouched, setSlugTouched] = useState(Boolean(initial));
+  function handleTitleChange(next: string) {
+    setTitle(next);
+    if (!slugTouched) setSlug(slugify(next));
+  }
+  function handleSlugChange(next: string) {
+    setSlug(next);
+    setSlugTouched(true);
+  }
   const [description, setDescription] = useState(initial?.description ?? "");
   const initialCategory = initial ? categories.find((c) => c.id === initial.categoryId) : undefined;
   const [branch, setBranch] = useState<Branch>(initialCategory?.gender ?? "UNISEX");
@@ -222,7 +235,7 @@ export function ProductEditorForm({
       <div>
         <Panel title="Basics">
           <Field label="Title">
-            <input value={title} onChange={(e) => setTitle(e.target.value)} className={inputClass} />
+            <input value={title} onChange={(e) => handleTitleChange(e.target.value)} className={inputClass} />
           </Field>
           <Field label="Description">
             <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} className={inputClass} />
@@ -314,8 +327,8 @@ export function ProductEditorForm({
               <tbody>
                 {variants.map((v, i) => (
                   <tr key={i}>
-                    <td className="pr-1.5 py-1">
-                      <input value={v.sku} onChange={(e) => updateVariant(i, { sku: e.target.value })} className={cellClass} />
+                    <td className="pr-1.5 py-1 text-muted" title="Auto-generated on save — not editable.">
+                      {v.sku || "(auto)"}
                     </td>
                     <td className="pr-1.5 py-1">
                       <input value={v.size} onChange={(e) => updateVariant(i, { size: e.target.value })} className={`${cellClass} w-14`} />
@@ -533,7 +546,10 @@ export function ProductEditorForm({
             </select>
           </Field>
           <Field label="Slug">
-            <input value={slug} onChange={(e) => setSlug(e.target.value)} className={inputClass} />
+            <input value={slug} onChange={(e) => handleSlugChange(e.target.value)} className={inputClass} />
+            <p className="mt-1 text-[12px] text-muted-2">
+              {slugTouched ? "This product's URL — /product/" + (slug || "…") + "." : "Auto-filled from the title — edit to override."}
+            </p>
           </Field>
           {error && <p className="mb-2 text-[13px] text-error">{error}</p>}
           <button

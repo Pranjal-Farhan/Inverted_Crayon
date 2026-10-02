@@ -25,9 +25,25 @@ async function requireAdmin() {
   return session;
 }
 
+function skuPart(s: string, len: number, fallback: string): string {
+  return s.replace(/[^a-zA-Z0-9]/g, "").slice(0, len).toUpperCase() || fallback;
+}
+
+/** Auto-generated, same as the product slug — the admin never types a SKU. Built from the
+ * product/size/color for readability, with a random suffix appended only if that collides
+ * with an existing one (Variant.sku is globally unique, so two different products with the
+ * same slug prefix + size + color could otherwise clash). */
+async function generateUniqueSku(tx: Prisma.TransactionClient, productSlug: string, size: string, color: string) {
+  const base = `${skuPart(productSlug, 6, "SKU")}-${skuPart(size, 4, "OS")}-${skuPart(color, 3, "COL")}`;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const candidate = attempt === 0 ? base : `${base}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+    if (!(await tx.variant.findUnique({ where: { sku: candidate } }))) return candidate;
+  }
+  return `${base}-${Math.random().toString(36).slice(2, 10).toUpperCase()}`;
+}
+
 const variantSchema = z.object({
   id: z.string().optional(),
-  sku: z.string().trim().min(1, "SKU is required."),
   size: z.string().trim().min(1, "Size is required."),
   color: z.string().trim().min(1, "Color is required."),
   colorHex: z.string().optional(),
@@ -149,10 +165,14 @@ export async function saveProduct(input: ProductFormInput): Promise<ProductSaveR
       // variants: upsert provided, delete removed
       const keepIds: string[] = [];
       for (const v of data.variants) {
+        // Only new variants need a generated SKU (an existing one keeps whatever it already
+        // has) — skip the uniqueness-check query entirely for updates.
+        const newSku = v.id ? null : await generateUniqueSku(tx, data.slug, v.size, v.color);
         const record = await tx.variant.upsert({
           where: { id: v.id ?? "__new__" },
           update: {
-            sku: v.sku,
+            // sku deliberately omitted — auto-generated once at creation (below) and left
+            // alone after that, same reasoning as stockQty just below.
             size: v.size,
             color: v.color,
             colorHex: v.colorHex,
@@ -166,7 +186,7 @@ export async function saveProduct(input: ProductFormInput): Promise<ProductSaveR
           },
           create: {
             productId: productRecord.id,
-            sku: v.sku,
+            sku: newSku!,
             size: v.size,
             color: v.color,
             colorHex: v.colorHex,
