@@ -11,6 +11,7 @@ import { getAdminSession } from "@/lib/session";
 import { sendMail } from "@/lib/mail";
 import { uploadToImgBb } from "@/lib/imgbb";
 import { ensureMirrorCategories } from "@/actions/admin-categories";
+import { slugify } from "@/lib/slugify";
 
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const MAX_FILES_PER_UPLOAD = 12;
@@ -25,25 +26,68 @@ async function requireAdmin() {
   return session;
 }
 
-function skuPart(s: string, len: number, fallback: string): string {
-  return s.replace(/[^a-zA-Z0-9]/g, "").slice(0, len).toUpperCase() || fallback;
+function randomToken(len: number, upper: boolean): string {
+  const s = Math.random().toString(36).slice(2, 2 + len);
+  return upper ? s.toUpperCase() : s;
 }
 
-/** Auto-generated, same as the product slug — the admin never types a SKU. Built from the
- * product/size/color for readability, with a random suffix appended only if that collides
- * with an existing one (Variant.sku is globally unique, so two different products with the
- * same slug prefix + size + color could otherwise clash). */
-async function generateUniqueSku(tx: Prisma.TransactionClient, productSlug: string, size: string, color: string) {
-  const base = `${skuPart(productSlug, 6, "SKU")}-${skuPart(size, 4, "OS")}-${skuPart(color, 3, "COL")}`;
+/** The client already builds a title/size/color-derived SKU the instant a variant row is
+ * created (ProductEditorForm.tsx) — this just sanitizes it defensively and re-verifies it's
+ * actually unique against the database before it's ever written, appending a short random
+ * suffix (and retrying) only if that exact value is already taken by some other variant.
+ * Globally unique by schema, so even an admin reusing an identical title/size/color combo
+ * across two different products can't collide. */
+async function ensureUniqueSku(tx: Prisma.TransactionClient, candidate: string): Promise<string> {
+  const base = candidate.trim().replace(/[^a-zA-Z0-9-]/g, "").toUpperCase().slice(0, 40) || "SKU";
   for (let attempt = 0; attempt < 5; attempt++) {
-    const candidate = attempt === 0 ? base : `${base}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
-    if (!(await tx.variant.findUnique({ where: { sku: candidate } }))) return candidate;
+    const sku = attempt === 0 ? base : `${base}-${randomToken(4, true)}`;
+    if (!(await tx.variant.findUnique({ where: { sku } }))) return sku;
   }
-  return `${base}-${Math.random().toString(36).slice(2, 10).toUpperCase()}`;
+  return `${base}-${randomToken(8, true)}`;
+}
+
+/** Same idea as ensureUniqueSku, for Product.slug — re-slugifies the admin's intended slug
+ * (defensive: the Slug field is free text, so this guarantees a URL-safe result no matter what
+ * was typed into it) and appends a short random suffix only if that exact slug already belongs
+ * to a *different* product. excludeId lets an already-saved product keep its own slug as a
+ * non-collision against itself. */
+async function ensureUniqueSlug(tx: Prisma.TransactionClient, candidate: string, excludeId: string | undefined): Promise<string> {
+  const base = slugify(candidate) || "product";
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const slug = attempt === 0 ? base : `${base}-${randomToken(4, false)}`;
+    const existing = await tx.product.findUnique({ where: { slug }, select: { id: true } });
+    if (!existing || existing.id === excludeId) return slug;
+  }
+  return `${base}-${randomToken(8, false)}`;
+}
+
+/** ensureUniqueSlug/ensureUniqueSku check-then-write inside their own transaction, which closes
+ * the gap for a single save but not for two saves landing in the exact same instant — each
+ * transaction's uniqueness check runs under Postgres's normal read-committed isolation, so it
+ * can't see the other's still-uncommitted insert, and the slower one to commit hits a real
+ * unique-constraint violation at that point. Retrying the whole transaction here (rather than
+ * surfacing that as a failure) means the retry's checks now see the first transaction's
+ * already-committed row and simply pick a different value — the admin never sees this happen. */
+async function runWithUniqueRetry<T>(fn: () => Promise<T>, attempts = 3): Promise<T> {
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fn();
+    } catch (e) {
+      const isRace = e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002";
+      if (!isRace || i === attempts - 1) throw e;
+    }
+  }
+  // Unreachable — the loop above always either returns or throws on its last attempt.
+  throw new Error("runWithUniqueRetry: exhausted attempts");
 }
 
 const variantSchema = z.object({
   id: z.string().optional(),
+  // Only meaningful for a brand-new variant (no id yet) — the client generates an instant
+  // title/size/color-derived preview the moment the row is created (ProductEditorForm.tsx);
+  // the server re-verifies/disambiguates it (ensureUniqueSku) rather than trusting it outright.
+  // Ignored entirely for an existing variant, whose real sku is left untouched on update.
+  sku: z.string().trim().min(1, "SKU is required."),
   size: z.string().trim().min(1, "Size is required."),
   color: z.string().trim().min(1, "Color is required."),
   colorHex: z.string().optional(),
@@ -104,34 +148,45 @@ export async function saveProduct(input: ProductFormInput): Promise<ProductSaveR
   }
   const data = parsed.data;
 
-  const category = await db.category.findUnique({ where: { id: data.categoryId } });
-  if (!category) return { ok: false, error: "Select a valid category." };
-  // Self-healing: a Unisex category created before its Men/Women mirrors existed (or one
-  // that predates this feature) gets them backfilled here too, not just at creation time.
-  if (category.gender === "UNISEX") await ensureMirrorCategories(category.name, category.slug);
-
-  const tags = await db.tag.findMany();
-  const tagByType = Object.fromEntries(tags.map((t) => [t.type, t]));
-
-  const existing = data.id
-    ? await db.product.findUnique({
-      where: { id: data.id },
-      include: { tags: { include: { tag: true } } },
-    })
-    : null;
-  const wasPreorderTag = existing?.tags.find((t) => t.tag.type === "PREORDER");
-  const previousShipDate = (wasPreorderTag?.meta as { shipDate?: string } | null | undefined)?.shipDate;
-  // Json? fields need the explicit JsonNull sentinel to clear them — plain `null` or `undefined`
-  // would leave a previously-saved size guide in place instead of removing it.
-  const sizeGuideValue = data.sizeGuide ?? Prisma.JsonNull;
-
+  // Everything from here down — including the lookups before the transaction — is inside this
+  // try block on purpose: any of them throwing uncaught (a transient DB hiccup, a race against
+  // another concurrent save) used to escape saveProduct entirely, which the client's own
+  // try/catch then surfaced as a silent no-op "Saving…" that just reset with no error message —
+  // this is what made the Save button feel like it randomly failed. Now every path here either
+  // returns a normal {ok:false, error} or really is an unexpected bug worth logging.
   try {
-    const product = await db.$transaction(async (tx) => {
+    const category = await db.category.findUnique({ where: { id: data.categoryId } });
+    if (!category) return { ok: false, error: "Select a valid category." };
+    // Self-healing: a Unisex category created before its Men/Women mirrors existed (or one
+    // that predates this feature) gets them backfilled here too, not just at creation time.
+    if (category.gender === "UNISEX") await ensureMirrorCategories(category.name, category.slug);
+
+    const tags = await db.tag.findMany();
+    const tagByType = Object.fromEntries(tags.map((t) => [t.type, t]));
+
+    const existing = data.id
+      ? await db.product.findUnique({
+        where: { id: data.id },
+        include: { tags: { include: { tag: true } } },
+      })
+      : null;
+    const wasPreorderTag = existing?.tags.find((t) => t.tag.type === "PREORDER");
+    const previousShipDate = (wasPreorderTag?.meta as { shipDate?: string } | null | undefined)?.shipDate;
+    // Json? fields need the explicit JsonNull sentinel to clear them — plain `null` or `undefined`
+    // would leave a previously-saved size guide in place instead of removing it.
+    const sizeGuideValue = data.sizeGuide ?? Prisma.JsonNull;
+
+    const product = await runWithUniqueRetry(() => db.$transaction(async (tx) => {
+      // Checked and disambiguated fresh on every save, not just once at creation — two
+      // different products titled the same thing, or a hand-edited slug that collides with
+      // someone else's, both get a short random suffix appended instead of failing the save.
+      const finalSlug = await ensureUniqueSlug(tx, data.slug, data.id);
+
       const productRecord = await tx.product.upsert({
         where: { id: data.id ?? "__new__" },
         update: {
           title: data.title,
-          slug: data.slug,
+          slug: finalSlug,
           description: data.description,
           gender: category.gender,
           categoryId: data.categoryId,
@@ -148,7 +203,7 @@ export async function saveProduct(input: ProductFormInput): Promise<ProductSaveR
         },
         create: {
           title: data.title,
-          slug: data.slug,
+          slug: finalSlug,
           description: data.description,
           gender: category.gender,
           categoryId: data.categoryId,
@@ -165,9 +220,9 @@ export async function saveProduct(input: ProductFormInput): Promise<ProductSaveR
       // variants: upsert provided, delete removed
       const keepIds: string[] = [];
       for (const v of data.variants) {
-        // Only new variants need a generated SKU (an existing one keeps whatever it already
-        // has) — skip the uniqueness-check query entirely for updates.
-        const newSku = v.id ? null : await generateUniqueSku(tx, data.slug, v.size, v.color);
+        // Only new variants need their SKU verified (an existing one keeps whatever it
+        // already has) — skip the uniqueness-check query entirely for updates.
+        const newSku = v.id ? null : await ensureUniqueSku(tx, v.sku);
         const record = await tx.variant.upsert({
           where: { id: v.id ?? "__new__" },
           update: {
@@ -186,7 +241,12 @@ export async function saveProduct(input: ProductFormInput): Promise<ProductSaveR
           },
           create: {
             productId: productRecord.id,
-            sku: newSku!,
+            // Prisma validates the shape of the whole upsert payload up front, including the
+            // branch that won't actually run — for an existing variant (v.id set, newSku left
+            // null above) this `create` object is dead code that never executes, but it still
+            // has to satisfy the schema's non-null sku, so it falls back to the variant's own
+            // already-real sku rather than literally writing null and failing validation.
+            sku: newSku ?? v.sku,
             size: v.size,
             color: v.color,
             colorHex: v.colorHex,
@@ -217,7 +277,7 @@ export async function saveProduct(input: ProductFormInput): Promise<ProductSaveR
       }
 
       return productRecord;
-    });
+    }));
 
     if (data.tagPreorder && data.preorderShipDate && data.preorderShipDate !== previousShipDate) {
       const affected = await db.orderItem.findMany({
@@ -243,10 +303,17 @@ export async function saveProduct(input: ProductFormInput): Promise<ProductSaveR
     revalidatePath(`/admin/products/${product.id}`);
     return { ok: true, id: product.id };
   } catch (e) {
-    if (e instanceof Error && e.message.includes("Unique constraint")) {
-      return { ok: false, error: "That slug or SKU is already in use." };
+    // ensureUniqueSlug/ensureUniqueSku already resolve the overwhelming majority of collisions
+    // before anything is written — this is the last-resort safety net for the sliver that can
+    // still race past them (two saves landing on the exact same retried value in the same
+    // instant), using Prisma's actual error code rather than sniffing the message text, which
+    // varies across drivers/versions and silently stopped matching once before.
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+      const target = Array.isArray(e.meta?.target) ? e.meta.target.join(", ") : String(e.meta?.target ?? "a field");
+      return { ok: false, error: `That ${target} is already in use — try saving again.` };
     }
-    return { ok: false, error: "Something went wrong saving this product." };
+    console.error("saveProduct failed:", e);
+    return { ok: false, error: "Something went wrong saving this product. Please try again." };
   }
 }
 

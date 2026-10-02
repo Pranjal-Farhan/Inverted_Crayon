@@ -3,8 +3,13 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/lib/db";
+import { Prisma } from "@/generated/prisma/client";
 import { getAdminSession } from "@/lib/session";
 import { slugify } from "@/lib/slugify";
+
+function isUniqueConstraintError(e: unknown): boolean {
+  return e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002";
+}
 
 async function requireAdmin() {
   const session = await getAdminSession();
@@ -38,9 +43,16 @@ export async function ensureMirrorCategories(name: string, slug: string) {
     const existing = await db.category.findFirst({ where: { gender, slug } });
     if (existing) continue;
     const maxPosition = await db.category.aggregate({ where: { gender }, _max: { position: true } });
-    await db.category.create({
-      data: { name, slug, gender, position: (maxPosition._max.position ?? -1) + 1 },
-    });
+    try {
+      await db.category.create({
+        data: { name, slug, gender, position: (maxPosition._max.position ?? -1) + 1 },
+      });
+    } catch (e) {
+      // Two saves racing to mirror the same category at once can both pass the check above —
+      // whichever loses the create to the unique (gender, slug) constraint just means the other
+      // one already finished the job, which is exactly what this function is trying to ensure.
+      if (!isUniqueConstraintError(e)) throw e;
+    }
   }
 }
 
@@ -66,9 +78,19 @@ export async function createCategory(input: z.infer<typeof createSchema>): Promi
   }
 
   const maxPosition = await db.category.aggregate({ where: { gender: data.gender }, _max: { position: true } });
-  await db.category.create({
-    data: { name: data.name.trim(), slug, gender: data.gender, position: (maxPosition._max.position ?? -1) + 1 },
-  });
+  try {
+    await db.category.create({
+      data: { name: data.name.trim(), slug, gender: data.gender, position: (maxPosition._max.position ?? -1) + 1 },
+    });
+  } catch (e) {
+    // Two submits of the same name/branch racing past the findFirst check above both try to
+    // create — the one that loses to the unique constraint gets the same friendly message the
+    // check above would have given it if it had just lost the race by a few milliseconds less.
+    if (isUniqueConstraintError(e)) {
+      return { ok: false, error: `"${data.name.trim()}" already exists under ${GENDER_LABEL[data.gender]}.` };
+    }
+    throw e;
+  }
 
   if (data.gender === "UNISEX") {
     await ensureMirrorCategories(data.name.trim(), slug);

@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { useRef, useState, useTransition } from "react";
+import { useId, useRef, useState, useTransition } from "react";
 import {
   saveProduct,
   deleteProduct,
@@ -20,9 +20,42 @@ type StagedImage = { file: File; previewUrl: string };
 type Branch = "MEN" | "WOMEN" | "UNISEX";
 type CategoryOption = { id: string; name: string; slug: string; gender: Branch };
 
+/** Short, deterministic, random-looking token derived from a string — not Math.random(). A
+ * variant row's seed needs to be assignable the instant the row is created, including the
+ * product form's very first render, which happens once on the server (SSR) and then again
+ * during the client's hydration pass; Math.random() would produce a different value each time,
+ * so the server-rendered SKU preview text wouldn't match what the client renders and React
+ * would flag a hydration mismatch. Hashing a value built from useId() (React's own
+ * server/client-stable unique-id primitive) sidesteps that entirely. */
+function hashToken(input: string, len: number): string {
+  let h = 0;
+  for (let i = 0; i < input.length; i++) h = (Math.imul(h, 31) + input.charCodeAt(i)) >>> 0;
+  return h.toString(36).toUpperCase().padStart(len, "0").slice(-len);
+}
+
+/** Title/size/color-derived SKU preview for a not-yet-saved variant. Pure given `seed`, so
+ * calling it again on every render as title/size/color change doesn't make the value jump
+ * around — only the human-readable parts track the current form state, while `seed` (assigned
+ * once, the instant the row is created — see the `nextSkuSeed` calls below) keeps the value
+ * stable and unique-looking. The server re-verifies it's actually unique (and appends further
+ * randomness only if it collides with some other variant) on save, but this is the real
+ * candidate value, not a throwaway placeholder swapped out later. */
+function previewSku(title: string, size: string, color: string, seed: string): string {
+  const titlePart = slugify(title).replace(/-/g, "").slice(0, 6).toUpperCase() || "SKU";
+  const sizePart = size.replace(/[^a-zA-Z0-9]/g, "").slice(0, 4).toUpperCase() || "OS";
+  const colorPart = color.replace(/[^a-zA-Z0-9]/g, "").slice(0, 3).toUpperCase() || "COL";
+  return `${titlePart}-${sizePart}-${colorPart}-${seed}`;
+}
+
 type VariantRow = {
   id?: string;
+  /** The real, persisted SKU — only meaningful once `id` is set (an existing variant). For a
+   * not-yet-saved row this is ignored in favor of a live previewSku() computed from the current
+   * title/size/color, so it stays accurate even if those change before the product is saved. */
   sku: string;
+  /** Assigned once, the instant an unsaved row is created — see previewSku(). Unused once the
+   * row has a real `id`. */
+  skuSeed?: string;
   size: string;
   color: string;
   colorHex: string;
@@ -43,6 +76,20 @@ export function ProductEditorForm({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+
+  // A stable, server/client-matching base for generating variant SKU seeds (see hashToken) —
+  // useId() itself is guaranteed identical between SSR and hydration; counting up from it per
+  // row keeps every seed distinct within this one form instance. The counter lives in a ref, so
+  // nextSkuSeed() may only be called from event handlers (addVariant, submit) — never during
+  // render, where reading a ref's current value is disallowed (react-hooks/refs). The one seed
+  // needed during render itself (the form's pre-seeded default row, below) is derived straight
+  // from skuSeedBase with a fixed suffix instead, bypassing the ref entirely.
+  const skuSeedBase = useId();
+  const skuSeedCounter = useRef(0);
+  function nextSkuSeed(): string {
+    skuSeedCounter.current += 1;
+    return hashToken(`${skuSeedBase}:${skuSeedCounter.current}`, 4);
+  }
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [images, setImages] = useState<ProductImageRow[]>(initial?.images ?? []);
@@ -85,6 +132,7 @@ export function ProductEditorForm({
       : [
         {
           sku: "",
+          skuSeed: hashToken(`${skuSeedBase}:0`, 4),
           size: "M",
           color: "Black",
           colorHex: "#0c0c0d",
@@ -105,6 +153,7 @@ export function ProductEditorForm({
       ...rows,
       {
         sku: "",
+        skuSeed: nextSkuSeed(),
         size: "M",
         color: "Black",
         colorHex: "#0c0c0d",
@@ -198,35 +247,73 @@ export function ProductEditorForm({
 
   function submit() {
     setError(null);
-    startTransition(async () => {
-      const res = await saveProduct({
-        id: initial?.id,
-        title,
-        slug,
-        description,
-        categoryId,
-        basePrice,
-        status,
-        freeDelivery,
-        tagNew,
-        tagPreorder,
-        preorderShipDate,
-        tagLimited,
-        tagBestseller,
-        variants,
-        sizeGuide: sgRows.length > 0 ? { columns: sgColumns, rows: sgRows } : null,
-      });
-      if (!res.ok) {
-        setError(res.error);
+
+    // Each size+color pair must be unique per product (Variant's own DB constraint) — "+ Add
+    // variant" defaults every new row to the same M/Black, so adding two in a row without
+    // changing one is an easy, common mistake. Catching it here means a specific, actionable
+    // message instead of a round trip ending in a generic "something went wrong".
+    const seenSizeColor = new Set<string>();
+    for (const v of variants) {
+      const key = `${v.size.trim().toLowerCase()}\u0000${v.color.trim().toLowerCase()}`;
+      if (seenSizeColor.has(key)) {
+        setError(`Two variant rows both have size "${v.size}" / color "${v.color}" — each size+color combination can only appear once. Change one of them.`);
         return;
       }
-      if (staged.length > 0) {
-        const formData = new FormData();
-        staged.forEach((s) => formData.append("files", s.file));
-        await uploadProductImages(res.id, formData);
+      seenSizeColor.add(key);
+    }
+
+    startTransition(async () => {
+      // A server action that throws instead of returning {ok:false} used to escape this
+      // transition entirely — the button's "Saving…" state would still clear (the transition
+      // settles on rejection too), but nothing here ever ran to explain why, so it just looked
+      // like the Save button silently did nothing. Every real failure path in saveProduct now
+      // returns {ok:false, error} instead of throwing, but this stays as the last line of
+      // defense for anything truly unexpected (a network drop mid-request, etc.) so the admin
+      // always gets a message instead of a mysterious no-op.
+      try {
+        // Freeze each unsaved row's live SKU preview into a real value at the moment of
+        // submission — matches exactly what was last on screen, computed from the same
+        // title/size/color the admin was looking at.
+        const variantsPayload = variants.map((v) =>
+          v.id ? v : { ...v, sku: previewSku(title, v.size, v.color, v.skuSeed ?? nextSkuSeed()) },
+        );
+        const res = await saveProduct({
+          id: initial?.id,
+          title,
+          slug,
+          description,
+          categoryId,
+          basePrice,
+          status,
+          freeDelivery,
+          tagNew,
+          tagPreorder,
+          preorderShipDate,
+          tagLimited,
+          tagBestseller,
+          variants: variantsPayload,
+          sizeGuide: sgRows.length > 0 ? { columns: sgColumns, rows: sgRows } : null,
+        });
+        if (!res.ok) {
+          setError(res.error);
+          return;
+        }
+        if (staged.length > 0) {
+          const formData = new FormData();
+          staged.forEach((s) => formData.append("files", s.file));
+          const uploadRes = await uploadProductImages(res.id, formData);
+          if (!uploadRes.ok) {
+            // The product itself did save — route there anyway (below) so a retry edits the
+            // real product instead of creating a duplicate; this just flags the image upload
+            // specifically needs retrying from that page.
+            setError(`Product saved, but image upload failed: ${uploadRes.error}`);
+          }
+        }
+        router.push(`/admin/products/${res.id}`);
+        router.refresh();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Something went wrong saving this product. Please try again.");
       }
-      router.push(`/admin/products/${res.id}`);
-      router.refresh();
     });
   }
 
@@ -327,8 +414,8 @@ export function ProductEditorForm({
               <tbody>
                 {variants.map((v, i) => (
                   <tr key={i}>
-                    <td className="pr-1.5 py-1 text-muted" title="Auto-generated on save — not editable.">
-                      {v.sku || "(auto)"}
+                    <td className="pr-1.5 py-1 text-muted" title="Auto-generated — not editable.">
+                      {v.id ? v.sku : previewSku(title, v.size, v.color, v.skuSeed ?? "")}
                     </td>
                     <td className="pr-1.5 py-1">
                       <input value={v.size} onChange={(e) => updateVariant(i, { size: e.target.value })} className={`${cellClass} w-14`} />
