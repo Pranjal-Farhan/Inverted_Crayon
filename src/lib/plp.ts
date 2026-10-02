@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { deriveProductDisplay, type ProductDisplay } from "@/lib/product-view";
+import { APPAREL_SIZES, ONE_SIZE } from "@/lib/sizes";
 import type { Prisma } from "@/generated/prisma/client";
 
 export type PLPTag = "preorder" | "sale" | "new" | "limited" | "bestseller";
@@ -88,7 +89,13 @@ export async function getPLPResults(params: PLPParams) {
   const page = Math.max(params.page ?? 1, 1);
   const items = display.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
-  const availableSizes = [...new Set(products.flatMap((p) => p.variants.map((v) => v.size)))];
+  // Sorted into the fixed canonical order (S…XXXL, then One Size) rather than whatever order
+  // they happened to turn up in across products — matches the size filter's display order to
+  // the PDP's own.
+  const sizeOrder = [...APPAREL_SIZES, ONE_SIZE];
+  const availableSizes = [...new Set(products.flatMap((p) => p.variants.map((v) => v.size)))].sort(
+    (a, b) => sizeOrder.indexOf(a) - sizeOrder.indexOf(b),
+  );
   const availableColors = [...new Set(products.flatMap((p) => p.variants.map((v) => v.color)))];
 
   return {

@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { useId, useRef, useState, useTransition } from "react";
+import { useId, useMemo, useRef, useState, useTransition } from "react";
 import {
   saveProduct,
   deleteProduct,
@@ -15,6 +15,7 @@ import { Panel } from "@/components/admin/Panel";
 import { VariantStockStepper } from "@/components/admin/VariantStockStepper";
 import { DEFAULT_SIZE_GUIDE_COLUMNS, type SizeGuideRow } from "@/lib/size-guide";
 import { slugify } from "@/lib/slugify";
+import { detectSizingMode, sizesForMode, type SizingMode } from "@/lib/sizes";
 
 type StagedImage = { file: File; previewUrl: string };
 type Branch = "MEN" | "WOMEN" | "UNISEX";
@@ -56,7 +57,16 @@ type VariantRow = {
   /** Assigned once, the instant an unsaved row is created — see previewSku(). Unused once the
    * row has a real `id`. */
   skuSeed?: string;
+  /** Fixed at creation (one of APPAREL_SIZES, or ONE_SIZE) — never admin-editable per row, see
+   * addColor(). */
   size: string;
+  /** Which color block this row belongs to — a client-only id, never sent to the server (zod
+   * strips unrecognized keys), stable for the row's whole life regardless of what `color` gets
+   * renamed to. Grouping/updates match on this, NOT on `color` text: two blocks are only ever
+   * merged by the admin explicitly, never as a side effect of one block's name happening to
+   * equal another's (which would otherwise silently fold two colors' rows into one 12-row mess
+   * the moment their names collided, mid-rename). */
+  groupId: string;
   color: string;
   colorHex: string;
   stockQty: number;
@@ -66,11 +76,64 @@ type VariantRow = {
   preorderAdvanceAmount: number | null;
 };
 
+/** The shape the server actually sends for an existing product's variants — no `groupId` (a
+ * purely client-side concept, see VariantRow) and no `skuSeed` (only ever needed for an unsaved
+ * row). backfillColorGroups() turns this into real VariantRows, assigning one groupId per
+ * distinct `color` string found — at load time, two rows sharing a color string genuinely are
+ * the same saved color, so grouping by the text itself is correct here specifically. */
+type IncomingVariantRow = Omit<VariantRow, "groupId" | "skuSeed">;
+
+/** A product's variants are grouped into one block per color, each block always holding exactly
+ * the sizes its sizing mode calls for (6 apparel sizes, or the single "One Size"). Existing data
+ * saved before this scheme (or from before XXXL existed) can be missing a size within a color —
+ * this fills those in as fresh, unsaved rows (0 stock) so the editor always shows the complete,
+ * permanent set, and the gap is closed for good the next time the product is saved. Pure given
+ * `seedBase` (from useId(), stable across SSR/hydration — see hashToken), so it's safe to call
+ * from a useState initializer during render, unlike the ref-based nextSkuSeed(). */
+function backfillColorGroups(rows: IncomingVariantRow[], mode: SizingMode, seedBase: string): VariantRow[] {
+  const sizes = sizesForMode(mode);
+  const order: string[] = [];
+  const byColor = new Map<string, IncomingVariantRow[]>();
+  for (const r of rows) {
+    if (!byColor.has(r.color)) {
+      byColor.set(r.color, []);
+      order.push(r.color);
+    }
+    byColor.get(r.color)!.push(r);
+  }
+  const result: VariantRow[] = [];
+  for (const color of order) {
+    const group = byColor.get(color)!;
+    const colorHex = group[0]?.colorHex ?? "#0c0c0d";
+    const groupId = hashToken(`${seedBase}:group:${color}`, 8);
+    for (const size of sizes) {
+      const found = group.find((r) => r.size === size);
+      result.push(
+        found
+          ? { ...found, groupId }
+          : {
+            sku: "",
+            skuSeed: hashToken(`${seedBase}:backfill:${color}:${size}`, 4),
+            groupId,
+            size,
+            color,
+            colorHex,
+            stockQty: 0,
+            lowStockThreshold: 5,
+            priceOverride: null,
+            preorderAdvanceAmount: null,
+          },
+      );
+    }
+  }
+  return result;
+}
+
 export function ProductEditorForm({
   initial,
   categories,
 }: {
-  initial: (ProductFormInput & { variants: VariantRow[]; images: ProductImageRow[] }) | null;
+  initial: (ProductFormInput & { variants: IncomingVariantRow[]; images: ProductImageRow[] }) | null;
   categories: CategoryOption[];
 }) {
   const router = useRouter();
@@ -80,10 +143,10 @@ export function ProductEditorForm({
   // A stable, server/client-matching base for generating variant SKU seeds (see hashToken) —
   // useId() itself is guaranteed identical between SSR and hydration; counting up from it per
   // row keeps every seed distinct within this one form instance. The counter lives in a ref, so
-  // nextSkuSeed() may only be called from event handlers (addVariant, submit) — never during
-  // render, where reading a ref's current value is disallowed (react-hooks/refs). The one seed
-  // needed during render itself (the form's pre-seeded default row, below) is derived straight
-  // from skuSeedBase with a fixed suffix instead, bypassing the ref entirely.
+  // nextSkuSeed() may only be called from event handlers (addColor, submit) — never during
+  // render, where reading a ref's current value is disallowed (react-hooks/refs). The seeds
+  // needed during render itself (backfillColorGroups(), below) are derived straight from
+  // skuSeedBase with a fixed suffix instead, bypassing the ref entirely.
   const skuSeedBase = useId();
   const skuSeedCounter = useRef(0);
   function nextSkuSeed(): string {
@@ -126,48 +189,85 @@ export function ProductEditorForm({
   const [preorderShipDate, setPreorderShipDate] = useState(initial?.preorderShipDate ?? "");
   const [tagLimited, setTagLimited] = useState(initial?.tagLimited ?? false);
   const [tagBestseller, setTagBestseller] = useState(initial?.tagBestseller ?? false);
-  const [variants, setVariants] = useState<VariantRow[]>(
-    initial?.variants.length
-      ? initial.variants
-      : [
-        {
-          sku: "",
-          skuSeed: hashToken(`${skuSeedBase}:0`, 4),
-          size: "M",
-          color: "Black",
-          colorHex: "#0c0c0d",
-          stockQty: 0,
-          lowStockThreshold: 5,
-          priceOverride: null,
-          preorderAdvanceAmount: null,
-        },
-      ],
+  // A saved product's mode is read straight off its own data (any "One Size" variant means
+  // one-size); a brand-new product has no variants yet to read, so the admin picks explicitly.
+  // The picker only matters before the first color exists — see its render guard below.
+  const [sizingMode, setSizingMode] = useState<SizingMode>(() =>
+    initial?.variants.length ? detectSizingMode(initial.variants.map((v) => v.size)) : "APPAREL",
   );
+  const [variants, setVariants] = useState<VariantRow[]>(() =>
+    initial?.variants.length ? backfillColorGroups(initial.variants, sizingMode, skuSeedBase) : [],
+  );
+  const colorCounter = useRef(0);
 
-  function updateVariant(i: number, patch: Partial<VariantRow>) {
-    setVariants((rows) => rows.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
+  /** A row's stable identity for React keys and updates — `id` once saved, else the `skuSeed`
+   * assigned at creation (both are fixed for the row's whole lifetime, unlike its position in
+   * `variants`, which shifts whenever colorGroups re-sorts for display). */
+  function variantKey(v: VariantRow): string {
+    return v.id ?? v.skuSeed ?? "";
   }
 
-  function addVariant() {
+  function updateVariant(key: string, patch: Partial<VariantRow>) {
+    setVariants((rows) => rows.map((r) => (variantKey(r) === key ? { ...r, ...patch } : r)));
+  }
+
+  /** Adds one full color block at once: every size the current sizing mode calls for, each its
+   * own row, never added or removed individually — see backfillColorGroups() for why sizes
+   * themselves are never a loose per-row concern any more. */
+  function addColor() {
+    colorCounter.current += 1;
+    const placeholderColor = `Color ${colorCounter.current}`;
+    const groupId = `new:${colorCounter.current}:${skuSeedBase}`;
     setVariants((rows) => [
       ...rows,
-      {
+      ...sizesForMode(sizingMode).map((size) => ({
         sku: "",
         skuSeed: nextSkuSeed(),
-        size: "M",
-        color: "Black",
+        groupId,
+        size,
+        color: placeholderColor,
         colorHex: "#0c0c0d",
         stockQty: 0,
         lowStockThreshold: 5,
         priceOverride: null,
         preorderAdvanceAmount: null,
-      },
+      })),
     ]);
   }
 
-  function removeVariant(i: number) {
-    setVariants((rows) => rows.filter((_, idx) => idx !== i));
+  /** Renames every row sharing `groupId` at once, keeping the block one unit — a size-by-size
+   * rename would risk leaving some rows under the old name and some under the new. Keyed by
+   * `groupId`, not the `color` text itself, so renaming one block to another's current name
+   * doesn't silently fold the two together (see VariantRow.groupId). */
+  function updateColorName(groupId: string, newColor: string) {
+    setVariants((rows) => rows.map((r) => (r.groupId === groupId ? { ...r, color: newColor } : r)));
   }
+  function updateColorHex(groupId: string, hex: string) {
+    setVariants((rows) => rows.map((r) => (r.groupId === groupId ? { ...r, colorHex: hex } : r)));
+  }
+  function removeColor(groupId: string) {
+    setVariants((rows) => rows.filter((r) => r.groupId !== groupId));
+  }
+
+  /** Variants grouped into one block per groupId, in first-seen order, each block's rows sorted
+   * into the fixed canonical size order regardless of the underlying array's own order (a
+   * backfilled row is appended at the end of its group, not inserted in place). */
+  const colorGroups = useMemo(() => {
+    const sizeOrder = sizesForMode(sizingMode);
+    const order: string[] = [];
+    const byGroup = new Map<string, VariantRow[]>();
+    for (const v of variants) {
+      if (!byGroup.has(v.groupId)) {
+        byGroup.set(v.groupId, []);
+        order.push(v.groupId);
+      }
+      byGroup.get(v.groupId)!.push(v);
+    }
+    return order.map((groupId) => {
+      const rows = [...byGroup.get(groupId)!].sort((a, b) => sizeOrder.indexOf(a.size) - sizeOrder.indexOf(b.size));
+      return { groupId, color: rows[0]?.color ?? "", rows };
+    });
+  }, [variants, sizingMode]);
 
   const [sgColumns, setSgColumns] = useState<string[]>(initial?.sizeGuide?.columns ?? DEFAULT_SIZE_GUIDE_COLUMNS);
   const [sgRows, setSgRows] = useState<SizeGuideRow[]>(initial?.sizeGuide?.rows ?? []);
@@ -248,18 +348,24 @@ export function ProductEditorForm({
   function submit() {
     setError(null);
 
-    // Each size+color pair must be unique per product (Variant's own DB constraint) — "+ Add
-    // variant" defaults every new row to the same M/Black, so adding two in a row without
-    // changing one is an easy, common mistake. Catching it here means a specific, actionable
-    // message instead of a round trip ending in a generic "something went wrong".
-    const seenSizeColor = new Set<string>();
-    for (const v of variants) {
-      const key = `${v.size.trim().toLowerCase()}\u0000${v.color.trim().toLowerCase()}`;
-      if (seenSizeColor.has(key)) {
-        setError(`Two variant rows both have size "${v.size}" / color "${v.color}" — each size+color combination can only appear once. Change one of them.`);
+    if (variants.length === 0) {
+      setError("Add at least one color before saving.");
+      return;
+    }
+
+    // Two color blocks can't share a name (Variant's own DB constraint on (productId, size,
+    // color) would reject it anyway, size-by-size) — "+ Add color" defaults every new block to
+    // a distinct placeholder ("Color 1", "Color 2", …), so this only fires if the admin renamed
+    // one to match another. Catching it here means a specific, actionable message instead of a
+    // round trip ending in a generic "something went wrong".
+    const seenColors = new Set<string>();
+    for (const { color } of colorGroups) {
+      const key = color.trim().toLowerCase();
+      if (seenColors.has(key)) {
+        setError(`Two colors are both named "${color}" — each color can only appear once. Rename one of them.`);
         return;
       }
-      seenSizeColor.add(key);
+      seenColors.add(key);
     }
 
     startTransition(async () => {
@@ -390,97 +496,128 @@ export function ProductEditorForm({
           )}
         </Panel>
 
-        <Panel title="Variants — size × color" className="mt-4.5">
+        <Panel title="Variants — colors" className="mt-4.5">
           <p className="mb-2 text-[12px] text-muted-2">
-            Stock for an existing variant updates live with the +/− stepper (or edit the number directly) — it saves
-            immediately, independent of the Save product button below. The same count can also be managed in bulk from{" "}
+            Every color gets the full, permanent size set automatically — {sizingMode === "ONE_SIZE" ? "the single \"One Size\"" : "all 6 of S, M, L, XL, XXL, XXXL"} — there&apos;s no
+            adding or removing individual sizes any more. Stock for an existing variant updates live with the +/−
+            stepper (or edit the number directly) — it saves immediately, independent of the Save product button
+            below. The same count can also be managed in bulk from{" "}
             <a href="/admin/inventory" className="text-cyan hover:underline">
               Inventory
             </a>
             . <strong className="text-paper">Preorder ৳</strong> is the advance charged online once this size sells
             out (blank = just sold out, no preorder offered; 0 = free to reserve, everything due on delivery).
           </p>
-          <div className="overflow-x-auto">
-            <table className="w-full text-[13px]">
-              <thead>
-                <tr className="text-left text-muted">
-                  {["SKU", "Size", "Color", "Hex", "Stock", "Low@", "Price ৳", "Preorder ৳", ""].map((h) => (
-                    <th key={h} className="font-label pb-1.5">
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {variants.map((v, i) => (
-                  <tr key={i}>
-                    <td className="pr-1.5 py-1 text-muted" title="Auto-generated — not editable.">
-                      {v.id ? v.sku : previewSku(title, v.size, v.color, v.skuSeed ?? "")}
-                    </td>
-                    <td className="pr-1.5 py-1">
-                      <input value={v.size} onChange={(e) => updateVariant(i, { size: e.target.value })} className={`${cellClass} w-14`} />
-                    </td>
-                    <td className="pr-1.5 py-1">
-                      <input value={v.color} onChange={(e) => updateVariant(i, { color: e.target.value })} className={cellClass} />
-                    </td>
-                    <td className="pr-1.5 py-1">
-                      <input value={v.colorHex} onChange={(e) => updateVariant(i, { colorHex: e.target.value })} className={`${cellClass} w-20`} />
-                    </td>
-                    <td className="pr-1.5 py-1">
-                      {v.id ? (
-                        <VariantStockStepper variantId={v.id} initialStock={v.stockQty} />
-                      ) : (
-                        <input
-                          type="number"
-                          value={v.stockQty}
-                          onChange={(e) => updateVariant(i, { stockQty: Number(e.target.value) })}
-                          title="Starting stock count — saved when this new variant is saved with the product."
-                          className={`${cellClass} w-16`}
-                        />
-                      )}
-                    </td>
-                    <td className="pr-1.5 py-1">
-                      <input
-                        type="number"
-                        value={v.lowStockThreshold}
-                        onChange={(e) => updateVariant(i, { lowStockThreshold: Number(e.target.value) })}
-                        className={`${cellClass} w-14`}
-                      />
-                    </td>
-                    <td className="pr-1.5 py-1">
-                      <input
-                        type="number"
-                        value={v.priceOverride ?? ""}
-                        placeholder={String(basePrice)}
-                        onChange={(e) => updateVariant(i, { priceOverride: e.target.value ? Number(e.target.value) : null })}
-                        className={`${cellClass} w-20`}
-                      />
-                    </td>
-                    <td className="pr-1.5 py-1">
-                      <input
-                        type="number"
-                        min={0}
-                        value={v.preorderAdvanceAmount ?? ""}
-                        placeholder="off"
-                        title="Advance due online once this size sells out — blank disables preorder for it, 0 means free to reserve."
-                        onChange={(e) =>
-                          updateVariant(i, { preorderAdvanceAmount: e.target.value ? Number(e.target.value) : null })
-                        }
-                        className={`${cellClass} w-20 ${v.preorderAdvanceAmount != null ? "border-yellow" : ""}`}
-                      />
-                    </td>
-                    <td className="py-1">
-                      <button onClick={() => removeVariant(i)} className="text-muted hover:text-error">
-                        ✕
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <button onClick={addVariant} className="mt-2.5 border border-line-2 px-3 py-1.5 text-[13px] hover:border-lime">
-            + Add variant
+
+          {variants.length === 0 && (
+            <Field label="Sizing" className="mb-3">
+              <select
+                value={sizingMode}
+                onChange={(e) => setSizingMode(e.target.value as SizingMode)}
+                className={inputClass}
+              >
+                <option value="APPAREL">Apparel — S, M, L, XL, XXL, XXXL</option>
+                <option value="ONE_SIZE">One Size — bags, beanies, snapbacks, etc.</option>
+              </select>
+              <p className="mt-1 text-[12px] text-muted-2">Locked in once the first color is added.</p>
+            </Field>
+          )}
+
+          {colorGroups.map(({ groupId, color, rows }) => (
+            <div key={groupId} className="mb-4 border border-line-2 p-3">
+              <div className="mb-2 flex items-center gap-2">
+                <input
+                  value={color}
+                  onChange={(e) => updateColorName(groupId, e.target.value)}
+                  placeholder="Color name"
+                  className={`${cellClass} max-w-[180px]`}
+                />
+                <input
+                  value={rows[0]?.colorHex ?? "#0c0c0d"}
+                  onChange={(e) => updateColorHex(groupId, e.target.value)}
+                  className={`${cellClass} w-20`}
+                />
+                <button
+                  type="button"
+                  onClick={() => removeColor(groupId)}
+                  className="ml-auto text-[12px] text-muted hover:text-error"
+                >
+                  Remove color
+                </button>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-[13px]">
+                  <thead>
+                    <tr className="text-left text-muted">
+                      {["SKU", "Size", "Stock", "Low@", "Price ৳", "Preorder ৳"].map((h) => (
+                        <th key={h} className="font-label pb-1.5">
+                          {h}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map((v) => {
+                      const key = variantKey(v);
+                      return (
+                        <tr key={key}>
+                          <td className="pr-1.5 py-1 text-muted" title="Auto-generated — not editable.">
+                            {v.id ? v.sku : previewSku(title, v.size, v.color, v.skuSeed ?? "")}
+                          </td>
+                          <td className="pr-1.5 py-1 font-label">{v.size}</td>
+                          <td className="pr-1.5 py-1">
+                            {v.id ? (
+                              <VariantStockStepper variantId={v.id} initialStock={v.stockQty} />
+                            ) : (
+                              <input
+                                type="number"
+                                value={v.stockQty}
+                                onChange={(e) => updateVariant(key, { stockQty: Number(e.target.value) })}
+                                title="Starting stock count — saved when this new variant is saved with the product."
+                                className={`${cellClass} w-16`}
+                              />
+                            )}
+                          </td>
+                          <td className="pr-1.5 py-1">
+                            <input
+                              type="number"
+                              value={v.lowStockThreshold}
+                              onChange={(e) => updateVariant(key, { lowStockThreshold: Number(e.target.value) })}
+                              className={`${cellClass} w-14`}
+                            />
+                          </td>
+                          <td className="pr-1.5 py-1">
+                            <input
+                              type="number"
+                              value={v.priceOverride ?? ""}
+                              placeholder={String(basePrice)}
+                              onChange={(e) => updateVariant(key, { priceOverride: e.target.value ? Number(e.target.value) : null })}
+                              className={`${cellClass} w-20`}
+                            />
+                          </td>
+                          <td className="pr-1.5 py-1">
+                            <input
+                              type="number"
+                              min={0}
+                              value={v.preorderAdvanceAmount ?? ""}
+                              placeholder="off"
+                              title="Advance due online once this size sells out — blank disables preorder for it, 0 means free to reserve."
+                              onChange={(e) =>
+                                updateVariant(key, { preorderAdvanceAmount: e.target.value ? Number(e.target.value) : null })
+                              }
+                              className={`${cellClass} w-20 ${v.preorderAdvanceAmount != null ? "border-yellow" : ""}`}
+                            />
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ))}
+          <button onClick={addColor} className="mt-1 border border-line-2 px-3 py-1.5 text-[13px] hover:border-lime">
+            + Add color
           </button>
         </Panel>
 

@@ -37,7 +37,7 @@ const COLORS: { name: string; hex: string }[] = [
   { name: "Indigo", hex: "#2a3a6b" },
 ];
 
-const APPAREL_SIZES = ["S", "M", "L", "XL", "XXL"];
+const APPAREL_SIZES = ["S", "M", "L", "XL", "XXL", "XXXL"];
 const ONE_SIZE = ["One Size"];
 
 // title pool per category — adjectives x noun, gives plenty of variety

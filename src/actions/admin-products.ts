@@ -12,6 +12,9 @@ import { sendMail } from "@/lib/mail";
 import { uploadToImgBb } from "@/lib/imgbb";
 import { ensureMirrorCategories } from "@/actions/admin-categories";
 import { slugify } from "@/lib/slugify";
+import { APPAREL_SIZES, ONE_SIZE } from "@/lib/sizes";
+
+const VALID_SIZES = [...APPAREL_SIZES, ONE_SIZE] as [string, ...string[]];
 
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const MAX_FILES_PER_UPLOAD = 12;
@@ -88,7 +91,10 @@ const variantSchema = z.object({
   // the server re-verifies/disambiguates it (ensureUniqueSku) rather than trusting it outright.
   // Ignored entirely for an existing variant, whose real sku is left untouched on update.
   sku: z.string().trim().min(1, "SKU is required."),
-  size: z.string().trim().min(1, "Size is required."),
+  // The admin editor only ever generates a full color block from APPAREL_SIZES or [ONE_SIZE]
+  // (ProductEditorForm.tsx's addColor()/backfillColorGroups()) — this is defense in depth, not
+  // the primary guard, against any payload that didn't come from that UI.
+  size: z.enum(VALID_SIZES, { message: "Size must be one of S, M, L, XL, XXL, XXXL, or One Size." }),
   color: z.string().trim().min(1, "Color is required."),
   colorHex: z.string().optional(),
   stockQty: z.number().int().min(0),
@@ -121,6 +127,32 @@ const productSchema = z.object({
     })
     .nullable()
     .default(null),
+}).superRefine((data, ctx) => {
+  // Every color must carry exactly the sizes its own mode calls for — no fewer (an incomplete
+  // block), no more (a duplicate), and never a mix of apparel sizes and "One Size" under one
+  // color. The admin editor can't actually produce anything else (addColor()/backfillColorGroups()
+  // always emit a complete, single-mode block), so this only ever fires against a payload that
+  // didn't come from that UI.
+  const byColor = new Map<string, string[]>();
+  for (const v of data.variants) {
+    const key = v.color.trim().toLowerCase();
+    if (!byColor.has(key)) byColor.set(key, []);
+    byColor.get(key)!.push(v.size);
+  }
+  for (const [colorKey, sizes] of byColor) {
+    const isOneSize = sizes.includes(ONE_SIZE);
+    const expected: readonly string[] = isOneSize ? [ONE_SIZE] : APPAREL_SIZES;
+    const sizeSet = new Set(sizes);
+    const matches = sizes.length === expected.length && sizeSet.size === expected.length && expected.every((s) => sizeSet.has(s));
+    if (!matches) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: isOneSize
+          ? `Color "${colorKey}" must have exactly one "One Size" variant.`
+          : `Color "${colorKey}" must have all 6 sizes (S, M, L, XL, XXL, XXXL).`,
+      });
+    }
+  }
 });
 
 export type ProductFormInput = z.infer<typeof productSchema>;

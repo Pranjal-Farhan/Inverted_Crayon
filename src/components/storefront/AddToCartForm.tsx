@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { formatTaka } from "@/lib/money";
 import { subscribeBackInStock } from "@/actions/back-in-stock";
 import { Crown } from "@/components/brand/Crown";
+import { APPAREL_SIZES, ONE_SIZE } from "@/lib/sizes";
 
 const SPLAT_COLORS = ["#ff2d84", "#c3f53a", "#26a7e6", "#ffd23b"];
 type Splat = { id: number; x: number; y: number; size: number; color: string };
@@ -44,7 +45,15 @@ export function AddToCartForm({
   accentColor: string;
 }) {
   const colors = useMemo(() => [...new Set(variants.map((v) => v.color))], [variants]);
-  const sizes = useMemo(() => [...new Set(variants.map((v) => v.size))], [variants]);
+  // Every color carries the same fixed, permanent size set (see ProductEditorForm.tsx's
+  // addColor()) — shown in this exact order left to right regardless of which size the admin
+  // happened to save first, with the existing disabled/crossed-out treatment below covering
+  // anything actually out of stock (or, for legacy data saved before a size existed, simply
+  // missing — `v` comes back undefined and the button disables the same way).
+  const sizes = useMemo(
+    () => (variants.some((v) => v.size === ONE_SIZE) ? [ONE_SIZE] : APPAREL_SIZES),
+    [variants],
+  );
 
   const [color, setColor] = useState(colors[0]);
   const [size, setSize] = useState(sizes[0]);

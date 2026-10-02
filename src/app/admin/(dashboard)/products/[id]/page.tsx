@@ -22,6 +22,10 @@ export default async function EditProductPage({ params }: Props) {
 
   return (
     <ProductEditorForm
+      // See new/page.tsx's key="new" for why this is required — without it, clicking from one
+      // product's edit page to another's (soft nav, same route component) leaves every field
+      // showing stale data from whichever product this form instance first mounted with.
+      key={product.id}
       initial={{
         id: product.id,
         title: product.title,
