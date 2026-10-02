@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useRef, useState } from "react";
+import { useRef, useState, type MouseEvent, type PointerEvent } from "react";
 import { PlaceholderFrame } from "@/components/ui/PlaceholderFrame";
 import { pickAccent } from "@/lib/accent-color";
 
@@ -17,11 +17,37 @@ export function ProductGallery({
   soldOut: boolean;
 }) {
   const [active, setActive] = useState(0);
+  const [zoomed, setZoomed] = useState(false);
+  const [zoomOrigin, setZoomOrigin] = useState({ x: 50, y: 50 });
   const touchStartX = useRef<number | null>(null);
   const slides = images.length > 0 ? images : [{ id: "fallback", accentColor: fallbackAccent.color, alt: null }];
 
   function go(delta: number) {
     setActive((i) => (i + delta + slides.length) % slides.length);
+    setZoomed(false);
+  }
+
+  function selectSlide(i: number) {
+    setActive(i);
+    setZoomed(false);
+  }
+
+  // Click to toggle zoom (mouse only — touch keeps the swipe gesture for navigation). Once
+  // zoomed, moving the pointer pans the magnified view by re-anchoring the scale's origin to
+  // the cursor position, so the zoomed image navigates with the mouse rather than just sitting
+  // pinned at the click point.
+  function toggleZoom(e: PointerEvent<HTMLDivElement>) {
+    if (e.pointerType !== "mouse") return;
+    if (!slides[active]?.url) return;
+    setZoomed((z) => !z);
+  }
+
+  function panZoom(e: MouseEvent<HTMLDivElement>) {
+    if (!zoomed) return;
+    const r = e.currentTarget.getBoundingClientRect();
+    const x = ((e.clientX - r.left) / r.width) * 100;
+    const y = ((e.clientY - r.top) / r.height) * 100;
+    setZoomOrigin({ x: Math.min(100, Math.max(0, x)), y: Math.min(100, Math.max(0, y)) });
   }
 
   return (
@@ -32,7 +58,7 @@ export function ProductGallery({
           return (
             <button
               key={img.id}
-              onClick={() => setActive(i)}
+              onClick={() => selectSlide(i)}
               className={`relative aspect-square border ${active === i ? "border-lime" : "border-line"}`}
               aria-label={`View image ${i + 1}`}
             >
@@ -47,7 +73,8 @@ export function ProductGallery({
       </div>
 
       <div
-        className="relative aspect-square overflow-hidden touch-pan-y select-none"
+        className={`relative aspect-square overflow-hidden touch-pan-y select-none ${zoomed ? "cursor-zoom-out" : slides[active]?.url ? "cursor-zoom-in" : ""
+          }`}
         onTouchStart={(e) => {
           touchStartX.current = e.touches[0].clientX;
         }}
@@ -57,13 +84,23 @@ export function ProductGallery({
           if (Math.abs(delta) > 40) go(delta < 0 ? 1 : -1);
           touchStartX.current = null;
         }}
+        onPointerUp={toggleZoom}
+        onMouseMove={panZoom}
+        onMouseLeave={() => setZoomed(false)}
       >
         {(() => {
           const img = slides[active];
           const accent = pickAccent(img.id);
           return img.url ? (
             <>
-              <Image src={img.url} alt={img.alt ?? ""} fill sizes="(min-width: 1024px) 50vw, 100vw" className="object-contain" />
+              <Image
+                src={img.url}
+                alt={img.alt ?? ""}
+                fill
+                sizes="(min-width: 1024px) 50vw, 100vw"
+                className={`object-contain transition-transform duration-150 ease-out ${zoomed ? "scale-[2.2]" : ""}`}
+                style={zoomed ? { transformOrigin: `${zoomOrigin.x}% ${zoomOrigin.y}%` } : undefined}
+              />
               {soldOut && (
                 <div className="absolute inset-0 z-[5] grid place-items-center bg-[rgba(8,8,9,.55)]">
                   <span className="font-impact text-[22px] tracking-[2px] text-paper">SOLD OUT</span>

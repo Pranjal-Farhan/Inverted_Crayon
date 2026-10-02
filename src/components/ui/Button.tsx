@@ -64,20 +64,16 @@ function Content({
   children,
   arrow,
   loading,
-  boxed,
+  outlined,
 }: {
   children: ReactNode;
   arrow?: boolean;
   loading?: boolean;
-  boxed?: boolean;
+  outlined?: boolean;
 }) {
   return (
     <>
-      {boxed ? (
-        <span className="rounded-[3px] border border-current/25 bg-current/10 px-1.5 py-0.5">{children}</span>
-      ) : (
-        children
-      )}
+      {outlined ? <span className="btn-text-outline">{children}</span> : children}
       {loading ? (
         <span aria-hidden className="inline-block h-3 w-3 animate-spin border-2 border-current border-t-transparent" />
       ) : (
@@ -99,7 +95,7 @@ export function Button({
 }: ButtonProps) {
   const magnetic = variant !== "text" && !loading && !rest.disabled;
   const hasScribble = variant !== "text";
-  const boxed = variant !== "text";
+  const outlined = variant !== "text";
   const scribbleColor = hasScribble
     ? pickScribbleColor(`${variant}:${href ?? (typeof children === "string" ? children : "btn")}`, OWN_COLOR[variant])
     : null;
@@ -136,7 +132,7 @@ export function Button({
         onPointerMove={magnetic ? onPointerMove : undefined}
         onPointerLeave={magnetic ? onPointerLeave : undefined}
       >
-        <Content arrow={arrow} boxed={boxed}>{children}</Content>
+        <Content arrow={arrow} outlined={outlined}>{children}</Content>
         {scribbleEl}
       </Link>
     );
@@ -151,7 +147,7 @@ export function Button({
       onPointerLeave={magnetic ? onPointerLeave : undefined}
       {...rest}
     >
-      <Content arrow={arrow} loading={loading} boxed={boxed && !loading}>
+      <Content arrow={arrow} loading={loading} outlined={outlined && !loading}>
         {loading ? "…" : children}
       </Content>
       {scribbleEl}

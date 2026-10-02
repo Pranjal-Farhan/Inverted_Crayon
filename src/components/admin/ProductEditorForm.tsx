@@ -12,6 +12,7 @@ import {
   type ProductImageRow,
 } from "@/actions/admin-products";
 import { Panel } from "@/components/admin/Panel";
+import { VariantStockStepper } from "@/components/admin/VariantStockStepper";
 import { DEFAULT_SIZE_GUIDE_COLUMNS, type SizeGuideRow } from "@/lib/size-guide";
 
 type StagedImage = { file: File; previewUrl: string };
@@ -291,7 +292,8 @@ export function ProductEditorForm({
 
         <Panel title="Variants — size × color" className="mt-4.5">
           <p className="mb-2 text-[12px] text-muted-2">
-            Stock is set here only for new variants — edit existing stock counts from{" "}
+            Stock for an existing variant updates live with the +/− stepper (or edit the number directly) — it saves
+            immediately, independent of the Save product button below. The same count can also be managed in bulk from{" "}
             <a href="/admin/inventory" className="text-cyan hover:underline">
               Inventory
             </a>
@@ -325,14 +327,17 @@ export function ProductEditorForm({
                       <input value={v.colorHex} onChange={(e) => updateVariant(i, { colorHex: e.target.value })} className={`${cellClass} w-20`} />
                     </td>
                     <td className="pr-1.5 py-1">
-                      <input
-                        type="number"
-                        value={v.stockQty}
-                        onChange={(e) => updateVariant(i, { stockQty: Number(e.target.value) })}
-                        disabled={Boolean(v.id)}
-                        title={v.id ? "Edit stock from the Inventory page — this field only sets the starting count for a new variant." : undefined}
-                        className={`${cellClass} w-16 ${v.id ? "cursor-not-allowed opacity-50" : ""}`}
-                      />
+                      {v.id ? (
+                        <VariantStockStepper variantId={v.id} initialStock={v.stockQty} />
+                      ) : (
+                        <input
+                          type="number"
+                          value={v.stockQty}
+                          onChange={(e) => updateVariant(i, { stockQty: Number(e.target.value) })}
+                          title="Starting stock count — saved when this new variant is saved with the product."
+                          className={`${cellClass} w-16`}
+                        />
+                      )}
                     </td>
                     <td className="pr-1.5 py-1">
                       <input

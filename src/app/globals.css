@@ -153,6 +153,40 @@ button {
 .btn-primary:active {
   transform: rotate(-1deg) translateY(0);
 }
+/* A dark outline traced around the label glyphs themselves (not a background behind them) —
+   text-stroke for crisp edges where it's supported, text-shadow as the outline everywhere
+   else (Firefox included). Keeps the label legible against any button fill without boxing it. */
+.btn-text-outline {
+  -webkit-text-stroke: 0.6px var(--color-ic-ink);
+  text-shadow:
+    -1px 0 var(--color-ic-ink),
+    1px 0 var(--color-ic-ink),
+    0 -1px var(--color-ic-ink),
+    0 1px var(--color-ic-ink);
+}
+/* Loading skeletons — a panel-colored block with a lime-tinted shimmer sweeping across it,
+   used by Skeleton.tsx and every route's loading.tsx (§ Next.js loading UI) to mask fetch
+   delay. Neutralized along with every other animation by the prefers-reduced-motion block
+   above — the static panel-colored shape alone still reads as "loading" without the sweep. */
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background: var(--color-ic-panel-2);
+}
+.skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(195, 245, 58, 0.12), transparent);
+  animation: skeleton-sweep 1.6s ease-in-out infinite;
+}
+@keyframes skeleton-sweep {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
 .scrawl-underline {
   position: relative;
 }
