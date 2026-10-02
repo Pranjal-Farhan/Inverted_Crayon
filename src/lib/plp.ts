@@ -9,7 +9,6 @@ export type PriceBand = "under2k" | "2k-3k" | "3kplus";
 export type PLPParams = {
   gender?: "MEN" | "WOMEN";
   categorySlug?: string;
-  collectionSlug?: string;
   tag?: PLPTag;
   q?: string;
   sizes?: string[];
@@ -24,11 +23,15 @@ const PAGE_SIZE = 24;
 
 export async function getPLPResults(params: PLPParams) {
   const where: Prisma.ProductWhereInput = { status: "ACTIVE" };
-  if (params.gender) where.gender = params.gender;
+  // A Unisex product belongs on both the Men and Women floors — matching the branch's own
+  // gender plus UNISEX (rather than strict equality) is what surfaces it there without
+  // duplicating the product row. See the Category model's doc comment in schema.prisma.
+  if (params.gender) where.gender = { in: [params.gender, "UNISEX"] };
+  // Category slugs aren't globally unique (the same slug exists once per gender branch —
+  // "jeans" under Men, Women, and Unisex are three different rows), so this matches by text
+  // only; combined with the gender filter above it naturally picks up the right branch's row
+  // (or, for a Unisex product under /men or /women, its own Unisex row by the same slug).
   if (params.categorySlug) where.category = { slug: params.categorySlug };
-  if (params.collectionSlug) {
-    where.collections = { some: { collection: { slug: params.collectionSlug } } };
-  }
   if (params.q) where.title = { contains: params.q, mode: "insensitive" };
 
   const now = new Date();

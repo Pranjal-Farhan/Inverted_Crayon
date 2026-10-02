@@ -241,7 +241,6 @@ export function ContentCmsView({
 
       <Panel title="Blocks" className="mt-4.5">
         <p className="text-sm text-muted">
-          Collection tiles are managed from <a href="/admin/categories" className="text-cyan">Categories &amp; collections</a>.
           Gender-hub heroes and lookbook editing ship in a fast-follow.
         </p>
       </Panel>

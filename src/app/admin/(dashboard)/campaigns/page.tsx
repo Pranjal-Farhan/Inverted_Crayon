@@ -7,15 +7,16 @@ import type { CartLine } from "@/lib/cart-types";
 export default async function AdminCampaignsPage() {
   const [campaigns, categories, abandoned] = await Promise.all([
     db.campaign.findMany({ orderBy: { startsAt: "desc" } }),
-    db.category.findMany({ orderBy: { position: "asc" } }),
+    db.category.findMany({ orderBy: [{ gender: "asc" }, { position: "asc" }] }),
     db.abandonedCheckout.findMany({ orderBy: { createdAt: "desc" }, take: 50 }),
   ]);
   const catById = Object.fromEntries(categories.map((c) => [c.id, c.name]));
+  const branchLabel = { MEN: "Men", WOMEN: "Women", UNISEX: "Unisex" } as const;
 
   return (
     <div>
       <CampaignManager
-        categories={categories}
+        categories={categories.map((c) => ({ id: c.id, name: `${c.name} (${branchLabel[c.gender]})` }))}
         campaigns={campaigns.map((c) => ({
           id: c.id,
           name: c.name,

@@ -10,6 +10,7 @@ import { Prisma } from "@/generated/prisma/client";
 import { getAdminSession } from "@/lib/session";
 import { sendMail } from "@/lib/mail";
 import { uploadToImgBb } from "@/lib/imgbb";
+import { ensureMirrorCategories } from "@/actions/admin-categories";
 
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const MAX_FILES_PER_UPLOAD = 12;
@@ -41,14 +42,12 @@ const productSchema = z.object({
   title: z.string().trim().min(2, "Title must be at least 2 characters."),
   slug: z.string().trim().min(2, "Slug must be at least 2 characters."),
   description: z.string().trim().min(1, "Description is required."),
-  gender: z.enum(["MEN", "WOMEN", "UNISEX"]),
-  categoryId: z.string().min(1),
+  categoryId: z.string().min(1, "Select a category."),
   basePrice: z.number().positive(),
   status: z.enum(["DRAFT", "ACTIVE"]),
   seoTitle: z.string().optional(),
   seoDescription: z.string().optional(),
   freeDelivery: z.enum(["NONE", "INSIDE_DHAKA", "NATIONWIDE"]).default("NONE"),
-  collectionIds: z.array(z.string()).default([]),
   tagNew: z.boolean().default(false),
   tagPreorder: z.boolean().default(false),
   preorderShipDate: z.string().optional(),
@@ -89,6 +88,12 @@ export async function saveProduct(input: ProductFormInput): Promise<ProductSaveR
   }
   const data = parsed.data;
 
+  const category = await db.category.findUnique({ where: { id: data.categoryId } });
+  if (!category) return { ok: false, error: "Select a valid category." };
+  // Self-healing: a Unisex category created before its Men/Women mirrors existed (or one
+  // that predates this feature) gets them backfilled here too, not just at creation time.
+  if (category.gender === "UNISEX") await ensureMirrorCategories(category.name, category.slug);
+
   const tags = await db.tag.findMany();
   const tagByType = Object.fromEntries(tags.map((t) => [t.type, t]));
 
@@ -112,7 +117,7 @@ export async function saveProduct(input: ProductFormInput): Promise<ProductSaveR
           title: data.title,
           slug: data.slug,
           description: data.description,
-          gender: data.gender,
+          gender: category.gender,
           categoryId: data.categoryId,
           basePrice: data.basePrice,
           status: data.status,
@@ -129,7 +134,7 @@ export async function saveProduct(input: ProductFormInput): Promise<ProductSaveR
           title: data.title,
           slug: data.slug,
           description: data.description,
-          gender: data.gender,
+          gender: category.gender,
           categoryId: data.categoryId,
           basePrice: data.basePrice,
           status: data.status,
@@ -174,12 +179,6 @@ export async function saveProduct(input: ProductFormInput): Promise<ProductSaveR
         keepIds.push(record.id);
       }
       await tx.variant.deleteMany({ where: { productId: productRecord.id, id: { notIn: keepIds } } });
-
-      // collections
-      await tx.productCollection.deleteMany({ where: { productId: productRecord.id } });
-      for (const collectionId of data.collectionIds) {
-        await tx.productCollection.create({ data: { productId: productRecord.id, collectionId } });
-      }
 
       // tags
       await tx.productTag.deleteMany({ where: { productId: productRecord.id } });

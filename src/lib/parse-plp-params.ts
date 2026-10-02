@@ -9,7 +9,7 @@ function first(v: string | string[] | undefined): string | undefined {
   return Array.isArray(v) ? v[0] : v;
 }
 
-export function parsePLPParams(raw: RawSearchParams): Omit<PLPParams, "gender" | "categorySlug" | "collectionSlug"> {
+export function parsePLPParams(raw: RawSearchParams): Omit<PLPParams, "gender" | "categorySlug"> {
   const sizes = first(raw.sizes)?.split(",").filter(Boolean);
   const colors = first(raw.colors)?.split(",").filter(Boolean);
   const priceBand = first(raw.price);

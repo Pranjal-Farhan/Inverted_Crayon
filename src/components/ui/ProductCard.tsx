@@ -125,6 +125,7 @@ export function ProductCard({ product }: { product: ProductDisplay }) {
           </span>
         )}
       </div>
+      <div className="font-label text-[11px] tracking-[1px] text-muted">{product.categoryName}</div>
       <h4 className="text-[14px] font-medium">{product.title}</h4>
       <div className="price mt-[3px] text-[15px] text-lime">
         {product.onSale && product.salePrice != null ? (

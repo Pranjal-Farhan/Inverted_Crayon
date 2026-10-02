@@ -2,7 +2,6 @@ import { db } from "@/lib/db";
 import { formatTaka, toNumber } from "@/lib/money";
 import { Kpi } from "@/components/admin/Kpi";
 import { Panel } from "@/components/admin/Panel";
-import { CATEGORIES } from "@/lib/categories";
 
 export default async function AdminAnalyticsPage() {
   // Server Component: runs once per request, not subject to React's
@@ -26,7 +25,10 @@ export default async function AdminAnalyticsPage() {
     const cat = item.product?.category.name ?? "Other";
     byCategory.set(cat, (byCategory.get(cat) ?? 0) + toNumber(item.lineTotal));
   }
-  const catRows = CATEGORIES.map((c) => ({ name: c.name, total: byCategory.get(c.name) ?? 0 }));
+  const catRows = [...byCategory.entries()]
+    .map(([name, total]) => ({ name, total }))
+    .sort((a, b) => b.total - a.total)
+    .slice(0, 8);
   const maxCat = Math.max(...catRows.map((c) => c.total), 1);
 
   const byProduct = new Map<string, { title: string; qty: number }>();

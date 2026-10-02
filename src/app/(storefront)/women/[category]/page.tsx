@@ -1,9 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
+import { db } from "@/lib/db";
 import { PLPView } from "@/components/storefront/PLPView";
 import { parsePLPParams } from "@/lib/parse-plp-params";
-import { CATEGORIES } from "@/lib/categories";
 import type { RawSearchParams } from "@/lib/plp-url";
 
 type Props = {
@@ -13,13 +13,13 @@ type Props = {
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { category } = await params;
-  const cat = CATEGORIES.find((c) => c.slug === category);
+  const cat = await db.category.findFirst({ where: { gender: "WOMEN", slug: category } });
   return { title: cat ? `Women / ${cat.name}` : "Women" };
 }
 
 export default async function WomenCategoryPage({ params, searchParams }: Props) {
   const { category } = await params;
-  const cat = CATEGORIES.find((c) => c.slug === category);
+  const cat = await db.category.findFirst({ where: { gender: "WOMEN", slug: category } });
   if (!cat) notFound();
 
   const rest = parsePLPParams(await searchParams);

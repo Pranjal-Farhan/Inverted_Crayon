@@ -2,8 +2,20 @@ import "dotenv/config";
 import bcrypt from "bcryptjs";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../src/generated/prisma/client";
-import { CATEGORIES } from "../src/lib/categories";
 import { generateOrderNumber } from "../src/lib/order-number";
+
+/** The 8 base category defs — each gets its own Men and Women row (see the categories
+ * section in main()). Slugs match the NOUN pool keys below. */
+const CATEGORY_DEFS = [
+  { slug: "shirts", name: "Shirts" },
+  { slug: "tees", name: "Tees" },
+  { slug: "jeans", name: "Jeans" },
+  { slug: "trousers", name: "Trousers" },
+  { slug: "hoodies", name: "Hoodies" },
+  { slug: "outerwear", name: "Outerwear" },
+  { slug: "headwear", name: "Headwear" },
+  { slug: "accessories", name: "Accessories" },
+] as const;
 import {
   DEFAULT_EMAIL_TEMPLATES,
   DEFAULT_PAYMENT_GATEWAYS,
@@ -53,6 +65,7 @@ const NOUN: Record<string, string[]> = {
   outerwear: ["Track Jacket", "Bomber Jacket", "Puffer Vest"],
   headwear: ["Snapback", "Bucket Hat", "Beanie"],
   accessories: ["Tote Bag", "Crossbody Bag", "Sock Set"],
+  essentials: ["Crew Socks", "Tote Bag", "Beanie"],
 };
 
 function pick<T>(arr: T[], seed: number): T {
@@ -81,16 +94,28 @@ async function main() {
   console.log("Seeding…");
 
   // ---------- categories ----------
-  const categoryRows = await Promise.all(
-    CATEGORIES.map((c, i) =>
-      db.category.upsert({
-        where: { slug: c.slug },
-        update: { name: c.name, position: i },
-        create: { slug: c.slug, name: c.name, position: i },
-      }),
-    ),
-  );
-  const catBySlug = Object.fromEntries(categoryRows.map((c) => [c.slug, c]));
+  // Every category belongs to one gender branch — Men and Women each get their own row per
+  // base def. "essentials" is seeded Unisex-only and then mirrored into Men/Women, the same
+  // way admin-categories.ts's ensureMirrorCategories does when an admin creates one, so the
+  // demo data actually exercises that behavior end to end.
+  async function upsertCategory(gender: "MEN" | "WOMEN" | "UNISEX", slug: string, name: string, position: number) {
+    const existing = await db.category.findFirst({ where: { gender, slug } });
+    return existing
+      ? db.category.update({ where: { id: existing.id }, data: { name, position } })
+      : db.category.create({ data: { gender, slug, name, position } });
+  }
+
+  const catByKey = new Map<string, { id: string; slug: string; gender: string }>();
+  for (const [i, c] of CATEGORY_DEFS.entries()) {
+    for (const gender of ["MEN", "WOMEN"] as const) {
+      const row = await upsertCategory(gender, c.slug, c.name, i);
+      catByKey.set(`${gender}:${c.slug}`, row);
+    }
+  }
+  const essentialsPos = CATEGORY_DEFS.length;
+  catByKey.set("UNISEX:essentials", await upsertCategory("UNISEX", "essentials", "Essentials", essentialsPos));
+  catByKey.set("MEN:essentials", await upsertCategory("MEN", "essentials", "Essentials", essentialsPos));
+  catByKey.set("WOMEN:essentials", await upsertCategory("WOMEN", "essentials", "Essentials", essentialsPos));
 
   // ---------- tags ----------
   const tagDefs = [
@@ -106,35 +131,12 @@ async function main() {
   );
   const tagByType = Object.fromEntries(tagRows.map((t) => [t.type, t]));
 
-  // ---------- collections ----------
-  const dropCollection = await db.collection.upsert({
-    where: { slug: "the-outsiders" },
-    update: {},
-    create: {
-      title: "Drop 04 — The Outsiders",
-      slug: "the-outsiders",
-      description: "A 12-piece capsule for the ones who never fit the box.",
-      heroCopy: "Limited runs, numbered, gone when they're gone.",
-      active: true,
-    },
-  });
-  await db.collection.upsert({
-    where: { slug: "summer-static" },
-    update: {},
-    create: {
-      title: "Summer Static",
-      slug: "summer-static",
-      description: "Bright noise for the hottest months.",
-      active: false,
-    },
-  });
-
   // ---------- products ----------
-  const genders: Array<"MEN" | "WOMEN" | "UNISEX"> = ["MEN", "WOMEN"];
+  const genders: Array<"MEN" | "WOMEN"> = ["MEN", "WOMEN"];
   let seedCounter = 0;
   const createdProducts: { id: string; categorySlug: string }[] = [];
 
-  for (const category of CATEGORIES) {
+  for (const category of CATEGORY_DEFS) {
     for (const gender of genders) {
       for (let variantIdx = 0; variantIdx < 2; variantIdx++) {
         seedCounter++;
@@ -166,7 +168,7 @@ async function main() {
             gender,
             basePrice,
             status: "ACTIVE",
-            categoryId: catBySlug[category.slug].id,
+            categoryId: catByKey.get(`${gender}:${category.slug}`)!.id,
             publishedAt: new Date(Date.now() - publishedDaysAgo * 24 * 60 * 60 * 1000),
             seoTitle: title,
             seoDescription: `${title} — Inverted Crayon streetwear.`,
@@ -225,22 +227,56 @@ async function main() {
           });
         }
 
-        // put a handful of products into the featured collection
-        if (seedCounter % 6 === 0) {
-          await db.productCollection.upsert({
-            where: { productId_collectionId: { productId: product.id, collectionId: dropCollection.id } },
-            update: {},
-            create: { productId: product.id, collectionId: dropCollection.id },
-          });
-        }
       }
     }
+  }
+
+  // A couple of Unisex products under the mirrored "Essentials" category, to demo that a
+  // Unisex product actually shows up when browsing either /men or /women.
+  for (let i = 0; i < 2; i++) {
+    seedCounter++;
+    const adj = pick(ADJ, seedCounter);
+    const noun = pick(NOUN.essentials, seedCounter + i);
+    const title = `${adj} ${noun}`;
+    const baseSlug = slugify(`${title}-unisex`);
+    const basePrice = 850 + ((seedCounter * 137) % 24) * 100;
+    const colorA = pick(COLORS, seedCounter);
+
+    const product = await db.product.upsert({
+      where: { slug: baseSlug },
+      update: {},
+      create: {
+        slug: baseSlug,
+        title,
+        description:
+          "Heavyweight cotton, boxy cut, screen-printed to crack and fade — on purpose. Made to stand out, built to last.",
+        gender: "UNISEX",
+        basePrice,
+        status: "ACTIVE",
+        categoryId: catByKey.get("UNISEX:essentials")!.id,
+        publishedAt: new Date(Date.now() - (seedCounter % 10) * 24 * 60 * 60 * 1000),
+        seoTitle: title,
+        seoDescription: `${title} — Inverted Crayon streetwear.`,
+        images: {
+          create: [0, 1].map((idx) => ({
+            url: "",
+            alt: `${title} — view ${idx + 1}`,
+            position: idx,
+            accentColor: pick(COLORS, seedCounter + idx * 3).hex,
+          })),
+        },
+        variants: {
+          create: [{ sku: `${baseSlug.slice(0, 8).toUpperCase()}-OS`, size: "One Size", color: colorA.name, colorHex: colorA.hex, stockQty: 8, lowStockThreshold: 2 }],
+        },
+      },
+    });
+    createdProducts.push({ id: product.id, categorySlug: "essentials" });
   }
 
   console.log(`Seeded ${createdProducts.length} products.`);
 
   // ---------- campaign: End-of-season sale on Hoodies ----------
-  const hoodiesCat = catBySlug["hoodies"];
+  const hoodiesCat = catByKey.get("MEN:hoodies")!;
   await db.campaign.deleteMany({ where: { name: "End-of-season" } });
   await db.campaign.create({
     data: {

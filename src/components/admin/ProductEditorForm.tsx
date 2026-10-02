@@ -15,6 +15,8 @@ import { Panel } from "@/components/admin/Panel";
 import { DEFAULT_SIZE_GUIDE_COLUMNS, type SizeGuideRow } from "@/lib/size-guide";
 
 type StagedImage = { file: File; previewUrl: string };
+type Branch = "MEN" | "WOMEN" | "UNISEX";
+type CategoryOption = { id: string; name: string; slug: string; gender: Branch };
 
 type VariantRow = {
   id?: string;
@@ -32,11 +34,9 @@ type VariantRow = {
 export function ProductEditorForm({
   initial,
   categories,
-  collections,
 }: {
   initial: (ProductFormInput & { variants: VariantRow[]; images: ProductImageRow[] }) | null;
-  categories: { id: string; name: string }[];
-  collections: { id: string; title: string }[];
+  categories: CategoryOption[];
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -52,12 +52,14 @@ export function ProductEditorForm({
   const [title, setTitle] = useState(initial?.title ?? "");
   const [slug, setSlug] = useState(initial?.slug ?? "");
   const [description, setDescription] = useState(initial?.description ?? "");
-  const [gender, setGender] = useState<"MEN" | "WOMEN" | "UNISEX">(initial?.gender ?? "UNISEX");
-  const [categoryId, setCategoryId] = useState(initial?.categoryId ?? categories[0]?.id ?? "");
+  const initialCategory = initial ? categories.find((c) => c.id === initial.categoryId) : undefined;
+  const [branch, setBranch] = useState<Branch>(initialCategory?.gender ?? "UNISEX");
+  const [categoryId, setCategoryId] = useState(
+    initial?.categoryId ?? categories.find((c) => c.gender === "UNISEX")?.id ?? "",
+  );
   const [basePrice, setBasePrice] = useState(initial?.basePrice ?? 1000);
   const [status, setStatus] = useState<"DRAFT" | "ACTIVE">(initial?.status ?? "DRAFT");
   const [freeDelivery, setFreeDelivery] = useState<"NONE" | "INSIDE_DHAKA" | "NATIONWIDE">(initial?.freeDelivery ?? "NONE");
-  const [collectionIds, setCollectionIds] = useState<string[]>(initial?.collectionIds ?? []);
   const [tagNew, setTagNew] = useState(initial?.tagNew ?? false);
   const [tagPreorder, setTagPreorder] = useState(initial?.tagPreorder ?? false);
   const [preorderShipDate, setPreorderShipDate] = useState(initial?.preorderShipDate ?? "");
@@ -137,6 +139,14 @@ export function ProductEditorForm({
     setSgRows((rows) => distinctSizes.map((size) => rows.find((r) => r.size === size) ?? { size, values: sgColumns.map(() => "") }));
   }
 
+  const subcategories = categories.filter((c) => c.gender === branch);
+
+  function handleBranchChange(next: Branch) {
+    setBranch(next);
+    const stillValid = categories.find((c) => c.id === categoryId)?.gender === next;
+    if (!stillValid) setCategoryId(categories.find((c) => c.gender === next)?.id ?? "");
+  }
+
   async function handleFiles(fileList: FileList | File[]) {
     const files = Array.from(fileList).filter((f) => f.type.startsWith("image/"));
     if (files.length === 0) return;
@@ -180,12 +190,10 @@ export function ProductEditorForm({
         title,
         slug,
         description,
-        gender,
         categoryId,
         basePrice,
         status,
         freeDelivery,
-        collectionIds,
         tagNew,
         tagPreorder,
         preorderShipDate,
@@ -460,37 +468,31 @@ export function ProductEditorForm({
 
       <div>
         <Panel title="Organize">
-          <Field label="Gender">
-            <select value={gender} onChange={(e) => setGender(e.target.value as typeof gender)} className={inputClass}>
+          <Field label="Main category">
+            <select value={branch} onChange={(e) => handleBranchChange(e.target.value as Branch)} className={inputClass}>
               <option value="UNISEX">Unisex</option>
               <option value="MEN">Men</option>
               <option value="WOMEN">Women</option>
             </select>
           </Field>
-          <Field label="Category">
-            <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)} className={inputClass}>
-              {categories.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Collections">
-            <div className="flex flex-wrap gap-3">
-              {collections.map((c) => (
-                <label key={c.id} className="inline-flex items-center gap-1.5 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={collectionIds.includes(c.id)}
-                    onChange={(e) =>
-                      setCollectionIds((ids) => (e.target.checked ? [...ids, c.id] : ids.filter((id) => id !== c.id)))
-                    }
-                  />
-                  {c.title}
-                </label>
-              ))}
-            </div>
+          <Field label="Sub category">
+            {subcategories.length > 0 ? (
+              <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)} className={inputClass}>
+                {subcategories.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <p className="text-[13px] text-muted-2">
+                No subcategories under this branch yet — add one from{" "}
+                <a href="/admin/categories" className="text-cyan hover:underline">
+                  Categories
+                </a>
+                .
+              </p>
+            )}
           </Field>
           <Field label="Base price ৳">
             <input type="number" value={basePrice} onChange={(e) => setBasePrice(Number(e.target.value))} className={inputClass} />

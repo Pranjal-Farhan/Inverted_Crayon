@@ -8,13 +8,12 @@ type Props = { params: Promise<{ id: string }> };
 
 export default async function EditProductPage({ params }: Props) {
   const { id } = await params;
-  const [product, categories, collections] = await Promise.all([
+  const [product, categories] = await Promise.all([
     db.product.findUnique({
       where: { id },
-      include: { variants: true, collections: true, tags: { include: { tag: true } }, images: { orderBy: { position: "asc" } } },
+      include: { variants: true, tags: { include: { tag: true } }, images: { orderBy: { position: "asc" } } },
     }),
-    db.category.findMany({ orderBy: { position: "asc" } }),
-    db.collection.findMany({ orderBy: { title: "asc" } }),
+    db.category.findMany({ orderBy: [{ gender: "asc" }, { position: "asc" }] }),
   ]);
   if (!product) notFound();
 
@@ -28,14 +27,12 @@ export default async function EditProductPage({ params }: Props) {
         title: product.title,
         slug: product.slug,
         description: product.description,
-        gender: product.gender,
         categoryId: product.categoryId,
         basePrice: toNumber(product.basePrice),
         status: product.status,
         freeDelivery: product.freeDelivery,
         seoTitle: product.seoTitle ?? undefined,
         seoDescription: product.seoDescription ?? undefined,
-        collectionIds: product.collections.map((c) => c.collectionId),
         tagNew: product.tags.some((t) => t.tag.type === "NEW"),
         tagPreorder: Boolean(preorderTag),
         preorderShipDate: preorderMeta?.shipDate ?? "",
@@ -56,7 +53,6 @@ export default async function EditProductPage({ params }: Props) {
         sizeGuide: parseSizeGuide(product.sizeGuide),
       }}
       categories={categories}
-      collections={collections.map((c) => ({ id: c.id, title: c.title }))}
     />
   );
 }

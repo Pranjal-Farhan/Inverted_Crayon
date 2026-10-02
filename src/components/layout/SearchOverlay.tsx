@@ -3,11 +3,18 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { CATEGORIES } from "@/lib/categories";
 import { useSearchSuggestions } from "@/lib/use-search-suggestions";
 import { formatTaka } from "@/lib/money";
 
-export function SearchOverlay({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function SearchOverlay({
+  open,
+  onClose,
+  categoryNames,
+}: {
+  open: boolean;
+  onClose: () => void;
+  categoryNames: string[];
+}) {
   const [q, setQ] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
@@ -78,18 +85,22 @@ export function SearchOverlay({ open, onClose }: { open: boolean; onClose: () =>
             </p>
           )
         )}
-        <p className="mb-3 font-label text-[13px] tracking-[1.4px] text-muted">POPULAR CATEGORIES</p>
-        <div className="flex flex-wrap gap-2.5">
-          {CATEGORIES.map((c) => (
-            <button
-              key={c.slug}
-              onClick={() => submit(c.name)}
-              className="border border-line-2 px-3 py-1.5 text-sm hover:border-lime hover:text-lime"
-            >
-              {c.name}
-            </button>
-          ))}
-        </div>
+        {categoryNames.length > 0 && (
+          <>
+            <p className="mb-3 font-label text-[13px] tracking-[1.4px] text-muted">POPULAR CATEGORIES</p>
+            <div className="flex flex-wrap gap-2.5">
+              {categoryNames.map((name) => (
+                <button
+                  key={name}
+                  onClick={() => submit(name)}
+                  className="border border-line-2 px-3 py-1.5 text-sm hover:border-lime hover:text-lime"
+                >
+                  {name}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

@@ -115,7 +115,6 @@ model Product {
 
   variants       Variant[]
   images         ProductImage[]
-  collections    ProductCollection[]
   tags           ProductTag[]
   reviews        Review[]
   orderItems     OrderItem[]
@@ -172,34 +171,22 @@ model ProductImage {
   @@index([productId, position])
 }
 
+// A category always belongs to exactly one main branch (gender). Men/Women/Unisex each
+// have their own independent subcategory set — the same name ("Jeans") can exist once per
+// branch, as three distinct rows. A Unisex subcategory is mirrored into Men and Women (same
+// name/slug, auto-created if missing — see ensureMirrorCategories in admin-categories.ts) so
+// it's browsable from every relevant branch; products stay on their own single categoryId
+// and are picked up under the mirrored branches at query time by matching gender + slug
+// (see getPLPResults in src/lib/plp.ts), not by duplicating rows.
 model Category {
   id       String    @id @default(cuid())
   name     String
-  slug     String    @unique
+  slug     String
+  gender   Gender
   position Int       @default(0)
   products Product[]
-}
 
-model Collection {
-  id          String              @id @default(cuid())
-  title       String
-  slug        String              @unique
-  description String?
-  heroCopy    String?
-  active      Boolean             @default(true)
-  startsAt    DateTime?
-  endsAt      DateTime?
-  products    ProductCollection[]
-  createdAt   DateTime            @default(now())
-}
-
-model ProductCollection {
-  productId    String
-  collectionId String
-  product      Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
-  collection   Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
-
-  @@id([productId, collectionId])
+  @@unique([gender, slug])
 }
 
 // Cosmetic/behavioral tags. Sale and Sold-out are intentionally NOT rows here

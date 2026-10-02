@@ -14,7 +14,7 @@ import { ScrambleHeadline } from "@/components/storefront/ScrambleHeadline";
 import { CrayonScribble } from "@/components/brand/CrayonScribble";
 import { DEFAULT_HERO, type HeroData } from "@/lib/hero-defaults";
 
-const COLLECTION_TILES = [
+const CATEGORY_SPOTLIGHT_TILES = [
   { label: "Graphic Tees", href: "/men/tees", shape: "x" as const, color: "#ff2d84" },
   { label: "Hoodies", href: "/women/hoodies", shape: "square" as const, color: "#c3f53a" },
   { label: "Shirts", href: "/men/shirts", shape: "circle" as const, color: "#26a7e6" },
@@ -107,13 +107,13 @@ export default async function HomePage() {
         </div>
       </div>
 
-      {/* COLLECTIONS */}
+      {/* CATEGORY SPOTLIGHT */}
       <div className="sh my-8 flex items-center gap-3 font-scrawl text-[30px]">
-        Collections <Crown className="h-6 w-[34px] text-cyan" />
+        Shop by category <Crown className="h-6 w-[34px] text-cyan" />
         <CrayonScribble id="collections-h" color="var(--color-ic-cyan)" className="h-6 w-10 -rotate-3 opacity-80" />
       </div>
       <div className="grid grid-cols-1 gap-4 desktop:grid-cols-3">
-        {COLLECTION_TILES.map((t) => (
+        {CATEGORY_SPOTLIGHT_TILES.map((t) => (
           <Link key={t.label} href={t.href} className="relative flex min-h-[280px] items-end overflow-hidden border border-line bg-ink">
             <PlaceholderFrame accentColor={t.color} shape={t.shape} stamp={false} className="absolute inset-0 z-[2] h-full w-full" />
             <span className="font-scrawl relative z-[3] p-4.5 text-[26px]">{t.label}</span>

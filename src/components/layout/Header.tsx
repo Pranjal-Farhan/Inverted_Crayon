@@ -5,7 +5,6 @@ import Image from "next/image";
 import { useState } from "react";
 import { Monogram } from "@/components/brand/Monogram";
 import { RainbowWord } from "@/components/brand/RainbowWord";
-import { CATEGORIES } from "@/lib/categories";
 import { useCart } from "@/context/cart-context";
 import { SearchOverlay } from "@/components/layout/SearchOverlay";
 import { ScribbleLink } from "@/components/ui/ScribbleLink";
@@ -15,16 +14,20 @@ const GENDERS = [
   { key: "women", label: "Women" },
 ] as const;
 
+export type HeaderCategory = { slug: string; name: string };
+
 export function Header({
   saleActive,
   customerName,
   brandName = "Inverted Crayon",
   logoImageUrl = null,
+  categories,
 }: {
   saleActive: boolean;
   customerName: string | null;
   brandName?: string;
   logoImageUrl?: string | null;
+  categories: { men: HeaderCategory[]; women: HeaderCategory[] };
 }) {
   const [searchOpen, setSearchOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -70,7 +73,10 @@ export function Header({
                     {g.label.toUpperCase()} · SHOP BY CATEGORY
                   </div>
                   <div className="grid grid-cols-2 gap-x-[22px] gap-y-1">
-                    {CATEGORIES.map((c) => (
+                    {categories[g.key].length === 0 && (
+                      <span className="text-sm text-muted-2">No categories yet</span>
+                    )}
+                    {categories[g.key].map((c) => (
                       <Link
                         key={c.slug}
                         href={`/${g.key}/${c.slug}`}
@@ -124,7 +130,11 @@ export function Header({
         </div>
       </header>
 
-      <SearchOverlay open={searchOpen} onClose={() => setSearchOpen(false)} />
+      <SearchOverlay
+        open={searchOpen}
+        onClose={() => setSearchOpen(false)}
+        categoryNames={[...new Set([...categories.men, ...categories.women].map((c) => c.name))]}
+      />
 
       {/* mobile drawer */}
       <div
@@ -153,7 +163,7 @@ export function Header({
               </button>
               {mobileAccordion === g.key && (
                 <div className="grid grid-cols-2 gap-2 pb-3">
-                  {CATEGORIES.map((c) => (
+                  {categories[g.key].map((c) => (
                     <Link
                       key={c.slug}
                       href={`/${g.key}/${c.slug}`}
