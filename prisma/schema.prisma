@@ -106,6 +106,9 @@ model Product {
   seoTitle       String?
   seoDescription String?
   freeDelivery   FreeDeliveryScope @default(NONE)
+  // { columns: string[]; rows: { size: string; values: string[] }[] } — see src/lib/size-guide.ts.
+  // Null = this product has no measurements entered yet; the PDP falls back to a generic chart.
+  sizeGuide      Json?
 
   categoryId String
   category   Category @relation(fields: [categoryId], references: [id])

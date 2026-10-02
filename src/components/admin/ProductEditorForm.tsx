@@ -12,6 +12,7 @@ import {
   type ProductImageRow,
 } from "@/actions/admin-products";
 import { Panel } from "@/components/admin/Panel";
+import { DEFAULT_SIZE_GUIDE_COLUMNS, type SizeGuideRow } from "@/lib/size-guide";
 
 type StagedImage = { file: File; previewUrl: string };
 
@@ -103,6 +104,39 @@ export function ProductEditorForm({
     setVariants((rows) => rows.filter((_, idx) => idx !== i));
   }
 
+  const [sgColumns, setSgColumns] = useState<string[]>(initial?.sizeGuide?.columns ?? DEFAULT_SIZE_GUIDE_COLUMNS);
+  const [sgRows, setSgRows] = useState<SizeGuideRow[]>(initial?.sizeGuide?.rows ?? []);
+
+  function updateColumnLabel(i: number, label: string) {
+    setSgColumns((cols) => cols.map((c, idx) => (idx === i ? label : c)));
+  }
+  function addColumn() {
+    setSgColumns((cols) => [...cols, "Column"]);
+    setSgRows((rows) => rows.map((r) => ({ ...r, values: [...r.values, ""] })));
+  }
+  function removeColumn(i: number) {
+    setSgColumns((cols) => cols.filter((_, idx) => idx !== i));
+    setSgRows((rows) => rows.map((r) => ({ ...r, values: r.values.filter((_, idx) => idx !== i) })));
+  }
+  function updateRowSize(i: number, size: string) {
+    setSgRows((rows) => rows.map((r, idx) => (idx === i ? { ...r, size } : r)));
+  }
+  function updateRowValue(i: number, colIndex: number, value: string) {
+    setSgRows((rows) =>
+      rows.map((r, idx) => (idx === i ? { ...r, values: r.values.map((v, vi) => (vi === colIndex ? value : v)) } : r)),
+    );
+  }
+  function addSizeRow() {
+    setSgRows((rows) => [...rows, { size: "", values: sgColumns.map(() => "") }]);
+  }
+  function removeSizeRow(i: number) {
+    setSgRows((rows) => rows.filter((_, idx) => idx !== i));
+  }
+  function prefillSizesFromVariants() {
+    const distinctSizes = [...new Set(variants.map((v) => v.size.trim()).filter(Boolean))];
+    setSgRows((rows) => distinctSizes.map((size) => rows.find((r) => r.size === size) ?? { size, values: sgColumns.map(() => "") }));
+  }
+
   async function handleFiles(fileList: FileList | File[]) {
     const files = Array.from(fileList).filter((f) => f.type.startsWith("image/"));
     if (files.length === 0) return;
@@ -158,6 +192,7 @@ export function ProductEditorForm({
         tagLimited,
         tagBestseller,
         variants,
+        sizeGuide: sgRows.length > 0 ? { columns: sgColumns, rows: sgRows } : null,
       });
       if (!res.ok) {
         setError(res.error);
@@ -333,6 +368,92 @@ export function ProductEditorForm({
           </div>
           <button onClick={addVariant} className="mt-2.5 border border-line-2 px-3 py-1.5 text-[13px] hover:border-lime">
             + Add variant
+          </button>
+        </Panel>
+
+        <Panel title="Size guide" className="mt-4.5">
+          <p className="mb-2 text-[12px] text-muted-2">
+            Measurements shown on this product&apos;s PDP under &quot;Size guide →&quot;. Leave every row empty to
+            fall back to the generic reference chart instead.
+          </p>
+          <button
+            type="button"
+            onClick={prefillSizesFromVariants}
+            className="mb-2.5 border border-line-2 px-2.5 py-1.5 text-[12px] hover:border-lime"
+          >
+            Use sizes from variants
+          </button>
+          {sgRows.length > 0 && (
+            <div className="overflow-x-auto">
+              <table className="w-full text-[13px]">
+                <thead>
+                  <tr className="text-left text-muted">
+                    <th className="font-label pb-1.5">Size</th>
+                    {sgColumns.map((col, i) => (
+                      <th key={i} className="font-label pb-1.5">
+                        <div className="flex items-center gap-1">
+                          <input
+                            value={col}
+                            onChange={(e) => updateColumnLabel(i, e.target.value)}
+                            aria-label={`Column ${i + 1} label`}
+                            className={`${cellClass} w-20`}
+                          />
+                          {sgColumns.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => removeColumn(i)}
+                              aria-label={`Remove ${col || "column"}`}
+                              className="text-muted hover:text-error"
+                            >
+                              ✕
+                            </button>
+                          )}
+                        </div>
+                      </th>
+                    ))}
+                    <th className="font-label pb-1.5">
+                      {sgColumns.length < 6 && (
+                        <button type="button" onClick={addColumn} className="text-cyan hover:underline">
+                          + col
+                        </button>
+                      )}
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sgRows.map((row, i) => (
+                    <tr key={i}>
+                      <td className="pr-1.5 py-1">
+                        <input
+                          value={row.size}
+                          onChange={(e) => updateRowSize(i, e.target.value)}
+                          aria-label="Size"
+                          className={`${cellClass} w-14`}
+                        />
+                      </td>
+                      {sgColumns.map((col, ci) => (
+                        <td key={ci} className="pr-1.5 py-1">
+                          <input
+                            value={row.values[ci] ?? ""}
+                            onChange={(e) => updateRowValue(i, ci, e.target.value)}
+                            aria-label={col || `Column ${ci + 1}`}
+                            className={`${cellClass} w-16`}
+                          />
+                        </td>
+                      ))}
+                      <td className="py-1">
+                        <button type="button" onClick={() => removeSizeRow(i)} className="text-muted hover:text-error">
+                          ✕
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <button type="button" onClick={addSizeRow} className="mt-2.5 border border-line-2 px-3 py-1.5 text-[13px] hover:border-lime">
+            + Add size row
           </button>
         </Panel>
       </div>

@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { toNumber } from "@/lib/money";
 import { ProductEditorForm } from "@/components/admin/ProductEditorForm";
+import { parseSizeGuide } from "@/lib/size-guide";
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -52,6 +53,7 @@ export default async function EditProductPage({ params }: Props) {
           preorderAdvanceAmount: v.preorderAdvanceAmount != null ? toNumber(v.preorderAdvanceAmount) : null,
         })),
         images: product.images,
+        sizeGuide: parseSizeGuide(product.sizeGuide),
       }}
       categories={categories}
       collections={collections.map((c) => ({ id: c.id, title: c.title }))}

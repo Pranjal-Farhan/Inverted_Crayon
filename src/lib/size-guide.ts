@@ -1,0 +1,39 @@
+export type SizeGuideRow = { size: string; values: string[] };
+export type SizeGuideData = { columns: string[]; rows: SizeGuideRow[] };
+
+export const DEFAULT_SIZE_GUIDE_COLUMNS = ["Chest", "Length", "Sleeve"];
+
+/** Shown when a product has no measurements entered yet. Inches, same shape as any product's. */
+export const GENERIC_SIZE_GUIDE: SizeGuideData = {
+  columns: ["Chest", "Length", "Sleeve"],
+  rows: [
+    { size: "S", values: ["40", "27", "8"] },
+    { size: "M", values: ["42", "28", "8.5"] },
+    { size: "L", values: ["44", "29", "9"] },
+    { size: "XL", values: ["46", "30", "9.5"] },
+    { size: "XXL", values: ["48", "31", "10"] },
+  ],
+};
+
+/** Narrows a Product.sizeGuide JSON column into a usable table, or null if absent/malformed/empty. */
+export function parseSizeGuide(value: unknown): SizeGuideData | null {
+  if (!value || typeof value !== "object") return null;
+  const v = value as { columns?: unknown; rows?: unknown };
+  if (!Array.isArray(v.columns) || !Array.isArray(v.rows)) return null;
+
+  const columns = v.columns.filter((c): c is string => typeof c === "string" && c.trim() !== "");
+  if (columns.length === 0) return null;
+
+  const rows = v.rows
+    .filter((r): r is Record<string, unknown> => typeof r === "object" && r !== null)
+    .map((r) => ({
+      size: typeof r.size === "string" ? r.size.trim() : "",
+      values: Array.isArray(r.values)
+        ? r.values.map((x) => (typeof x === "string" ? x : x == null ? "" : String(x)))
+        : [],
+    }))
+    .filter((r) => r.size !== "");
+  if (rows.length === 0) return null;
+
+  return { columns, rows };
+}

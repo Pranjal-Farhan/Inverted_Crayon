@@ -155,8 +155,8 @@ src/
   generated/prisma/           Prisma Client output — gitignored, built by `prisma generate`
 
 public/
-  uploads/                    admin-uploaded images (product photos, site logo/hero) — gitignored,
-                              local disk, not committed — see §12
+  uploads/                    legacy local-disk uploads from before the ImgBB migration — gitignored,
+                              not committed, new uploads no longer write here — see §12
 ```
 
 ---
@@ -296,7 +296,7 @@ Two separate mechanisms: `SearchOverlay.tsx` (the header's ⌘/tap-triggered ful
 
 ### 8.4 PDP (`/product/[slug]`)
 
-`getProductForPDP()` (`src/lib/get-product.ts`) fetches the product with all relations plus up to 4 related products from the same category. The page renders: `ProductGallery` (swipeable multi-image, real uploaded photos or placeholder — see §12), title/rating/price (sale-aware via `deriveProductDisplay`), tag pills, `AddToCartForm` (size/color selection, stock-aware, preorder-aware), a **free-delivery badge** when `product.freeDelivery !== "NONE"` (rendered directly under Add-to-Cart, sourced straight from the admin-set field — §5.1), wishlist button, an accordion (details/shipping/returns — static copy today), related products, a recently-viewed rail (`src/lib/recently-viewed.ts`, `localStorage`-backed), and the review list + a "write a review" prompt gated on eligibility (§16.1).
+`getProductForPDP()` (`src/lib/get-product.ts`, wrapped in React's `cache()` so `generateMetadata` and the page component share one call per request) fetches the product with all relations plus up to 4 related products from the same category. The page renders: `ProductGallery` (swipeable multi-image, real uploaded photos or placeholder — see §12), title/rating/price (sale-aware via `deriveProductDisplay`), tag pills, `AddToCartForm` (size/color selection, stock-aware, preorder-aware), a **free-delivery badge** when `product.freeDelivery !== "NONE"` (rendered directly under Add-to-Cart, sourced straight from the admin-set field — §5.1), a **"Size guide →" link to `/size-guide?product=<slug>`** (renders that product's own measurements table, admin-entered — §10.3), wishlist button, an accordion (details/shipping/returns — static copy today), related products, a recently-viewed rail (`src/lib/recently-viewed.ts`, `localStorage`-backed), and the review list + a "write a review" prompt gated on eligibility (§16.1).
 
 ### 8.5 Cart (`/cart`) and cart state
 
@@ -430,9 +430,11 @@ List page: filterable by status/payment method, searchable by order number or em
 
 ### 10.3 Products (`/admin/products`, `/admin/products/[id]`, `/admin/products/new`)
 
-`ProductEditorForm.tsx` — the biggest form in the app. Basics (title/description/image upload dropzone), variant table (SKU/size/color/hex/stock/low-threshold/price-override/**preorder ৳** — **stock is only editable here for brand-new variant rows**; editing an existing variant's stock through this form is disabled by design, because the form loads stock at page-open time and a sale between then and save would silently clobber a live number — stock changes for existing variants go through Inventory, §10.4 instead), Organize (gender/category/collections/base price/**free-delivery dropdown**), Tags (New/Preorder+ship-date/Limited/Bestseller), Status & SEO. The **Preorder ৳** column is per size/color (blank = not preorder-eligible once sold out, 0 = free to reserve) — this is the actual preorder-purchasability control (§9.6); the Tags panel's Preorder checkbox is purely the ship-date-banner/marketing flag now, not a gate on whether the item can be bought.
+`ProductEditorForm.tsx` — the biggest form in the app. Basics (title/description/image upload dropzone), variant table (SKU/size/color/hex/stock/low-threshold/price-override/**preorder ৳** — **stock is only editable here for brand-new variant rows**; editing an existing variant's stock through this form is disabled by design, because the form loads stock at page-open time and a sale between then and save would silently clobber a live number — stock changes for existing variants go through Inventory, §10.4 instead), **Size guide** (see below), Organize (gender/category/collections/base price/**free-delivery dropdown**), Tags (New/Preorder+ship-date/Limited/Bestseller), Status & SEO. The **Preorder ৳** column is per size/color (blank = not preorder-eligible once sold out, 0 = free to reserve) — this is the actual preorder-purchasability control (§9.6); the Tags panel's Preorder checkbox is purely the ship-date-banner/marketing flag now, not a gate on whether the item can be bought.
 
-Image upload: drag-and-drop or click-to-browse, up to 20 images per product, 12 per request, 8MB per file, 40MB per request total, SVG rejected outright (stored-XSS risk — an uploaded SVG can embed `<script>` and would be served back from its own URL). Files land on local disk at `public/uploads/products/<productId>/<uuid>.<ext>` (§12) and become `ProductImage` rows.
+Image upload: drag-and-drop or click-to-browse, up to 20 images per product, 12 per request, 8MB per file, 40MB per request total, SVG rejected outright (stored-XSS risk — an uploaded SVG can embed `<script>` and would be served back from its own URL). Files upload to ImgBB (§12) and become `ProductImage` rows pointing at the returned CDN URL.
+
+**Size guide**: a free-form measurements table — admin names the columns (defaults to Chest/Length/Sleeve, up to 6, add/remove any), then adds one row per size with a value per column. "Use sizes from variants" prefills the row list from this product's own variant sizes (keeping any values already typed for a size that's still present), so the size guide can't silently drift out of sync with what the product actually sells in. Stored on `Product.sizeGuide` (`Json?`) as `{ columns: string[]; rows: { size: string; values: string[] }[] }` — `src/lib/size-guide.ts` has the type, a `parseSizeGuide()` narrower for reading it back untrusted, and the `GENERIC_SIZE_GUIDE` fallback table. Saving with zero rows stores `Prisma.JsonNull` (explicitly, not just omitting the field — an omitted field leaves Prisma's `update` untouched, which would never clear a previously-saved guide). The PDP's "Size guide →" link (§8.4) carries `?product=<slug>`; `/size-guide` looks that product up and renders its table, falling back to `GENERIC_SIZE_GUIDE` when the product has none or the link doesn't carry one at all (e.g. the footer's size-guide link).
 
 ### 10.4 Inventory (`/admin/inventory`)
 
@@ -507,19 +509,17 @@ Same shape as Emails, one level down: a read-only, filterable (by type/recipient
 - **Homepage hero panel**: eyebrow/headline/sub/subBold/badge text fields (all rendered on `/`'s hero — note: earlier in this project's history the `headline` field existed in this form but the homepage silently ignored it and rendered a hardcoded heading instead; that's since been fixed so the field actually does something), a background-color override (native `<input type="color">`, `null` = default), and an uploadable hero-image carousel (`HeroCarousel.tsx` — auto-rotating every 4.5s with dot navigation when 2+ images exist; falls back to the styled placeholder graphic when empty).
 - **Featured drop panel**: picks which product renders in the homepage's "Featured drop" section (writes the separate `home_featured_drop` block).
 
-Both logo and hero images upload through the same local-disk pattern as product images (§12), just under `public/uploads/site/{logo,hero}/` instead of `.../products/<id>/`.
+Both logo and hero images upload through the same ImgBB pattern as product images (§12).
 
 ---
 
 ## 12. Image handling
 
-Every uploaded image in this app — product photos, the site logo, hero carousel images — goes through the same shape: an admin-only server action validates the file (type allow-list minus SVG, size caps, count caps), writes it to `public/uploads/.../<random-uuid>.<ext>` via `node:fs/promises`, and creates a database row pointing at the resulting `/uploads/...` URL. The filename is always a fresh UUID, never derived from the uploaded filename or any user input — so there's no path-traversal surface (the extension is sanitized to `[a-z0-9]` only, defaulting to `jpg`).
+Every uploaded image in this app — product photos, the site logo, hero carousel images — goes through the same shape: an admin-only server action validates the file (type allow-list minus SVG, size caps, count caps), uploads it to ImgBB via `uploadToImgBb()` (`src/lib/imgbb.ts`, needs `IMGBB_API_KEY`), and creates a database row pointing at the ImgBB-returned CDN URL (`https://i.ibb.co/...`). `next.config.ts`'s `images.remotePatterns` allow-lists that host so `next/image` can optimize it like any other remote image.
 
-This is **local disk storage**, which is exactly right for a single persistent server/VPS with a stable filesystem and exactly wrong for:
-- Serverless/ephemeral-disk deploys (e.g. plain Vercel) — files written during a request don't persist to the next one.
-- Multiple app instances behind a load balancer without a shared volume — an upload landing on instance A won't be visible from instance B.
+No uploaded file ever touches this app's own disk, so — unlike the local-disk storage this replaced — it survives serverless/ephemeral deploys and multiple app instances behind a load balancer with no shared volume.
 
-Swapping to S3/Cloudinary/etc. before deploying to either of those targets would mean replacing the `fs.writeFile`/`fs.unlink` calls in `admin-products.ts` and `admin-content.ts` with an object-store SDK call, and switching the stored `url` from a local path to whatever the store returns — the rest of the app (everything that reads `ProductImage.url` or `HeroData.logoImageUrl`/`heroImages`) doesn't care where the URL points, so this is a contained, single-layer swap.
+Two earlier storage strategies are now purely historical, kept only so old rows already in the database keep rendering: product/site images were briefly written to local disk under `public/uploads/...`, and before that stored as inline Base64 `data:` URLs directly in the `url` column. `deleteProductImage()` still attempts an `fs.unlink` for any remaining `/uploads/...`-prefixed row; `GET /api/products/by-ids` (the recently-viewed/related-product endpoint) strips any `data:`-prefixed URL to an empty string via raw SQL so a giant inline image is never re-shipped to the client. Every new upload goes through ImgBB — there's nothing left to swap for a serverless deploy.
 
 ---
 
@@ -630,7 +630,6 @@ Every non-trivial claim in this document — the stock-race guard actually preve
 
 ## 20. Known limitations / what's still mocked
 
-- **Local-disk image storage** doesn't survive serverless/ephemeral deploys or multi-instance setups without a shared volume (§12).
 - **Payments, real email, real SMS, and OAuth** all need externally-provisioned credentials to go live — see §14, §13, §13a, §7.3, and the table in `README.md`'s "Going live" section for exactly which env vars.
 - **Order-confirmation SMS has no per-type admin toggle** the way email does (§13a) — it's always on if SSL Wireless is configured, since it's a single generated message rather than an editable template.
 - **Free-delivery tag is presentational only** — it doesn't currently zero out the shipping line at checkout.
@@ -649,7 +648,8 @@ Every non-trivial claim in this document — the stock-race guard actually preve
 
 | Variable | Required? | Purpose |
 |---|---|---|
-| `DATABASE_URL` | Yes | Postgres connection string |
+| `DATABASE_URL` | Yes | Postgres connection string — what the running app actually connects with (`src/lib/db.ts`) |
+| `DIRECT_URL` | Yes, for Prisma CLI commands | `prisma7.config.ts`'s datasource — `migrate`/`studio`/`db seed` read this, not `DATABASE_URL`; not in `.env.example`, set it (same value as `DATABASE_URL` works for a single local Postgres) before running those commands if it's missing |
 | `SESSION_SECRET` | Yes in production | JWT signing key for both session cookies |
 | `ADMIN_EMAIL`, `ADMIN_PASSWORD` | No (seed only) | Seed script's admin account credentials |
 | `ALLOW_PRODUCTION_SEED` | No | Must be `true` to let the seed script run when `NODE_ENV=production` |
@@ -660,6 +660,7 @@ Every non-trivial claim in this document — the stock-race guard actually preve
 | `SSLCOMMERZ_STORE_ID`, `SSLCOMMERZ_STORE_PASSWORD`, `SSLCOMMERZ_SANDBOX` | No | Real card/mobile-banking payments |
 | `RESEND_API_KEY`, `EMAIL_FROM` | No | Real email delivery |
 | `SSLWIRELESS_SMS_API_TOKEN`, `SSLWIRELESS_SMS_SID`, `SSLWIRELESS_SMS_BASE_URL` | No | Real order-confirmation SMS delivery (base URL defaults to SSL Wireless's SMS Plus host) |
+| `IMGBB_API_KEY` | Yes, for image uploads | All product/site image uploads go through ImgBB (§12) — without it, `uploadToImgBb()` throws and the upload action returns an error |
 
 Full annotated template: `.env.example`.
 
@@ -672,7 +673,7 @@ For "what touches what" at a glance:
 - **A price appears anywhere** → traces back to `deriveProductDisplay()` in `product-view.ts`, or — at checkout specifically — to the same campaign logic re-run server-side in `checkout.ts`.
 - **An order is created** → `checkout.ts` → decrements `Variant.stockQty`, increments `Discount.usedCount`, deletes any matching `AbandonedCheckout`, creates `Order`+`OrderItem`, optionally calls out to `lib/payments/*`. Once it's actually confirmed (immediately for instant-paid/COD, or from the payment callback route once a live gateway redirect resolves) it calls `sendMail()` → writes `EmailLog` (+ real Resend call if configured) and `sendOrderConfirmationSms()` → writes `SmsLog` (+ real SSL Wireless call if configured), §13a.
 - **Stock changes** → `admin-inventory.ts`'s `setVariantStock` (manual correction, also fires back-in-stock/wishlist emails), `checkout.ts`'s guarded decrement (a sale), `admin-orders.ts`'s `refundOrder` (a restock), or `admin-finance.ts`'s `recordStockPurchase` (an accountable increase, alongside a `StockPurchase` row — §10.4a).
-- **A product is saved** → `admin-products.ts`'s `saveProduct` → touches `Product`, `Variant` (upsert/delete), `ProductCollection` (replace), `ProductTag` (replace), and conditionally emails everyone with an active preorder order for it if the ship date changed.
-- **An image is uploaded** (product or site) → writes to `public/uploads/...` and a `ProductImage` row or the `home_hero` `ContentBlock`'s `logoImageUrl`/`heroImages` array — same validation/storage pattern either way (`§12`).
+- **A product is saved** → `admin-products.ts`'s `saveProduct` → touches `Product` (including `sizeGuide`, §10.3), `Variant` (upsert/delete), `ProductCollection` (replace), `ProductTag` (replace), and conditionally emails everyone with an active preorder order for it if the ship date changed.
+- **An image is uploaded** (product or site) → uploads to ImgBB and a `ProductImage` row or the `home_hero` `ContentBlock`'s `logoImageUrl`/`heroImages` array stores the returned CDN URL — same validation/upload pattern either way (`§12`).
 - **The homepage renders** → `(storefront)/layout.tsx` and `(storefront)/page.tsx` both independently read the same `home_hero` `ContentBlock` (layout for Header/Footer branding, page for the hero itself) — editing it in `/admin/content` invalidates both via `revalidatePath("/")`.
 - **A login happens** (any of email/password, Google, Facebook — customer or admin) → always ends at `setCustomerSession()`/`setAdminSession()` in `session.ts`, the one place either cookie is ever written — except an admin with 2FA enabled, which detours through `setAdmin2FAPending()` and a second `verifyAdminTwoFactor()` step first (§7.5).

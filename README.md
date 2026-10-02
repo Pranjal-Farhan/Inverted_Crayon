@@ -109,6 +109,10 @@ Fires at every point an order actually becomes confirmed: the instant-paid/COD p
 
 Each product's admin editor (Organize panel) has a **Free delivery** field — None / Inside Dhaka / Nationwide — that renders as a tag on that product's PDP next to Add to cart. Purely informational (it doesn't currently zero out the shipping line at checkout, which is calculated per-order from the shipping zone).
 
+## Per-product size guide
+
+Each product's admin editor has a **Size guide** panel (`Product.sizeGuide`, a JSON column — `src/lib/size-guide.ts`): a table of measurement columns you name yourself (defaults to Chest/Length/Sleeve, add up to 6, remove any) and rows keyed by size. "Use sizes from variants" prefills the row list from that product's own variant sizes so they can't drift apart. A product's PDP "Size guide →" link carries its slug (`/size-guide?product=<slug>`); the size guide page looks up that product and renders its table, falling back to a generic reference chart when a product has no measurements entered yet (or when the page is reached without a product, e.g. the footer link). Leaving every row empty is the same as never having set one — it reverts to the generic chart rather than showing an empty table.
+
 ## Chat bubble
 
 A floating chat button (bottom-right, every storefront page) offers direct WhatsApp and/or Messenger links to the store's contact accounts. Off by default — turn it on and fill in a WhatsApp number and/or a Facebook Messenger page username/ID at `/admin/settings` → Chat. Only the option(s) with a value filled in are shown, so either channel works alone. The WhatsApp link opens `wa.me` with your configured number and an optional prefilled message; the Messenger link opens `m.me/<page>` — both in a new tab, no page credentials or SDKs involved.

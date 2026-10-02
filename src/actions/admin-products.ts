@@ -55,6 +55,13 @@ const productSchema = z.object({
   tagLimited: z.boolean().default(false),
   tagBestseller: z.boolean().default(false),
   variants: z.array(variantSchema).min(1),
+  sizeGuide: z
+    .object({
+      columns: z.array(z.string().trim().min(1)).min(1).max(6),
+      rows: z.array(z.object({ size: z.string().trim().min(1), values: z.array(z.string()) })).min(1),
+    })
+    .nullable()
+    .default(null),
 });
 
 export type ProductFormInput = z.infer<typeof productSchema>;
@@ -93,6 +100,9 @@ export async function saveProduct(input: ProductFormInput): Promise<ProductSaveR
     : null;
   const wasPreorderTag = existing?.tags.find((t) => t.tag.type === "PREORDER");
   const previousShipDate = (wasPreorderTag?.meta as { shipDate?: string } | null | undefined)?.shipDate;
+  // Json? fields need the explicit JsonNull sentinel to clear them — plain `null` or `undefined`
+  // would leave a previously-saved size guide in place instead of removing it.
+  const sizeGuideValue = data.sizeGuide ?? Prisma.JsonNull;
 
   try {
     const product = await db.$transaction(async (tx) => {
@@ -109,6 +119,7 @@ export async function saveProduct(input: ProductFormInput): Promise<ProductSaveR
           seoTitle: data.seoTitle,
           seoDescription: data.seoDescription,
           freeDelivery: data.freeDelivery,
+          sizeGuide: sizeGuideValue,
           // Only stamp publishedAt the first time a product goes live —
           // re-saving an already-active product must not re-trigger "New".
           publishedAt:
@@ -125,6 +136,7 @@ export async function saveProduct(input: ProductFormInput): Promise<ProductSaveR
           seoTitle: data.seoTitle,
           seoDescription: data.seoDescription,
           freeDelivery: data.freeDelivery,
+          sizeGuide: sizeGuideValue,
           publishedAt: data.status === "ACTIVE" ? new Date() : null,
         },
       });
@@ -254,7 +266,7 @@ export async function uploadProductImages(productId: string, formData: FormData)
   const imageFiles = files.filter((f) => f.type.startsWith("image/") && !REJECTED_IMAGE_TYPES.has(f.type));
   if (imageFiles.length === 0) return { ok: false, error: "Only JPG, PNG, WEBP, GIF or AVIF images are accepted." };
 
-  let position = await db.productImage.count({ where: { productId } });
+  const position = await db.productImage.count({ where: { productId } });
   if (position + imageFiles.length > MAX_IMAGES_PER_PRODUCT) {
     return { ok: false, error: `A product can have at most ${MAX_IMAGES_PER_PRODUCT} images (${position} already uploaded).` };
   }
