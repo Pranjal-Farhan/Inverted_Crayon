@@ -1,4 +1,4 @@
-const LINES = ["Free worldwide shipping", "Made to stand out", "14-day easy returns", "Not normal, never was"];
+const LINES = ["Preorders Are Live Now!!", "Exclusive Collection Dropped!!", "Stay Up To Date With The Latest Trend!!"];
 
 /** Endless scrolling brand strip, pure CSS animation (no client JS needed). */
 export function MarqueeTicker() {
