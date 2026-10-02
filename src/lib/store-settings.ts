@@ -42,8 +42,8 @@ export type StoreInfo = {
 
 export const DEFAULT_STORE_INFO: StoreInfo = {
   name: "Inverted Crayon",
-  email: "hello@invertedcrayon.com",
-  phone: "+880 1XXX-XXXXXX",
+  email: "invertedcrayonofficial@gmail.com",
+  phone: "+880 17725-46800",
   address: "Dhaka, Bangladesh",
 };
 
