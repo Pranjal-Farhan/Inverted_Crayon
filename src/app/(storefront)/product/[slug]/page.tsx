@@ -158,9 +158,9 @@ export default async function ProductPage({ params }: Props) {
 
           <Accordion
             items={[
-              { title: "Details", body: "260gsm combed cotton · oversized fit · ribbed collar · unisex." },
-              { title: "Shipping", body: "Worldwide delivery. Dispatched in 24–48h from Dhaka." },
-              { title: "Returns", body: "14-day easy returns, no drama." },
+              { title: "Details", body: "oversized fit · ribbed collar" },
+              { title: "Shipping", body: "Nationwide delivery. Dispatched in 24–48h from Dhaka." },
+              { title: "Returns", body: "Hassle-free After Sales Service." },
             ]}
           />
         </div>
