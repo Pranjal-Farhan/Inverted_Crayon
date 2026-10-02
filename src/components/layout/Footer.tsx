@@ -6,7 +6,7 @@ import { CrayonScribble } from "@/components/brand/CrayonScribble";
 
 const VALUE_PROPS = [
   {
-    title: "Worldwide Shipping",
+    title: "Fastest Shipping",
     body: "Anywhere, to your door.",
     color: "#ff2d84",
     icon: (
@@ -27,8 +27,8 @@ const VALUE_PROPS = [
     ),
   },
   {
-    title: "Easy Returns",
-    body: "14 days, no drama.",
+    title: "Quality After Sales Service",
+    body: "Hassle-Free Return Policy.",
     color: "#c3f53a",
     icon: (
       <svg viewBox="0 0 24 24" stroke="#c3f53a" fill="none" strokeWidth="2">
