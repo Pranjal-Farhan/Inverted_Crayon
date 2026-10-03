@@ -113,7 +113,7 @@ Each product's admin editor (Organize panel) has a **Free delivery** field — N
 
 ## Per-product size guide
 
-Each product's admin editor has a **Size guide** panel (`Product.sizeGuide`, a JSON column — `src/lib/size-guide.ts`): a table of measurement columns you name yourself (defaults to Chest/Length/Sleeve, add up to 6, remove any) and rows keyed by size. "Use sizes from variants" prefills the row list from that product's own variant sizes so they can't drift apart. A product's PDP "Size guide →" link carries its slug (`/size-guide?product=<slug>`); the size guide page looks up that product and renders its table, falling back to a generic reference chart when a product has no measurements entered yet (or when the page is reached without a product, e.g. the footer link). Leaving every row empty is the same as never having set one — it reverts to the generic chart rather than showing an empty table.
+Each product's admin editor has a **Size guide** panel (`Product.sizeGuide`, a JSON column — `src/lib/size-guide.ts`): a table of measurement columns you name yourself (defaults to Chest/Length/Sleeve, add up to 6, remove any) and rows keyed by size. "Use sizes from variants" prefills the row list from that product's own variant sizes so they can't drift apart. A product's PDP "Size guide →" link carries its slug (`/size-guide?product=<slug>`); the size guide page looks up that product and renders its table, falling back to a generic reference chart when a product has no measurements entered yet. The page is still reachable directly at `/size-guide` (it'll show the generic chart), but the static link to it was removed from the footer.
 
 ## Category branches (Men / Women / Unisex)
 
