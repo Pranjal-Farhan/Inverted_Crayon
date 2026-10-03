@@ -2,30 +2,18 @@
 
 import Image from "next/image";
 import { useRef, useState, useTransition } from "react";
-import {
-  saveHomeHero,
-  saveFeaturedDrop,
-  uploadLogoImage,
-  uploadHeroImages,
-  saveGenderHero,
-  uploadGenderHeroImage,
-} from "@/actions/admin-content";
+import { saveHomeHero, saveFeaturedDrop, uploadLogoImage, uploadHeroImages } from "@/actions/admin-content";
 import type { HeroData } from "@/lib/hero-defaults";
-import type { GenderHeroData } from "@/lib/gender-hero-defaults";
 import { Panel } from "@/components/admin/Panel";
 
 export function ContentCmsView({
   hero,
   featuredProductId,
   products,
-  menHero,
-  womenHero,
 }: {
   hero: HeroData;
   featuredProductId: string | null;
   products: { id: string; title: string }[];
-  menHero: GenderHeroData;
-  womenHero: GenderHeroData;
 }) {
   const [data, setData] = useState(hero);
   const [productId, setProductId] = useState(featuredProductId ?? "");
@@ -35,40 +23,6 @@ export function ContentCmsView({
   const [uploadError, setUploadError] = useState<string | null>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
   const heroInputRef = useRef<HTMLInputElement>(null);
-
-  const [menHeroData, setMenHeroData] = useState(menHero);
-  const [womenHeroData, setWomenHeroData] = useState(womenHero);
-  const [genderHeroUploading, setGenderHeroUploading] = useState<"MEN" | "WOMEN" | null>(null);
-  const [genderHeroError, setGenderHeroError] = useState<string | null>(null);
-  const menHeroInputRef = useRef<HTMLInputElement>(null);
-  const womenHeroInputRef = useRef<HTMLInputElement>(null);
-
-  async function handleGenderHeroFile(gender: "MEN" | "WOMEN", file: File) {
-    setGenderHeroError(null);
-    setGenderHeroUploading(gender);
-    const formData = new FormData();
-    formData.append("file", file);
-    const res = await uploadGenderHeroImage(gender, formData);
-    setGenderHeroUploading(null);
-    if (!res.ok) {
-      setGenderHeroError(res.error);
-      return;
-    }
-    const next = { imageUrl: res.url };
-    if (gender === "MEN") setMenHeroData(next);
-    else setWomenHeroData(next);
-    await saveGenderHero(gender, next);
-    flash(`${gender.toLowerCase()}-hero`);
-  }
-
-  function removeGenderHeroImage(gender: "MEN" | "WOMEN") {
-    const next = { imageUrl: null };
-    if (gender === "MEN") setMenHeroData(next);
-    else setWomenHeroData(next);
-    startTransition(async () => {
-      await saveGenderHero(gender, next);
-    });
-  }
 
   function flash(key: string) {
     setSaved(key);
@@ -285,58 +239,10 @@ export function ContentCmsView({
         </button>
       </Panel>
 
-      <Panel title="Gender hub heroes" className="mt-4.5">
-        <p className="mb-3 text-[13px] text-muted">
-          The editorial banner at the top of <code className="text-muted-2">/men</code> and{" "}
-          <code className="text-muted-2">/women</code>, behind the &quot;Shop Men/Women&quot; button. Leave it unset
-          to keep the drawn placeholder.
+      <Panel title="Blocks" className="mt-4.5">
+        <p className="text-sm text-muted">
+          Gender-hub heroes and lookbook editing ship in a fast-follow.
         </p>
-        {genderHeroError && <p className="mb-2 text-[13px] text-error">{genderHeroError}</p>}
-        <div className="grid grid-cols-1 gap-4 desktop:grid-cols-2">
-          {(
-            [
-              { gender: "MEN" as const, label: "Men", data: menHeroData, inputRef: menHeroInputRef },
-              { gender: "WOMEN" as const, label: "Women", data: womenHeroData, inputRef: womenHeroInputRef },
-            ]
-          ).map(({ gender, label, data: gd, inputRef }) => (
-            <div key={gender}>
-              <label className="font-label mb-1 block text-[12px] tracking-[1px] text-muted">{label} hero image</label>
-              <div className="mb-2 aspect-[5/1.4] overflow-hidden border border-line-2 bg-panel-2">
-                {gd.imageUrl ? (
-                  <Image src={gd.imageUrl} alt="" width={400} height={112} className="h-full w-full object-cover" />
-                ) : (
-                  <div className="grid h-full place-items-center text-[11px] text-muted-2">default placeholder</div>
-                )}
-              </div>
-              <input
-                ref={inputRef}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={(e) => {
-                  if (e.target.files?.[0]) handleGenderHeroFile(gender, e.target.files[0]);
-                  e.target.value = "";
-                }}
-              />
-              <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => inputRef.current?.click()}
-                  disabled={genderHeroUploading === gender}
-                  className="border border-line-2 px-3 py-1.5 text-[13px] hover:border-lime disabled:opacity-50"
-                >
-                  {genderHeroUploading === gender ? "Uploading…" : gd.imageUrl ? "Change image" : "Upload image"}
-                </button>
-                {gd.imageUrl && (
-                  <button type="button" onClick={() => removeGenderHeroImage(gender)} className="text-[13px] text-error hover:underline">
-                    Remove
-                  </button>
-                )}
-                {saved === `${gender.toLowerCase()}-hero` && <span className="text-[12px] text-lime">Saved ✓</span>}
-              </div>
-            </div>
-          ))}
-        </div>
       </Panel>
     </div>
   );

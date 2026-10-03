@@ -184,7 +184,6 @@ model Category {
   slug     String
   gender   Gender
   position Int       @default(0)
-  imageUrl String?
   products Product[]
 
   @@unique([gender, slug])
