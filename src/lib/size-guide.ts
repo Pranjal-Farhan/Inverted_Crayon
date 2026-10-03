@@ -7,6 +7,11 @@ export type SizeGuideTemplateOption = { id: string; name: string; data: SizeGuid
 
 export const DEFAULT_SIZE_GUIDE_COLUMNS = ["Chest", "Length", "Sleeve"];
 
+/** Ceiling on how many measurement columns (Chest, Length, Sleeve, Waist, ...) a single size
+ * guide table can have — shared by the UI's "+ col" gate and both server-side zod schemas
+ * (admin-products.ts, admin-size-guides.ts) so the three can't drift out of sync. */
+export const MAX_SIZE_GUIDE_COLUMNS = 12;
+
 /** Shown when a product has no measurements entered yet. Inches, same shape as any product's. */
 export const GENERIC_SIZE_GUIDE: SizeGuideData = {
   columns: ["Chest", "Length", "Sleeve"],

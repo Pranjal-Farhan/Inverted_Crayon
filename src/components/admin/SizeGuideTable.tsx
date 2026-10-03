@@ -1,6 +1,6 @@
 "use client";
 
-import type { SizeGuideRow } from "@/lib/size-guide";
+import { MAX_SIZE_GUIDE_COLUMNS, type SizeGuideRow } from "@/lib/size-guide";
 
 const cellClass = "w-full border border-line-2 bg-ink px-1.5 py-1 text-[13px] outline-none focus:border-lime";
 
@@ -59,7 +59,7 @@ export function SizeGuideTable({
                   </th>
                 ))}
                 <th className="font-label pb-1.5">
-                  {columns.length < 6 && (
+                  {columns.length < MAX_SIZE_GUIDE_COLUMNS && (
                     <button type="button" onClick={onAddColumn} className="text-cyan hover:underline">
                       + col
                     </button>

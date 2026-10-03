@@ -5,6 +5,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { Prisma } from "@/generated/prisma/client";
 import { getAdminSession } from "@/lib/session";
+import { MAX_SIZE_GUIDE_COLUMNS } from "@/lib/size-guide";
 
 async function requireAdmin() {
   const session = await getAdminSession();
@@ -16,7 +17,7 @@ function isUniqueConstraintError(e: unknown): boolean {
 }
 
 const sizeGuideDataSchema = z.object({
-  columns: z.array(z.string().trim().min(1)).min(1).max(6),
+  columns: z.array(z.string().trim().min(1)).min(1).max(MAX_SIZE_GUIDE_COLUMNS),
   rows: z.array(z.object({ size: z.string().trim().min(1), values: z.array(z.string()) })).min(1),
 });
 

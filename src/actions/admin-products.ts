@@ -13,6 +13,7 @@ import { uploadToImgBb } from "@/lib/imgbb";
 import { ensureMirrorCategories } from "@/actions/admin-categories";
 import { slugify } from "@/lib/slugify";
 import { APPAREL_SIZES, ONE_SIZE } from "@/lib/sizes";
+import { MAX_SIZE_GUIDE_COLUMNS } from "@/lib/size-guide";
 
 const VALID_SIZES = [...APPAREL_SIZES, ONE_SIZE] as [string, ...string[]];
 
@@ -122,7 +123,7 @@ const productSchema = z.object({
   variants: z.array(variantSchema).min(1),
   sizeGuide: z
     .object({
-      columns: z.array(z.string().trim().min(1)).min(1).max(6),
+      columns: z.array(z.string().trim().min(1)).min(1).max(MAX_SIZE_GUIDE_COLUMNS),
       rows: z.array(z.object({ size: z.string().trim().min(1), values: z.array(z.string()) })).min(1),
     })
     .nullable()
