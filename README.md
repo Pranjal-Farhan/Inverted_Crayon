@@ -121,6 +121,15 @@ The storefront header's Men/Women dropdowns, `/men/[category]` and `/women/[cate
 
 The old flat `Category`-shared-by-both-genders model and the separate `Collection`/"drops" feature have both been removed — categories are now the only taxonomy, and they're the one driving navigation, filtering, and sorting across the whole site.
 
+Each category also carries an optional **image** (`Category.imageUrl`, set from the same `/admin/categories` page — "Add image"/"Change image" next to its name). That's the tile photo everywhere a category shows up as a tile: the homepage's "Shop by category" spotlight and the `/men`/`/women` gender-hub category grid. No image set — the hand-drawn shape placeholder shows instead, same as before this existed.
+
+## Hero images
+
+Two editorial banners are admin-uploadable from `/admin/content`, no code deploy needed:
+
+- **Homepage hero** (already existed) — the big top-of-page carousel, eyebrow/headline/sub copy, background color, and up to 8 rotating photos.
+- **Gender hub heroes** (Men hero image / Women hero image) — the banner at the top of `/men` and `/women`, behind the "Shop Men/Women" button. Each is just one photo (the page's own title/eyebrow text already sits above it) — stored as `ContentBlock` rows keyed `men_hero`/`women_hero`, same pattern as the homepage hero's `home_hero` block. Unset — the drawn "EDITORIAL HERO" placeholder shows instead.
+
 ## Auto-generated slug and SKU
 
 Neither field is manually typed by the admin, though both are kept — slug is the product's actual `/product/<slug>` URL (can't be dropped without breaking every product link), SKU is what Inventory search and Finance's variant picker key off of (dropping it would lose that, so it's generated instead). The **Slug** field under Status & SEO auto-fills from the title as it's typed, until the admin edits the slug directly — from then on (and always, when editing an already-saved product) it stops auto-syncing, so renaming a product later never silently changes a URL that might already be shared or indexed.
