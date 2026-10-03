@@ -533,9 +533,17 @@ export function ProductEditorForm({
                   className={`${cellClass} max-w-[180px]`}
                 />
                 <input
+                  type="color"
                   value={rows[0]?.colorHex ?? "#0c0c0d"}
                   onChange={(e) => updateColorHex(groupId, e.target.value)}
-                  className={`${cellClass} w-20`}
+                  title="Pick the swatch color"
+                  className="h-[30px] w-10 cursor-pointer border border-line-2 bg-ink p-0.5"
+                />
+                <input
+                  value={rows[0]?.colorHex ?? "#0c0c0d"}
+                  onChange={(e) => updateColorHex(groupId, e.target.value)}
+                  placeholder="#rrggbb"
+                  className={`${cellClass} w-24`}
                 />
                 <button
                   type="button"
