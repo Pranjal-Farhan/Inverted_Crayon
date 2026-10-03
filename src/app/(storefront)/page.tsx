@@ -14,15 +14,9 @@ import { ScrambleHeadline } from "@/components/storefront/ScrambleHeadline";
 import { CrayonScribble } from "@/components/brand/CrayonScribble";
 import { DEFAULT_HERO, type HeroData } from "@/lib/hero-defaults";
 
-const CATEGORY_SPOTLIGHT_TILES = [
-  { label: "Graphic Tees", href: "/men/tees", shape: "x" as const, color: "#ff2d84" },
-  { label: "Hoodies", href: "/women/hoodies", shape: "square" as const, color: "#c3f53a" },
-  { label: "Shirts", href: "/men/shirts", shape: "circle" as const, color: "#26a7e6" },
-];
-
 export default async function HomePage() {
   const now = new Date();
-  const [heroBlock, featuredBlock, campaigns, newProductsRaw] = await Promise.all([
+  const [heroBlock, featuredBlock, campaigns, newProductsRaw, spotlightCategories] = await Promise.all([
     db.contentBlock.findUnique({ where: { key: "home_hero" } }),
     db.contentBlock.findUnique({ where: { key: "home_featured_drop" } }),
     db.campaign.findMany({ where: { active: true, startsAt: { lte: now }, endsAt: { gte: now } } }),
@@ -32,6 +26,12 @@ export default async function HomePage() {
       orderBy: { publishedAt: "desc" },
       take: 8,
     }),
+    // The first few Men categories by position — same taxonomy the admin already manages from
+    // /admin/categories (§5.1), so setting a tile image there is what drives this section; no
+    // separate "spotlight" concept to configure. Men is just a stable default branch to draw
+    // from (a Unisex category would work equally well via either /men/<slug> or /women/<slug>,
+    // but none exist in this catalog today).
+    db.category.findMany({ where: { gender: "MEN" }, orderBy: { position: "asc" }, take: 3 }),
   ]);
 
   const hero: HeroData = { ...DEFAULT_HERO, ...(heroBlock?.data as Partial<HeroData> | undefined) };
@@ -113,12 +113,26 @@ export default async function HomePage() {
         <CrayonScribble id="collections-h" color="var(--color-ic-cyan)" className="h-6 w-10 -rotate-3 opacity-80" />
       </div>
       <div className="grid grid-cols-1 gap-4 desktop:grid-cols-3">
-        {CATEGORY_SPOTLIGHT_TILES.map((t) => (
-          <Link key={t.label} href={t.href} className="relative flex min-h-[280px] items-end overflow-hidden border border-line bg-ink">
-            <PlaceholderFrame accentColor={t.color} shape={t.shape} stamp={false} className="absolute inset-0 z-[2] h-full w-full" />
-            <span className="font-scrawl relative z-[3] p-4.5 text-[26px]">{t.label}</span>
-          </Link>
-        ))}
+        {spotlightCategories.map((c) => {
+          const accent = pickAccent(`spotlight-${c.slug}`);
+          return (
+            <Link
+              key={c.id}
+              href={`/${c.gender.toLowerCase()}/${c.slug}`}
+              className="relative flex min-h-[280px] items-end overflow-hidden border border-line bg-ink"
+            >
+              {c.imageUrl ? (
+                <>
+                  <Image src={c.imageUrl} alt="" fill sizes="(min-width: 1024px) 33vw, 100vw" className="absolute inset-0 z-[2] h-full w-full object-cover" />
+                  <div className="absolute inset-x-0 bottom-0 z-[2] h-1/2 bg-gradient-to-t from-ink/80 to-transparent" />
+                </>
+              ) : (
+                <PlaceholderFrame accentColor={accent.color} shape={accent.shape} stamp={false} className="absolute inset-0 z-[2] h-full w-full" />
+              )}
+              <span className="font-scrawl relative z-[3] p-4.5 text-[26px]">{c.name}</span>
+            </Link>
+          );
+        })}
       </div>
 
       {/* FEATURED DROP */}

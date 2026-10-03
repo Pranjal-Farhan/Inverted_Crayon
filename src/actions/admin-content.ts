@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { getAdminSession } from "@/lib/session";
 import { uploadToImgBb } from "@/lib/imgbb";
 import type { HeroData } from "@/lib/hero-defaults";
+import type { GenderHeroData } from "@/lib/gender-hero-defaults";
 
 async function requireAdmin() {
   const session = await getAdminSession();
@@ -54,6 +55,35 @@ export async function uploadLogoImage(formData: FormData): Promise<UploadSiteIma
     return { ok: false, error: error instanceof Error ? error.message : "Image upload failed." };
   }
   revalidatePath("/");
+  revalidatePath("/admin/content");
+  return { ok: true, url };
+}
+
+const GENDER_HERO_KEY: Record<"MEN" | "WOMEN", string> = { MEN: "men_hero", WOMEN: "women_hero" };
+
+export async function saveGenderHero(gender: "MEN" | "WOMEN", data: GenderHeroData) {
+  await requireAdmin();
+  const key = GENDER_HERO_KEY[gender];
+  await db.contentBlock.upsert({ where: { key }, update: { data }, create: { key, data } });
+  revalidatePath(`/${gender.toLowerCase()}`);
+  revalidatePath("/admin/content");
+}
+
+export async function uploadGenderHeroImage(gender: "MEN" | "WOMEN", formData: FormData): Promise<UploadSiteImageResult> {
+  await requireAdmin();
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0) return { ok: false, error: "No file received." };
+  if (file.size > MAX_SITE_IMAGE_BYTES) return { ok: false, error: "Image must be under 8MB." };
+  if (!file.type.startsWith("image/") || REJECTED_IMAGE_TYPES.has(file.type)) {
+    return { ok: false, error: "Only JPG, PNG, WEBP, GIF or AVIF images are accepted." };
+  }
+  let url: string;
+  try {
+    url = await saveSiteImage(file);
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "Image upload failed." };
+  }
+  revalidatePath(`/${gender.toLowerCase()}`);
   revalidatePath("/admin/content");
   return { ok: true, url };
 }

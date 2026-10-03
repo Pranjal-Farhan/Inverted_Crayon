@@ -6,6 +6,7 @@ import { db } from "@/lib/db";
 import { Prisma } from "@/generated/prisma/client";
 import { getAdminSession } from "@/lib/session";
 import { slugify } from "@/lib/slugify";
+import { uploadToImgBb } from "@/lib/imgbb";
 
 function isUniqueConstraintError(e: unknown): boolean {
   return e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002";
@@ -96,6 +97,44 @@ export async function createCategory(input: z.infer<typeof createSchema>): Promi
     await ensureMirrorCategories(data.name.trim(), slug);
   }
 
+  revalidateStorefront();
+  return { ok: true };
+}
+
+const MAX_CATEGORY_IMAGE_BYTES = 8 * 1024 * 1024;
+const REJECTED_CATEGORY_IMAGE_TYPES = new Set(["image/svg+xml"]);
+
+export type SetCategoryImageResult = { ok: true; url: string } | { ok: false; error: string };
+
+/**
+ * The tile/card image shown for this category — the homepage's "Shop by category" spotlight,
+ * the gender-hub category grid (§GenderHub.tsx), and eventually any other category tile all
+ * read the same field, so uploading it once here updates every one of them.
+ */
+export async function setCategoryImage(categoryId: string, formData: FormData): Promise<SetCategoryImageResult> {
+  await requireAdmin();
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0) return { ok: false, error: "No file received." };
+  if (file.size > MAX_CATEGORY_IMAGE_BYTES) return { ok: false, error: "Image must be under 8MB." };
+  if (!file.type.startsWith("image/") || REJECTED_CATEGORY_IMAGE_TYPES.has(file.type)) {
+    return { ok: false, error: "Only JPG, PNG, WEBP, GIF or AVIF images are accepted." };
+  }
+
+  let url: string;
+  try {
+    url = await uploadToImgBb(file);
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "Image upload failed." };
+  }
+
+  await db.category.update({ where: { id: categoryId }, data: { imageUrl: url } });
+  revalidateStorefront();
+  return { ok: true, url };
+}
+
+export async function removeCategoryImage(categoryId: string): Promise<CategoryActionResult> {
+  await requireAdmin();
+  await db.category.update({ where: { id: categoryId }, data: { imageUrl: null } });
   revalidateStorefront();
   return { ok: true };
 }
