@@ -11,7 +11,6 @@ type Props = { params: Promise<{ id: string }> };
 const SHIPPING_ZONE_LABEL: Record<string, string> = {
   INSIDE_DHAKA: "Inside Dhaka",
   OUTSIDE_DHAKA: "Outside Dhaka",
-  INTERNATIONAL: "International",
 };
 
 export default async function OrderReceiptPage({ params }: Props) {

@@ -14,8 +14,7 @@ export default async function OrderConfirmationPage({ params }: Props) {
   const order = await db.order.findUnique({ where: { number }, include: { items: true } });
   if (!order) notFound();
 
-  const zoneLabel =
-    order.shippingZone === "INSIDE_DHAKA" ? "2–3 days · Dhaka" : order.shippingZone === "OUTSIDE_DHAKA" ? "3–5 days" : "7–14 days · International";
+  const zoneLabel = order.shippingZone === "INSIDE_DHAKA" ? "2–3 days · Dhaka" : "3–5 days";
 
   return (
     <div className="mx-auto my-10 max-w-[640px] border border-line bg-panel p-8">

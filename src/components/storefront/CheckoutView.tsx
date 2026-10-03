@@ -13,7 +13,7 @@ import type { PaymentGatewaySettings, ShippingRates } from "@/lib/store-settings
 
 type ShippingZoneKey = keyof ShippingRates;
 
-const ZONE_ORDER: ShippingZoneKey[] = ["INSIDE_DHAKA", "OUTSIDE_DHAKA", "INTERNATIONAL"];
+const ZONE_ORDER: ShippingZoneKey[] = ["INSIDE_DHAKA", "OUTSIDE_DHAKA"];
 
 const PAYMENT_LABELS: Record<string, string> = {
   BKASH: "bKash",
@@ -217,7 +217,6 @@ export function CheckoutView({
             <Field label="Country">
               <select value={country} onChange={(e) => setCountry(e.target.value)} className={inputClass()}>
                 <option>Bangladesh</option>
-                <option>International</option>
               </select>
             </Field>
           </div>
@@ -231,7 +230,7 @@ export function CheckoutView({
                 className={`flex items-center gap-2.5 border px-3.5 py-2.5 text-sm ${zone === z ? "border-lime" : "border-line-2"}`}
               >
                 <input type="radio" name="zone" checked={zone === z} onChange={() => setZone(z)} className="accent-lime" />
-                {rates[z].label} — {z === "INTERNATIONAL" ? formatTaka(rates[z].cost) : formatTaka(rates[z].cost)} · {rates[z].etaDays}
+                {rates[z].label} — {formatTaka(rates[z].cost)} · {rates[z].etaDays}
               </label>
             ))}
           </div>

@@ -107,7 +107,7 @@ export function SettingsView({
 
       {tab === "Shipping" && (
         <Panel title="Shipping zones">
-          {(["INSIDE_DHAKA", "OUTSIDE_DHAKA", "INTERNATIONAL"] as const).map((zone) => (
+          {(["INSIDE_DHAKA", "OUTSIDE_DHAKA"] as const).map((zone) => (
             <div key={zone} className="mb-3 grid grid-cols-3 gap-2.5">
               <input
                 value={rates[zone].label}

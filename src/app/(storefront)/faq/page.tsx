@@ -7,7 +7,6 @@ const FAQS: [string, string][] = [
   ["How do preorders work?", "Pay a minimum 20% advance (up to 100%) via bKash or card, and the remainder is collected as cash on delivery. Ships on the date shown on the product page."],
   //["What's your return policy?", "14 days on unworn items with tags. Start a return from your account."],
   ["Which payments do you accept?", "bKash, cards via SSLCommerz, and cash on delivery."],
-  //["Do you ship internationally?", "Yes — worldwide, calculated at checkout."],
 ];
 
 export default function FAQPage() {

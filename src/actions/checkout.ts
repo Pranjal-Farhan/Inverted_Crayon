@@ -33,7 +33,7 @@ const checkoutSchema = z.object({
     postcode: z.string().min(3),
     country: z.string().min(2),
   }),
-  shippingZone: z.enum(["INSIDE_DHAKA", "OUTSIDE_DHAKA", "INTERNATIONAL"]),
+  shippingZone: z.enum(["INSIDE_DHAKA", "OUTSIDE_DHAKA"]),
   paymentMethod: z.enum(["BKASH", "SSLCOMMERZ", "COD"]),
   promoCode: z.string().nullable().optional(),
   preorderShipMode: z.enum(["together", "split"]).default("together"),

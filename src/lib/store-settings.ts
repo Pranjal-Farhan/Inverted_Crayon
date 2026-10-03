@@ -10,13 +10,11 @@ export type ShippingZoneRate = {
 export type ShippingRates = {
   INSIDE_DHAKA: ShippingZoneRate;
   OUTSIDE_DHAKA: ShippingZoneRate;
-  INTERNATIONAL: ShippingZoneRate;
 };
 
 export const DEFAULT_SHIPPING_RATES: ShippingRates = {
   INSIDE_DHAKA: { label: "Inside Dhaka", cost: 60, etaDays: "2–3 days" },
   OUTSIDE_DHAKA: { label: "Outside Dhaka", cost: 120, etaDays: "3–5 days" },
-  INTERNATIONAL: { label: "International", cost: 1800, etaDays: "7–14 days" },
 };
 
 export type PaymentGatewaySettings = {

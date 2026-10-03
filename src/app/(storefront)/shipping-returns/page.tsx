@@ -11,8 +11,8 @@ export default function ShippingReturnsPage() {
       <div className="doc max-w-[760px] py-4">
         <h2 className="font-impact mt-6 mb-2 text-2xl uppercase tracking-[0.5px]">Shipping</h2>
         <p className="text-[#d3d3d1]">
-          Dispatched within 24–48h from Dhaka. Inside Dhaka 2–3 days (৳60), outside Dhaka 3–5 days (৳120), international
-          7–14 days (calculated at checkout).
+          Dispatched within 24–48h from Dhaka. Inside Dhaka 2–3 days (৳60), outside Dhaka 3–5 days (৳120). We currently
+          ship within Bangladesh only.
         </p>
         <h2 className="font-impact mt-6 mb-2 text-2xl uppercase tracking-[0.5px]">Returns</h2>
         <p className="text-[#d3d3d1]">
