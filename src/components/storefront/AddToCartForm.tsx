@@ -91,26 +91,24 @@ export function AddToCartForm({
 
   return (
     <div>
-      {colors.length > 1 && (
-        <>
-          <p className="optlab mb-2 font-label text-sm tracking-[1.6px] text-muted">COLOR</p>
-          <div className="mb-5.5 flex gap-2.5">
-            {colors.map((c) => {
-              const swatch = variants.find((v) => v.color === c)?.colorHex ?? "#444";
-              return (
-                <button
-                  key={c}
-                  onClick={() => setColor(c)}
-                  aria-label={c}
-                  title={c}
-                  className={`h-[26px] w-[26px] rounded-full border-2 ${color === c ? "border-white" : "border-[#444]"}`}
-                  style={{ background: swatch }}
-                />
-              );
-            })}
-          </div>
-        </>
-      )}
+      <p className="optlab mb-2 font-label text-sm tracking-[1.6px] text-muted">
+        COLOR{colors.length === 1 ? ` — ${colors[0]}` : ""}
+      </p>
+      <div className="mb-5.5 flex gap-2.5">
+        {colors.map((c) => {
+          const swatch = variants.find((v) => v.color === c)?.colorHex ?? "#444";
+          return (
+            <button
+              key={c}
+              onClick={() => setColor(c)}
+              aria-label={c}
+              title={c}
+              className={`h-[26px] w-[26px] rounded-full border-2 ${color === c ? "border-white" : "border-[#444]"}`}
+              style={{ background: swatch }}
+            />
+          );
+        })}
+      </div>
 
       <p className="optlab mb-2 font-label text-sm tracking-[1.6px] text-muted">SIZE</p>
       <div className="mb-5.5 flex flex-wrap gap-2">
