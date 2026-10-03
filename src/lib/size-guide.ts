@@ -1,6 +1,10 @@
 export type SizeGuideRow = { size: string; values: string[] };
 export type SizeGuideData = { columns: string[]; rows: SizeGuideRow[] };
 
+/** A reusable, admin-saved size guide (SizeGuideTemplate), importable directly into any
+ * product's own Size guide panel instead of retyping the same columns/rows. */
+export type SizeGuideTemplateOption = { id: string; name: string; data: SizeGuideData };
+
 export const DEFAULT_SIZE_GUIDE_COLUMNS = ["Chest", "Length", "Sleeve"];
 
 /** Shown when a product has no measurements entered yet. Inches, same shape as any product's. */

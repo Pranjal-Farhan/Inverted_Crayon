@@ -515,6 +515,18 @@ model StoreSetting {
   value Json
 }
 
+// Reusable size-guide tables an admin builds once (e.g. "Men's Tees", "Snapbacks — One Size")
+// and imports directly into any product's own Size guide panel, instead of retyping the same
+// columns/rows for every product that shares a fit. `data` is { columns: string[]; rows:
+// { size: string; values: string[] }[] } — same shape as Product.sizeGuide (src/lib/size-guide.ts).
+model SizeGuideTemplate {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  data      Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
 // ---------- journal / blog ----------
 
 enum PostStatus {

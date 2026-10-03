@@ -14,6 +14,7 @@ const NAV: { group: string; items: { href: string; label: string; icon: string }
       { href: "/admin/inventory", label: "Inventory", icon: "▣" },
       { href: "/admin/finance", label: "Finance", icon: "৳" },
       { href: "/admin/categories", label: "Categories", icon: "☰" },
+      { href: "/admin/size-guides", label: "Size guides", icon: "▭" },
     ],
   },
   {

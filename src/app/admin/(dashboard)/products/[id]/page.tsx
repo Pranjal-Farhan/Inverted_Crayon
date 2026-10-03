@@ -2,20 +2,26 @@ import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { toNumber } from "@/lib/money";
 import { ProductEditorForm } from "@/components/admin/ProductEditorForm";
-import { parseSizeGuide } from "@/lib/size-guide";
+import { parseSizeGuide, type SizeGuideTemplateOption } from "@/lib/size-guide";
 
 type Props = { params: Promise<{ id: string }> };
 
 export default async function EditProductPage({ params }: Props) {
   const { id } = await params;
-  const [product, categories] = await Promise.all([
+  const [product, categories, sizeGuideTemplateRows] = await Promise.all([
     db.product.findUnique({
       where: { id },
       include: { variants: true, tags: { include: { tag: true } }, images: { orderBy: { position: "asc" } } },
     }),
     db.category.findMany({ orderBy: [{ gender: "asc" }, { position: "asc" }] }),
+    db.sizeGuideTemplate.findMany({ orderBy: { name: "asc" } }),
   ]);
   if (!product) notFound();
+
+  const sizeGuideTemplates: SizeGuideTemplateOption[] = sizeGuideTemplateRows.flatMap((row) => {
+    const data = parseSizeGuide(row.data);
+    return data ? [{ id: row.id, name: row.name, data }] : [];
+  });
 
   const preorderTag = product.tags.find((t) => t.tag.type === "PREORDER");
   const preorderMeta = preorderTag?.meta as { shipDate?: string } | null | undefined;
@@ -57,6 +63,7 @@ export default async function EditProductPage({ params }: Props) {
         sizeGuide: parseSizeGuide(product.sizeGuide),
       }}
       categories={categories}
+      sizeGuideTemplates={sizeGuideTemplates}
     />
   );
 }
