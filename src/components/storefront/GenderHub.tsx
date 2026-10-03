@@ -81,7 +81,7 @@ export async function GenderHub({ gender }: { gender: "MEN" | "WOMEN" }) {
         <p className="text-muted">No categories yet — add some from the admin panel.</p>
       )}
 
-      <div className="sh my-8 font-scrawl text-[30px]">New in {label}</div>
+      <div className="sh my-8 font-scrawl text-[30px]">All Products {label}</div>
       <div className="grid grid-cols-2 desktop:grid-cols-4 gap-5">
         {display.map((p) => (
           <ProductCard key={p.id} product={p} />
