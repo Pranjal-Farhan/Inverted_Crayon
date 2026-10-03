@@ -58,7 +58,9 @@ export function CheckoutView({
   const [country, setCountry] = useState("Bangladesh");
   const [zone, setZone] = useState<ShippingZoneKey>("INSIDE_DHAKA");
   const [paymentMethod, setPaymentMethod] = useState<"BKASH" | "SSLCOMMERZ" | "COD">(
-    gateways.bkash ? "BKASH" : gateways.sslcommerz ? "SSLCOMMERZ" : "COD",
+    // bKash and card/mobile banking are commented out for now (see availableMethods below) —
+    // COD is the only method on offer at checkout regardless of the admin settings toggle.
+    "COD",
   );
   const [preorderShipMode, setPreorderShipMode] = useState<"together" | "split">("together");
 
@@ -85,12 +87,18 @@ export function CheckoutView({
   const advanceAmount =
     paymentMethod === "COD" ? 0 : Math.max(Math.round((total - preorderHoldback) * 100) / 100, 0);
   const balanceDue = Math.max(Math.round((total - advanceAmount) * 100) / 100, 0);
-  const allPreorderLinesFree = preorderLines.every((l) => (l.preorderAdvanceAmount ?? l.unitPrice) === 0);
 
-  const codAllowed = gateways.cod && allPreorderLinesFree && (gateways.codRule === "nationwide" || zone === "INSIDE_DHAKA");
+  // Preorder advances no longer gate COD out — see checkout.ts's matching removal of the
+  // anyMandatoryPreorderAdvance rejection. Nothing is ever captured online for a COD order
+  // (advanceAmount above is already forced to 0 for it), so a configured advance just becomes
+  // part of what's due on delivery instead of blocking the method entirely.
+  const codAllowed = gateways.cod && (gateways.codRule === "nationwide" || zone === "INSIDE_DHAKA");
   const availableMethods = (["BKASH", "SSLCOMMERZ", "COD"] as const).filter((m) => {
-    if (m === "BKASH") return gateways.bkash;
-    if (m === "SSLCOMMERZ") return gateways.sslcommerz;
+    // bKash and card/mobile banking (SSLCommerz) are commented out for now — only COD is
+    // offered at checkout, regardless of the admin settings toggle, until these come back.
+    // if (m === "BKASH") return gateways.bkash;
+    // if (m === "SSLCOMMERZ") return gateways.sslcommerz;
+    if (m === "BKASH" || m === "SSLCOMMERZ") return false;
     return codAllowed;
   });
 
@@ -276,14 +284,14 @@ export function CheckoutView({
               </label>
             ))}
           </div>
-          {hasPreorder && !allPreorderLinesFree ? (
+          {hasPreorder && preorderHoldback > 0 && (
             <p className="mt-2 text-[12px] text-muted">
-              Cash on delivery isn&apos;t available as the sole payment method here — {formatTaka(advanceAmount)} of
-              this order needs to be paid online now, with the rest collected on delivery.
+              This preorder&apos;s advance is collected on delivery along with the rest of the order — nothing is
+              charged online right now.
             </p>
-          ) : (
-            gateways.cod &&
-            !codAllowed && <p className="mt-2 text-[12px] text-muted">Cash on delivery is available inside Dhaka only.</p>
+          )}
+          {gateways.cod && !codAllowed && (
+            <p className="mt-2 text-[12px] text-muted">Cash on delivery is available inside Dhaka only.</p>
           )}
         </Step>
 

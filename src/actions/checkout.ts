@@ -54,6 +54,13 @@ export async function placeOrder(input: CheckoutInput): Promise<CheckoutResult> 
   }
   const data = parsed.data;
 
+  // bKash and card/mobile banking (SSLCommerz) are commented out for now (see CheckoutView.tsx's
+  // matching removal from availableMethods) — COD is the only method on offer, enforced here too
+  // so a direct call can't bypass the checkout page's own UI-level restriction.
+  if (data.paymentMethod === "BKASH" || data.paymentMethod === "SSLCOMMERZ") {
+    return { ok: false, error: "That payment method isn't available right now — please choose cash on delivery." };
+  }
+
   const variants = await db.variant.findMany({
     where: { id: { in: data.lines.map((l) => l.variantId) } },
     include: { product: true },
@@ -72,7 +79,6 @@ export async function placeOrder(input: CheckoutInput): Promise<CheckoutResult> 
   let subtotal = 0;
   let hasPreorder = false;
   let preorderHoldback = 0; // sum of (unitPrice - advance) * qty across preorder lines — the only part that can become COD
-  let anyMandatoryPreorderAdvance = false;
   const orderItemsData: {
     productId: string;
     variantId: string;
@@ -114,7 +120,6 @@ export async function placeOrder(input: CheckoutInput): Promise<CheckoutResult> 
     const advancePerUnit = isPreorder ? Math.min(Math.max(toNumber(variant.preorderAdvanceAmount ?? 0), 0), unitPrice) : null;
     if (isPreorder) {
       preorderHoldback += (unitPrice - (advancePerUnit ?? 0)) * line.qty;
-      if ((advancePerUnit ?? 0) > 0) anyMandatoryPreorderAdvance = true;
     }
 
     orderItemsData.push({
@@ -131,13 +136,6 @@ export async function placeOrder(input: CheckoutInput): Promise<CheckoutResult> 
   }
   subtotal = Math.round(subtotal * 100) / 100;
   preorderHoldback = Math.round(preorderHoldback * 100) / 100;
-
-  if (anyMandatoryPreorderAdvance && data.paymentMethod === "COD") {
-    return {
-      ok: false,
-      error: "Part of this order needs an online advance payment (bKash or card) — the rest is collected on delivery.",
-    };
-  }
 
   const session = await getCustomerSession();
 
@@ -179,9 +177,12 @@ export async function placeOrder(input: CheckoutInput): Promise<CheckoutResult> 
   // Only redirect to a real gateway when that gateway is actually configured — otherwise fall
   // back to the app's existing mocked instant-paid behavior (unchanged from before this
   // integration existed), so local dev keeps working with zero external credentials.
+  // paymentMethod is narrowed to "COD" by the early rejection above, which makes these two
+  // comparisons always false — cast back to string so this stays intact (not dead code to TS)
+  // for when bKash/SSLCommerz are re-enabled.
   const usesLiveGateway =
-    (data.paymentMethod === "BKASH" && bkashConfigured()) ||
-    (data.paymentMethod === "SSLCOMMERZ" && sslcommerzConfigured());
+    ((data.paymentMethod as string) === "BKASH" && bkashConfigured()) ||
+    ((data.paymentMethod as string) === "SSLCOMMERZ" && sslcommerzConfigured());
   const initialStatus = data.paymentMethod === "COD" || usesLiveGateway ? "PENDING" : "PAID";
 
   let orderNumber = "";
@@ -278,7 +279,7 @@ export async function placeOrder(input: CheckoutInput): Promise<CheckoutResult> 
     const order = await db.order.findUniqueOrThrow({ where: { number: orderNumber } });
     try {
       const origin = await getSiteOrigin();
-      if (data.paymentMethod === "BKASH") {
+      if ((data.paymentMethod as string) === "BKASH") {
         const { bkashURL, paymentID } = await createBkashPayment({
           amount: advanceAmount,
           orderNumber,
