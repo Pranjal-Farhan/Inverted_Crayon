@@ -24,3 +24,13 @@ done
 
 npm install
 npx prisma generate
+
+# Start the dev server itself, persistently in the background, if nothing's already listening
+# on its port. This is the actual gap the steps above don't cover: Postgres being up doesn't
+# put anything behind the preview's port — without this, the live preview shows a connection/
+# server error on every fresh session until someone manually runs `next dev`. Idempotent: a
+# no-op if a server is already up (e.g. this hook ran once already this session).
+if ! curl -sf -o /dev/null --max-time 2 "http://localhost:3000/admin/login"; then
+  nohup npx next dev > /tmp/next-dev.log 2>&1 < /dev/null &
+  disown
+fi
