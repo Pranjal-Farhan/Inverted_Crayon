@@ -4,7 +4,6 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { getProductForPDP } from "@/lib/get-product";
 import { TagPill } from "@/components/ui/TagPill";
-import { Accordion } from "@/components/ui/Accordion";
 import { AddToCartForm } from "@/components/storefront/AddToCartForm";
 import { ProductCard } from "@/components/ui/ProductCard";
 import { ProductGallery } from "@/components/storefront/ProductGallery";
@@ -67,11 +66,18 @@ export default async function ProductPage({ params }: Props) {
     <section className="pg pb-16">
       <TrackRecentlyViewed productId={product.id} />
       <div className="grid grid-cols-1 gap-10 py-5.5 desktop:grid-cols-[1.05fr_1fr]">
-        <ProductGallery
-          images={product.images.map((img) => ({ id: img.id, url: img.url || undefined, accentColor: img.accentColor, alt: img.alt }))}
-          fallbackAccent={accent}
-          soldOut={display.soldOut}
-        />
+        <div>
+          <ProductGallery
+            images={product.images.map((img) => ({ id: img.id, url: img.url || undefined, accentColor: img.accentColor, alt: img.alt }))}
+            fallbackAccent={accent}
+            soldOut={display.soldOut}
+          />
+
+          <div className="mt-5 border-t border-line pt-3.5">
+            <h3 className="font-label text-base tracking-[1.4px]">DETAILS</h3>
+            <p className="mt-1.5 text-[13px] text-muted">oversized fit · ribbed collar</p>
+          </div>
+        </div>
 
         <div className="min-w-0">
           <div className="font-label text-sm tracking-[1.4px] text-muted">
@@ -155,14 +161,6 @@ export default async function ProductPage({ params }: Props) {
           <div className="my-5 flex items-center gap-2 font-scrawl text-[15px] text-pink">
             <Crown className="h-6 w-6" /> Made to stand out.
           </div>
-
-          <Accordion
-            items={[
-              { title: "Details", body: "oversized fit · ribbed collar" },
-              { title: "Shipping", body: "Nationwide delivery. Dispatched in 24–48h from Dhaka." },
-              { title: "Returns", body: "Hassle-free After Sales Service." },
-            ]}
-          />
         </div>
       </div>
 

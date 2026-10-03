@@ -73,8 +73,13 @@ body {
   color: var(--color-ic-ink);
 }
 
-a {
-  color: inherit;
+/* In @layer base so Tailwind color utilities (e.g. text-ink on a Button rendered as a Link)
+   can actually override this — unlayered CSS always beats a layered utility class regardless
+   of specificity, which previously made any <a>-based button ignore its own text color. */
+@layer base {
+  a {
+    color: inherit;
+  }
 }
 
 /* Every interactive element gets a smooth transition by default — without this, hover/focus
@@ -152,17 +157,6 @@ button {
 }
 .btn-primary:active {
   transform: rotate(-1deg) translateY(0);
-}
-/* A dark outline traced around the label glyphs themselves (not a background behind them) —
-   text-stroke for crisp edges where it's supported, text-shadow as the outline everywhere
-   else (Firefox included). Keeps the label legible against any button fill without boxing it. */
-.btn-text-outline {
-  -webkit-text-stroke: 0.6px var(--color-ic-ink);
-  text-shadow:
-    -1px 0 var(--color-ic-ink),
-    1px 0 var(--color-ic-ink),
-    0 -1px var(--color-ic-ink),
-    0 1px var(--color-ic-ink);
 }
 /* Loading skeletons — a panel-colored block with a lime-tinted shimmer sweeping across it,
    used by Skeleton.tsx and every route's loading.tsx (§ Next.js loading UI) to mask fetch

@@ -64,16 +64,14 @@ function Content({
   children,
   arrow,
   loading,
-  outlined,
 }: {
   children: ReactNode;
   arrow?: boolean;
   loading?: boolean;
-  outlined?: boolean;
 }) {
   return (
     <>
-      {outlined ? <span className="btn-text-outline">{children}</span> : children}
+      {children}
       {loading ? (
         <span aria-hidden className="inline-block h-3 w-3 animate-spin border-2 border-current border-t-transparent" />
       ) : (
@@ -95,7 +93,6 @@ export function Button({
 }: ButtonProps) {
   const magnetic = variant !== "text" && !loading && !rest.disabled;
   const hasScribble = variant !== "text";
-  const outlined = variant !== "text";
   const scribbleColor = hasScribble
     ? pickScribbleColor(`${variant}:${href ?? (typeof children === "string" ? children : "btn")}`, OWN_COLOR[variant])
     : null;
@@ -132,7 +129,7 @@ export function Button({
         onPointerMove={magnetic ? onPointerMove : undefined}
         onPointerLeave={magnetic ? onPointerLeave : undefined}
       >
-        <Content arrow={arrow} outlined={outlined}>{children}</Content>
+        <Content arrow={arrow}>{children}</Content>
         {scribbleEl}
       </Link>
     );
@@ -147,7 +144,7 @@ export function Button({
       onPointerLeave={magnetic ? onPointerLeave : undefined}
       {...rest}
     >
-      <Content arrow={arrow} loading={loading} outlined={outlined && !loading}>
+      <Content arrow={arrow} loading={loading}>
         {loading ? "…" : children}
       </Content>
       {scribbleEl}
