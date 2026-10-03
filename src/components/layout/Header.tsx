@@ -90,7 +90,7 @@ export function Header({
               </div>
             ))}
             <ScribbleLink href="/new" stroke="var(--color-ic-yellow)" className="py-2 font-label text-[17px] tracking-[1.4px] hover:text-lime">
-              NEW
+              ALL
             </ScribbleLink>
             <ScribbleLink href="/sale" stroke="var(--color-ic-pink)" className="py-2 font-label text-[17px] tracking-[1.4px] hover:text-lime">
               SALE {saleActive && <span className="text-pink animate-pulse">●</span>}
