@@ -73,8 +73,13 @@ body {
   color: var(--color-ic-ink);
 }
 
-a {
-  color: inherit;
+/* In @layer base so Tailwind color utilities (e.g. text-ink on a Button rendered as a Link)
+   can actually override this — unlayered CSS always beats a layered utility class regardless
+   of specificity, which previously made any <a>-based button ignore its own text color. */
+@layer base {
+  a {
+    color: inherit;
+  }
 }
 
 /* Every interactive element gets a smooth transition by default — without this, hover/focus
