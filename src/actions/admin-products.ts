@@ -199,9 +199,18 @@ export async function saveProduct(input: ProductFormInput): Promise<ProductSaveR
     const existing = data.id
       ? await db.product.findUnique({
         where: { id: data.id },
-        include: { tags: { include: { tag: true } } },
+        include: { tags: { include: { tag: true } }, variants: true },
       })
       : null;
+    const existingVariants = existing?.variants ?? [];
+    const variants = data.variants.map((variant) => {
+      if (variant.id) return variant;
+      const match = existingVariants.find((candidate) =>
+        candidate.sku === variant.sku ||
+        (candidate.size === variant.size && candidate.color === variant.color),
+      );
+      return match ? { ...variant, id: match.id } : variant;
+    });
     const wasPreorderTag = existing?.tags.find((t) => t.tag.type === "PREORDER");
     const previousShipDate = (wasPreorderTag?.meta as { shipDate?: string } | null | undefined)?.shipDate;
     // Json? fields need the explicit JsonNull sentinel to clear them — plain `null` or `undefined`
@@ -261,7 +270,7 @@ export async function saveProduct(input: ProductFormInput): Promise<ProductSaveR
       // size/color values never contain one), so this first pass can never collide with
       // anything, vacating every slot before the real pass risks touching one that's still "in
       // use" by a row that hasn't been updated yet.
-      for (const v of data.variants) {
+      for (const v of variants) {
         if (!v.id) continue;
         await tx.variant.update({
           where: { id: v.id },
@@ -270,7 +279,7 @@ export async function saveProduct(input: ProductFormInput): Promise<ProductSaveR
       }
 
       const keepIds: string[] = [];
-      for (const v of data.variants) {
+      for (const v of variants) {
         // Only new variants need their SKU verified (an existing one keeps whatever it
         // already has) — skip the uniqueness-check query entirely for updates.
         const newSku = v.id ? null : await ensureUniqueSku(tx, v.sku);
@@ -328,7 +337,7 @@ export async function saveProduct(input: ProductFormInput): Promise<ProductSaveR
       }
 
       return productRecord;
-    }));
+    }, { timeout: 15000 }));
 
     if (data.tagPreorder && data.preorderShipDate && data.preorderShipDate !== previousShipDate) {
       const affected = await db.orderItem.findMany({
