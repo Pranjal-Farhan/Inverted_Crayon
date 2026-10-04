@@ -27,12 +27,31 @@ const PAYMENT_ERROR_MESSAGES: Record<string, string> = {
   error: "Something went wrong starting your payment. Please try again.",
 };
 
+type CheckoutCustomer = {
+  email: string;
+  phone: string | null;
+  name: string | null;
+  address: {
+    fullName: string;
+    phone: string;
+    line1: string;
+    area: string;
+    district: string;
+    postcode: string;
+    country: string;
+  } | null;
+};
+
 export function CheckoutView({
   rates,
   gateways,
+  customer = null,
 }: {
   rates: ShippingRates;
   gateways: PaymentGatewaySettings;
+  /** Set when the shopper is logged in — prefills contact/shipping fields from their account
+   * (and saved default address, if any) instead of starting every field blank like a guest. */
+  customer?: CheckoutCustomer | null;
 }) {
   const { cart, subtotal, clearCart } = useCart();
   const router = useRouter();
@@ -47,15 +66,15 @@ export function CheckoutView({
     if (payment && PAYMENT_ERROR_MESSAGES[payment]) setError(PAYMENT_ERROR_MESSAGES[payment]);
   }, [searchParams]);
 
-  const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
-  const [fullName, setFullName] = useState("");
-  const [shipPhone, setShipPhone] = useState("");
-  const [line1, setLine1] = useState("");
-  const [area, setArea] = useState("");
-  const [district, setDistrict] = useState("");
-  const [postcode, setPostcode] = useState("");
-  const [country, setCountry] = useState("Bangladesh");
+  const [email, setEmail] = useState(customer?.email ?? "");
+  const [phone, setPhone] = useState(customer?.phone ?? "");
+  const [fullName, setFullName] = useState(customer?.address?.fullName ?? customer?.name ?? "");
+  const [shipPhone, setShipPhone] = useState(customer?.address?.phone ?? customer?.phone ?? "");
+  const [line1, setLine1] = useState(customer?.address?.line1 ?? "");
+  const [area, setArea] = useState(customer?.address?.area ?? "");
+  const [district, setDistrict] = useState(customer?.address?.district ?? "");
+  const [postcode, setPostcode] = useState(customer?.address?.postcode ?? "");
+  const [country, setCountry] = useState(customer?.address?.country ?? "Bangladesh");
   const [zone, setZone] = useState<ShippingZoneKey>("INSIDE_DHAKA");
   const [paymentMethod, setPaymentMethod] = useState<"BKASH" | "SSLCOMMERZ" | "COD">(
     // bKash and card/mobile banking are commented out for now (see availableMethods below) —

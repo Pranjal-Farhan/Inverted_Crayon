@@ -105,6 +105,8 @@ Every order gets a unique number at checkout (`generateOrderNumber()`, retried o
 - **Customer account** (`/account/orders`) — every order the logged-in customer has placed, with date/total/status. Clicking one opens its own page: every item (size, color, qty, line total), each title linking to that product's page, and a plain-English status line — "Your Order Is Being Processed." or "Your Order Has Been Dispatched. You Will Receive SMS Containing The Delivery Details Soon." — above the existing step-by-step progress graphic.
 - **Homepage "Track your order"** (`/order-status`) — paste an order number, no login needed, and see that order's items/status/total. Deliberately shows **only** that order's contents: no email, phone, name, or address, since a bare number doesn't prove it's actually yours — just enough to answer "where's my stuff." Full details (exact delivery address, etc.) are only ever shown on the logged-in account view above, which checks session ownership first.
 
+**Checking out while logged in prefills the form from your account** — email, phone, full name, and (if you've saved one) your default address, with the page reading "Returning customer · `<you>`" instead of "Guest checkout." Every field stays editable; this only changes what the form starts with, not how `placeOrder()` processes it (it already linked the order to your account either way).
+
 ## Order-confirmation SMS
 
 Every confirmed order texts the customer's contact number (the "Phone (delivery SMS)" field from checkout) with order details, amount, and delivery location — content differs by how the order is paid:
