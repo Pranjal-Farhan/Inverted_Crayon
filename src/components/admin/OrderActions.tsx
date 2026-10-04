@@ -4,7 +4,6 @@ import { useState, useTransition } from "react";
 import {
   markOrderShipped,
   markOrderDelivered,
-  markOrderProcessing,
   refundOrder,
   updateOrderNotes,
   markBalanceCollected,
@@ -41,21 +40,12 @@ export function OrderActions({
             Mark COD balance collected
           </button>
         )}
-        {status === "PAID" && (
-          <button
-            disabled={pending}
-            onClick={() => startTransition(() => markOrderProcessing(orderId))}
-            className="border border-line-2 px-3.5 py-2 text-sm hover:border-lime disabled:opacity-50"
-          >
-            Mark processing
-          </button>
-        )}
-        {(status === "PAID" || status === "PROCESSING") && (
+        {(status === "PENDING" || status === "PAID" || status === "PROCESSING") && (
           <button
             onClick={() => setShipOpen((o) => !o)}
             className="btn-primary bg-lime px-3.5 py-2 font-impact text-sm text-ink"
           >
-            Mark shipped
+            Mark Sent For Delivery
           </button>
         )}
         {status === "SHIPPED" && (

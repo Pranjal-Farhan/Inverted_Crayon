@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getCustomerSession } from "@/lib/session";
 import { db } from "@/lib/db";
 import { formatTaka, toNumber } from "@/lib/money";
+import { CUSTOMER_STATUS_SHORT } from "@/lib/order-status";
 
 const BADGE: Record<string, string> = {
   PAID: "bg-lime/[0.16] text-lime",
@@ -36,7 +37,9 @@ export default async function AccountOrdersPage() {
             <td className="px-2.5 py-2.5">{o.createdAt.toLocaleDateString("en-GB", { day: "2-digit", month: "short" })}</td>
             <td className="px-2.5 py-2.5">{formatTaka(toNumber(o.total))}</td>
             <td className="px-2.5 py-2.5">
-              <span className={`font-label px-2.5 py-0.5 text-[12px] tracking-[0.8px] ${BADGE[o.status] ?? "bg-panel-2 text-muted"}`}>{o.status}</span>
+              <span className={`font-label px-2.5 py-0.5 text-[12px] tracking-[0.8px] ${BADGE[o.status] ?? "bg-panel-2 text-muted"}`}>
+                {CUSTOMER_STATUS_SHORT[o.status as keyof typeof CUSTOMER_STATUS_SHORT] ?? o.status}
+              </span>
             </td>
             <td className="px-2.5 py-2.5 text-right">
               <Link href={`/account/orders/${o.number}`} className="font-label text-[12px] tracking-[1px] text-cyan">

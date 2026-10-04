@@ -190,10 +190,31 @@ export default async function HomePage() {
         New In <Crown className="h-6 w-[34px] text-pink" />
         <CrayonScribble id="newin-h" color="var(--color-ic-pink)" className="h-6 w-10 -rotate-2 opacity-80" />
       </div>
-      <div className="grid grid-cols-2 desktop:grid-cols-4 gap-5 pb-16">
+      <div className="grid grid-cols-2 desktop:grid-cols-4 gap-5">
         {newProducts.map((p) => (
           <ProductCard key={p.id} product={p} />
         ))}
+      </div>
+
+      {/* TRACK YOUR ORDER */}
+      <div className="sh my-8 flex items-center gap-3 font-scrawl text-[30px]">
+        Track your order <Crown className="h-6 w-[34px] text-lime" />
+        <CrayonScribble id="track-h" color="var(--color-ic-lime)" className="h-6 w-10 rotate-2 opacity-80" />
+      </div>
+      <div className="mb-16 max-w-[520px] border border-line bg-panel p-6">
+        <p className="mb-3.5 text-sm text-muted">
+          Enter your order number to see what&apos;s in it and whether it&apos;s shipped yet — no account needed.
+        </p>
+        <form className="flex gap-2.5" action="/order-status" method="get">
+          <input
+            name="number"
+            placeholder="Order number"
+            className="flex-1 border border-line-2 bg-ink px-3 py-2.5 outline-none focus:border-lime"
+          />
+          <Button type="submit" size="sm">
+            Track
+          </Button>
+        </form>
       </div>
     </>
   );

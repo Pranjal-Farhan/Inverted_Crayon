@@ -35,13 +35,6 @@ export async function markOrderDelivered(orderId: string) {
   revalidatePath("/admin/orders");
 }
 
-export async function markOrderProcessing(orderId: string) {
-  await requireAdmin();
-  await db.order.update({ where: { id: orderId }, data: { status: "PROCESSING" } });
-  revalidatePath(`/admin/orders/${orderId}`);
-  revalidatePath("/admin/orders");
-}
-
 export async function refundOrder(orderId: string) {
   await requireAdmin();
   await db.$transaction(async (tx) => {

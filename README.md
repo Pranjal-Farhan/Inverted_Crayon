@@ -97,6 +97,14 @@ The advance is **per unit**, admin-set, not something the customer picks at chec
 
 > **bKash / card checkout is currently commented out.** `CheckoutView.tsx` only ever offers **Cash on delivery**, and `placeOrder()` rejects a direct `BKASH`/`SSLCOMMERZ` submission server-side too — both reversibly, pending re-enabling. COD works for every cart, preorders included, regardless of any configured advance.
 
+## Order tracking — admin, account, and public
+
+Every order gets a unique number at checkout (`generateOrderNumber()`, retried on the rare collision) and is visible from three places:
+
+- **Admin** (`/admin/orders`) — every order, chronologically, regardless of who placed it. Each one's **Customer** panel shows "HAS ACCOUNT" with a link to that customer's CRM record, or "GUEST ORDER — NO ACCOUNT" with just what they typed at checkout. Fulfillment is a simple two-state toggle: **Not Cleared Yet** (received, not packed) → **Mark Sent For Delivery** (prompts for courier + tracking ref) → **Sent For Delivery**. These are presentation labels over the existing `OrderStatus` enum (`src/lib/order-status.ts`), not a new state machine — PAID/DELIVERED/CANCELLED/REFUNDED/RETURNED all still work as before.
+- **Customer account** (`/account/orders`) — every order the logged-in customer has placed, with date/total/status. Clicking one opens its own page: every item (size, color, qty, line total), each title linking to that product's page, and a plain-English status line — "Your Order Is Being Processed." or "Your Order Has Been Dispatched. You Will Receive SMS Containing The Delivery Details Soon." — above the existing step-by-step progress graphic.
+- **Homepage "Track your order"** (`/order-status`) — paste an order number, no login needed, and see that order's items/status/total. Deliberately shows **only** that order's contents: no email, phone, name, or address, since a bare number doesn't prove it's actually yours — just enough to answer "where's my stuff." Full details (exact delivery address, etc.) are only ever shown on the logged-in account view above, which checks session ownership first.
+
 ## Order-confirmation SMS
 
 Every confirmed order texts the customer's contact number (the "Phone (delivery SMS)" field from checkout) with order details, amount, and delivery location — content differs by how the order is paid:

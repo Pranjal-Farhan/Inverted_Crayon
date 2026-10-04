@@ -25,7 +25,7 @@ export default async function OrderConfirmationPage({ params }: Props) {
       </div>
       <h1 className="font-impact text-[34px] uppercase">Order placed.</h1>
       <p className="crumb my-1.5">
-        Order #{order.number} · confirmation sent to {order.email}
+        Order #{order.number} · a confirmation email is on its way
       </p>
 
       {order.items.map((item) => (

@@ -10,7 +10,10 @@ type Props = { params: Promise<{ id: string }> };
 
 export default async function AdminOrderDetailPage({ params }: Props) {
   const { id } = await params;
-  const order = await db.order.findUnique({ where: { id }, include: { items: true, customer: true } });
+  const order = await db.order.findUnique({
+    where: { id },
+    include: { items: { include: { product: { select: { slug: true } } } }, customer: true },
+  });
   if (!order) notFound();
 
   return (
@@ -44,7 +47,14 @@ export default async function AdminOrderDetailPage({ params }: Props) {
               {order.items.map((item) => (
                 <tr key={item.id} className="border-b border-line">
                   <td className="py-2">
-                    {item.productTitleSnapshot} {item.isPreorder && <span className="text-yellow">· preorder</span>}
+                    {item.product ? (
+                      <Link href={`/product/${item.product.slug}`} target="_blank" className="hover:text-cyan hover:underline">
+                        {item.productTitleSnapshot}
+                      </Link>
+                    ) : (
+                      item.productTitleSnapshot
+                    )}{" "}
+                    {item.isPreorder && <span className="text-yellow">· preorder</span>}
                   </td>
                   <td className="py-2">{item.variantLabelSnapshot}</td>
                   <td className="py-2">{item.qty}</td>
@@ -94,6 +104,15 @@ export default async function AdminOrderDetailPage({ params }: Props) {
 
         <div>
           <Panel title="Customer">
+            {order.customer ? (
+              <span className="font-label mb-2 inline-block px-2 py-0.5 text-[11px] tracking-[0.8px] text-lime">
+                HAS ACCOUNT
+              </span>
+            ) : (
+              <span className="font-label mb-2 inline-block px-2 py-0.5 text-[11px] tracking-[0.8px] text-muted-2">
+                GUEST ORDER — NO ACCOUNT
+              </span>
+            )}
             <p className="text-sm text-muted">
               {order.shippingFullName} · {order.email} · {order.phone}
               <br />
