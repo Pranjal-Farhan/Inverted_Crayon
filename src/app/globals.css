@@ -73,12 +73,18 @@ body {
   color: var(--color-ic-ink);
 }
 
-/* In @layer base so Tailwind color utilities (e.g. text-ink on a Button rendered as a Link)
-   can actually override this — unlayered CSS always beats a layered utility class regardless
-   of specificity, which previously made any <a>-based button ignore its own text color. */
+/* In @layer base so Tailwind utilities (e.g. text-ink on a Button rendered as a Link, or
+   font-impact on any Button rendered as a <button>) can actually override these — unlayered
+   CSS always beats a layered utility class regardless of specificity, which previously made
+   any <a>-based button ignore its own text color, and every <button>-based one (Add to cart,
+   Place order, etc. — anything without an href) ignore font-impact and fall back to the body's
+   sans-serif instead of matching an <a>-based button like "Shop now". */
 @layer base {
   a {
     color: inherit;
+  }
+  button {
+    font-family: inherit;
   }
 }
 
@@ -134,10 +140,6 @@ a[role="button"]:not(:disabled):active {
   max-width: 1320px;
   margin-inline: auto;
   padding-inline: clamp(18px, 4vw, 48px);
-}
-
-button {
-  font-family: inherit;
 }
 
 /* Sharp corners everywhere by default; pills are opt-in via rounded-full */
