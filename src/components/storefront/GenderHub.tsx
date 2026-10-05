@@ -43,7 +43,7 @@ export async function GenderHub({ gender }: { gender: "MEN" | "WOMEN" }) {
           <PlaceholderFrame accentColor="#ff2d84" shape="x" label={`${label.toUpperCase()} · EDITORIAL HERO`} className="h-full w-full" />
         )}
         {categories[0] && (
-          <Button href={`/${path}/${categories[0].slug}`} className="absolute bottom-5 left-5">
+          <Button href={`/${path}/${categories[0].slug}`} prefetch={false} className="absolute bottom-5 left-5">
             Shop {label}
           </Button>
         )}
@@ -57,6 +57,7 @@ export async function GenderHub({ gender }: { gender: "MEN" | "WOMEN" }) {
               <Link
                 key={c.slug}
                 href={`/${path}/${c.slug}`}
+                prefetch={false}
                 className="relative flex aspect-[1/1.2] items-end overflow-hidden border border-line bg-ink"
               >
                 {c.imageUrl ? (

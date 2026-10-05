@@ -152,7 +152,7 @@ export default async function ProductPage({ params }: Props) {
 
           <div className="mt-5 mb-1 flex items-center justify-between">
             <p className="font-label text-sm text-cyan">
-              <Link href={`/size-guide?product=${product.slug}`}>Size guide →</Link>
+              <Link href={`/size-guide?product=${product.slug}`} prefetch={false}>Size guide →</Link>
             </p>
             <WishlistButton productId={product.id} />
           </div>

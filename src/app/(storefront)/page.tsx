@@ -118,6 +118,7 @@ export default async function HomePage() {
             <Link
               key={c.id}
               href={`/${c.gender.toLowerCase()}/${c.slug}`}
+              prefetch={false}
               className="relative flex min-h-[280px] items-end overflow-hidden border border-line bg-ink"
             >
               {c.imageUrl ? (

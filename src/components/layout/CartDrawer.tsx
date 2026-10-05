@@ -106,7 +106,7 @@ export function CartDrawer() {
               <span className="price">{formatTaka(subtotal)}</span>
             </div>
             <p className="text-[12px] text-muted">Shipping &amp; taxes at checkout</p>
-            <Button href="/checkout" className="mt-4" onClick={closeDrawer}>
+            <Button href="/checkout" prefetch={false} className="mt-4" onClick={closeDrawer}>
               Checkout
             </Button>
             <Link

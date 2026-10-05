@@ -82,6 +82,7 @@ export function Header({
                       <Link
                         key={c.slug}
                         href={`/${g.key}/${c.slug}`}
+                        prefetch={false}
                         className="py-1.5 text-sm text-[#ddd] hover:text-lime"
                       >
                         {c.name}
@@ -91,10 +92,10 @@ export function Header({
                 </div>
               </div>
             ))}
-            <ScribbleLink href="/new" stroke="var(--color-ic-yellow)" className="py-2 font-label text-[17px] tracking-[1.4px] hover:text-lime">
+            <ScribbleLink href="/new" prefetch={false} stroke="var(--color-ic-yellow)" className="py-2 font-label text-[17px] tracking-[1.4px] hover:text-lime">
               ALL
             </ScribbleLink>
-            <ScribbleLink href="/sale" stroke="var(--color-ic-pink)" className="py-2 font-label text-[17px] tracking-[1.4px] hover:text-lime">
+            <ScribbleLink href="/sale" prefetch={false} stroke="var(--color-ic-pink)" className="py-2 font-label text-[17px] tracking-[1.4px] hover:text-lime">
               SALE {saleActive && <span className="text-pink animate-pulse">●</span>}
             </ScribbleLink>
             <ScribbleLink href="/lookbook" stroke="var(--color-ic-cyan)" className="py-2 font-label text-[17px] tracking-[1.4px] hover:text-lime">
@@ -170,6 +171,7 @@ export function Header({
                       key={c.slug}
                       href={`/${g.key}/${c.slug}`}
                       onClick={() => setMobileOpen(false)}
+                      prefetch={false}
                       className="py-1 text-sm text-[#ddd]"
                     >
                       {c.name}
@@ -179,10 +181,10 @@ export function Header({
               )}
             </div>
           ))}
-          <Link href="/new" onClick={() => setMobileOpen(false)} className="block border-b border-line py-3 font-label text-lg tracking-[1.2px]">
+          <Link href="/new" onClick={() => setMobileOpen(false)} prefetch={false} className="block border-b border-line py-3 font-label text-lg tracking-[1.2px]">
             NEW
           </Link>
-          <Link href="/sale" onClick={() => setMobileOpen(false)} className="block border-b border-line py-3 font-label text-lg tracking-[1.2px]">
+          <Link href="/sale" onClick={() => setMobileOpen(false)} prefetch={false} className="block border-b border-line py-3 font-label text-lg tracking-[1.2px]">
             SALE {saleActive && <span className="text-pink animate-pulse">●</span>}
           </Link>
           <Link href="/lookbook" onClick={() => setMobileOpen(false)} className="block border-b border-line py-3 font-label text-lg tracking-[1.2px]">

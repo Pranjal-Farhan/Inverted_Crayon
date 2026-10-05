@@ -12,6 +12,8 @@ type CommonProps = {
   variant?: Variant;
   size?: Size;
   href?: string;
+  /** Forwarded to next/link when href is set. Default (undefined) lets Next decide; pass false for a link to a personalized/dynamic page. */
+  prefetch?: boolean;
   arrow?: boolean;
   loading?: boolean;
   className?: string;
@@ -85,6 +87,7 @@ export function Button({
   variant = "primary",
   size = "md",
   href,
+  prefetch,
   arrow = variant !== "text",
   loading = false,
   className = "",
@@ -125,6 +128,7 @@ export function Button({
       <Link
         ref={ref as React.Ref<HTMLAnchorElement>}
         href={href}
+        prefetch={prefetch}
         className={classes}
         onPointerMove={magnetic ? onPointerMove : undefined}
         onPointerLeave={magnetic ? onPointerLeave : undefined}

@@ -59,6 +59,7 @@ export function AdminSidebar() {
               <Link
                 key={item.href}
                 href={item.href}
+                prefetch={false}
                 className={`flex items-center gap-2.5 border-l-[3px] px-4.5 py-2.5 text-sm ${
                   active ? "border-lime bg-[#141416] text-paper" : "border-transparent text-muted hover:bg-[#141416] hover:text-paper"
                 }`}
