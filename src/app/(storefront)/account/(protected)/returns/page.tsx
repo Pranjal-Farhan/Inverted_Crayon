@@ -1,11 +1,13 @@
+import { redirect } from "next/navigation";
 import { getCustomerSession } from "@/lib/session";
 import { db } from "@/lib/db";
 import { ReturnRequestForm } from "@/components/storefront/ReturnRequestForm";
 
 export default async function AccountReturnsPage() {
   const session = await getCustomerSession();
+  if (!session) redirect("/account/login");
   const orders = await db.order.findMany({
-    where: { customerId: session!.customerId, status: "DELIVERED" },
+    where: { customerId: session.customerId, status: "DELIVERED" },
     include: { items: true },
     orderBy: { createdAt: "desc" },
   });

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { getCustomerSession } from "@/lib/session";
 import { db } from "@/lib/db";
 import { formatTaka, toNumber } from "@/lib/money";
@@ -13,8 +13,9 @@ type Props = { params: Promise<{ number: string }> };
 export default async function AccountOrderDetailPage({ params }: Props) {
   const { number } = await params;
   const session = await getCustomerSession();
+  if (!session) redirect("/account/login");
   const order = await db.order.findFirst({
-    where: { number, customerId: session!.customerId },
+    where: { number, customerId: session.customerId },
     include: { items: { include: { product: { select: { slug: true } } } } },
   });
   if (!order) notFound();
@@ -25,7 +26,7 @@ export default async function AccountOrderDetailPage({ params }: Props) {
           (
             await db.review.findMany({
               where: {
-                customerId: session!.customerId,
+                customerId: session.customerId,
                 productId: { in: order.items.map((i) => i.productId).filter((id): id is string => id != null) },
               },
               select: { productId: true },
