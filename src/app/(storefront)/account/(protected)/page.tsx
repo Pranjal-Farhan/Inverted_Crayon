@@ -1,11 +1,17 @@
+import { redirect } from "next/navigation";
 import { getCustomerSession } from "@/lib/session";
 import { db } from "@/lib/db";
 import { ProfileForm } from "@/components/storefront/ProfileForm";
 
 export default async function AccountProfilePage() {
   const session = await getCustomerSession();
+  // Verified independently of the (protected) layout's own redirect — see the Task 3 audit in
+  // PERF-REPORT-2.txt for why every account data read checks this itself rather than trusting
+  // the layout: Next.js evaluates a layout and its page concurrently, so a page that instead
+  // used session!.customerId could still run (and throw) before the layout's redirect() wins.
+  if (!session) redirect("/account/login");
   const customer = await db.customer.findUnique({
-    where: { id: session!.customerId },
+    where: { id: session.customerId },
     include: { addresses: { where: { isDefault: true } } },
   });
   const defaultAddress = customer?.addresses[0];
