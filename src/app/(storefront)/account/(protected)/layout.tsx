@@ -1,10 +1,18 @@
 import { redirect } from "next/navigation";
-import { getCustomerSession } from "@/lib/session";
+import { getCustomerSession, clearCustomerSession } from "@/lib/session";
 import { AccountNav } from "@/components/storefront/AccountNav";
 
 export default async function AccountProtectedLayout({ children }: { children: React.ReactNode }) {
   const session = await getCustomerSession();
-  if (!session) redirect("/account/login");
+  // A session that fails verify here (expired, tampered, or a rotated SESSION_SECRET) but whose
+  // cookie the browser hasn't dropped yet would otherwise leave the non-httpOnly hint cookie
+  // behind — the header's useLoggedIn() would keep showing "logged in" while every account page
+  // bounces to /account/login. Clearing both here, not just the httpOnly one, keeps that hint
+  // in lockstep with the real session on every expiry path, not just explicit logout.
+  if (!session) {
+    await clearCustomerSession();
+    redirect("/account/login");
+  }
 
   return (
     <section className="pg pb-16">
