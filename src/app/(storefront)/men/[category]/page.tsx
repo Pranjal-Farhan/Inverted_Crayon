@@ -18,7 +18,9 @@ type Props = {
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { category } = await params;
   const cat = await getCategoryByGenderSlug("MEN", category);
-  return { title: cat ? `Men / ${cat.name}` : "Men" };
+  // Canonical points at the clean URL without ?sort/?size/?color/etc, so crawlers don't treat
+  // every filter combination as a separate page.
+  return { title: cat ? `Men / ${cat.name}` : "Men", alternates: { canonical: `/men/${category}` } };
 }
 
 export default async function MenCategoryPage({ params, searchParams }: Props) {

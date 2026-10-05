@@ -15,7 +15,7 @@ type Props = {
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { category } = await params;
   const cat = await getCategoryByGenderSlug("WOMEN", category);
-  return { title: cat ? `Women / ${cat.name}` : "Women" };
+  return { title: cat ? `Women / ${cat.name}` : "Women", alternates: { canonical: `/women/${category}` } };
 }
 
 export default async function WomenCategoryPage({ params, searchParams }: Props) {

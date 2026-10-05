@@ -3,7 +3,7 @@ import { PLPView } from "@/components/storefront/PLPView";
 import { parsePLPParams } from "@/lib/parse-plp-params";
 import type { RawSearchParams } from "@/lib/plp-url";
 
-export const metadata: Metadata = { title: "New Arrivals" };
+export const metadata: Metadata = { title: "New Arrivals", alternates: { canonical: "/new" } };
 
 // Stays dynamic (ƒ) — reads searchParams for server-side sort/filter; see the Fix 2e note in
 // men/[category]/page.tsx. The underlying catalog fetch is cached (src/lib/plp.ts).
