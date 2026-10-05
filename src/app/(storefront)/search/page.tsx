@@ -6,6 +6,8 @@ import type { RawSearchParams } from "@/lib/plp-url";
 
 export const metadata: Metadata = { title: "Search" };
 
+// Stays dynamic (ƒ) by nature — it's a search-results page, inherently driven by the query
+// string. The underlying catalog fetch is cached (src/lib/plp.ts).
 export default async function SearchPage({ searchParams }: { searchParams: Promise<RawSearchParams> }) {
   const raw = await searchParams;
   const rest = parsePLPParams(raw);

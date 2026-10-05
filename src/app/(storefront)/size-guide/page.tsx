@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { unstable_cache } from "next/cache";
 import { db } from "@/lib/db";
 import { GENERIC_SIZE_GUIDE, parseSizeGuide } from "@/lib/size-guide";
 
@@ -6,10 +7,20 @@ export const metadata: Metadata = { title: "Size Guide" };
 
 type Props = { searchParams: Promise<{ product?: string }> };
 
+// Stays dynamic (ƒ) — reads searchParams to decide whether to show a specific product's size
+// guide. Low-traffic, informational page; the per-slug DB read itself is still cached below.
+function getCachedSizeGuideProduct(slug: string) {
+  return unstable_cache(
+    () => db.product.findUnique({ where: { slug }, select: { title: true, sizeGuide: true } }),
+    ["public-size-guide-product", slug],
+    { tags: ["products", `product:${slug}`] },
+  )();
+}
+
 export default async function SizeGuidePage({ searchParams }: Props) {
   const { product: slug } = await searchParams;
 
-  const product = slug ? await db.product.findUnique({ where: { slug }, select: { title: true, sizeGuide: true } }) : null;
+  const product = slug ? await getCachedSizeGuideProduct(slug) : null;
   const parsed = product ? parseSizeGuide(product.sizeGuide) : null;
   const table = parsed ?? GENERIC_SIZE_GUIDE;
   const isProductSpecific = Boolean(parsed);

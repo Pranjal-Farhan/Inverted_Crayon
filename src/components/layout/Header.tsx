@@ -6,6 +6,7 @@ import { useState } from "react";
 import { Monogram } from "@/components/brand/Monogram";
 import { RainbowWord } from "@/components/brand/RainbowWord";
 import { useCart } from "@/context/cart-context";
+import { useLoggedIn } from "@/lib/use-logged-in";
 import { SearchOverlay } from "@/components/layout/SearchOverlay";
 import { ScribbleLink } from "@/components/ui/ScribbleLink";
 
@@ -18,13 +19,11 @@ export type HeaderCategory = { slug: string; name: string };
 
 export function Header({
   saleActive,
-  customerName,
   brandName = "Inverted Crayon",
   logoImageUrl = null,
   categories,
 }: {
   saleActive: boolean;
-  customerName: string | null;
   brandName?: string;
   logoImageUrl?: string | null;
   categories: { men: HeaderCategory[]; women: HeaderCategory[] };
@@ -33,6 +32,9 @@ export function Header({
   const [mobileOpen, setMobileOpen] = useState(false);
   const [mobileAccordion, setMobileAccordion] = useState<string | null>(null);
   const { count, openDrawer } = useCart();
+  // Neutral (logged-out) on the server-rendered shell and first paint, same for every visitor;
+  // flips after mount if the non-sensitive hint cookie is present — see src/lib/use-logged-in.ts.
+  const loggedIn = useLoggedIn();
   const [brandFirst, ...brandRest] = brandName.split(" ");
   const brandRestText = brandRest.join(" ");
 
@@ -108,7 +110,7 @@ export function Header({
             >
               <SearchIcon />
             </button>
-            <Link href={customerName ? "/account" : "/account/login"} aria-label="Account">
+            <Link href={loggedIn ? "/account" : "/account/login"} aria-label="Account" prefetch={false}>
               <AccountIcon />
             </Link>
             <button onClick={openDrawer} aria-label="Cart" className="relative">
@@ -187,11 +189,12 @@ export function Header({
             LOOKBOOK
           </Link>
           <Link
-            href={customerName ? "/account" : "/account/login"}
+            href={loggedIn ? "/account" : "/account/login"}
             onClick={() => setMobileOpen(false)}
+            prefetch={false}
             className="block border-b border-line py-3 font-label text-lg tracking-[1.2px]"
           >
-            {customerName ? "ACCOUNT" : "LOGIN"}
+            {loggedIn ? "ACCOUNT" : "LOGIN"}
           </Link>
           <button
             onClick={() => {

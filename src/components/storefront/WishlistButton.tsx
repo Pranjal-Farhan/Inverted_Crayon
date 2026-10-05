@@ -1,21 +1,29 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { toggleWishlist } from "@/actions/customer-profile";
+import { getWishlistStatus, toggleWishlist } from "@/actions/customer-profile";
+import { useLoggedIn } from "@/lib/use-logged-in";
 
-export function WishlistButton({
-  productId,
-  initialSaved,
-  loggedIn,
-}: {
-  productId: string;
-  initialSaved: boolean;
-  loggedIn: boolean;
-}) {
-  const [saved, setSaved] = useState(initialSaved);
+export function WishlistButton({ productId }: { productId: string }) {
+  const loggedIn = useLoggedIn();
+  const [saved, setSaved] = useState(false);
   const [pending, startTransition] = useTransition();
   const router = useRouter();
+
+  // The product page itself is static/ISR (no session read during render), so whether this
+  // specific product is already saved is fetched here, client-side, only for visitors the hint
+  // cookie says are logged in — never blocking or affecting the page's static shell.
+  useEffect(() => {
+    if (!loggedIn) return;
+    let cancelled = false;
+    getWishlistStatus(productId).then((res) => {
+      if (!cancelled) setSaved(res.inWishlist);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [loggedIn, productId]);
 
   return (
     <button

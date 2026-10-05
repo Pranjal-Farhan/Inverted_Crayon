@@ -1,48 +1,47 @@
 import Link from "next/link";
-import { cache } from "react";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
-import { getProductForPDP } from "@/lib/get-product";
+import { getAllActiveProductSlugs, getCachedProductForPDP } from "@/lib/get-product";
 import { TagPill } from "@/components/ui/TagPill";
 import { AddToCartForm } from "@/components/storefront/AddToCartForm";
 import { ProductCard } from "@/components/ui/ProductCard";
 import { ProductGallery } from "@/components/storefront/ProductGallery";
 import { ReviewList } from "@/components/storefront/ReviewList";
+import { ReviewPrompt } from "@/components/storefront/ReviewPrompt";
 import { TrackRecentlyViewed, RecentlyViewedRail } from "@/components/storefront/RecentlyViewed";
 import { formatTaka } from "@/lib/money";
 import { toNumber } from "@/lib/money";
 import { pickAccent } from "@/lib/accent-color";
 import { Crown } from "@/components/brand/Crown";
 import { WishlistButton } from "@/components/storefront/WishlistButton";
-import { getCustomerSession } from "@/lib/session";
-import { db } from "@/lib/db";
 
 type Props = { params: Promise<{ slug: string }> };
 
-const getProductData = cache(getProductForPDP);
+// Safety-net revalidation on top of the tag-based invalidation in getCachedProductForPDP — see
+// src/actions/admin-products.ts for the revalidateTag calls that invalidate this on demand.
+export const revalidate = 3600;
+
+export async function generateStaticParams() {
+  const slugs = await getAllActiveProductSlugs();
+  return slugs.map((slug) => ({ slug }));
+}
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
-  const data = await getProductData(slug);
+  const data = await getCachedProductForPDP(slug);
   if (!data) return {};
   return { title: data.product.seoTitle ?? data.product.title, description: data.product.seoDescription ?? undefined };
 }
 
 export default async function ProductPage({ params }: Props) {
   const { slug } = await params;
-  const data = await getProductData(slug);
+  const data = await getCachedProductForPDP(slug);
   if (!data) notFound();
   const { product, display, related } = data;
 
-  const session = await getCustomerSession();
-  const wishlisted = session
-    ? Boolean(
-      await db.wishlistItem.findUnique({
-        where: { customerId_productId: { customerId: session.customerId, productId: product.id } },
-      }),
-    )
-    : false;
-
+  // Wishlist-saved state and login state are both read client-side (WishlistButton /
+  // ReviewPrompt) so this page itself never calls cookies()/getCustomerSession() and can stay
+  // static/ISR — see src/lib/use-logged-in.ts.
   const accent = pickAccent(product.id);
   const genderLabel = product.gender === "MEN" ? "Men" : product.gender === "WOMEN" ? "Women" : "Unisex";
   const genderPath = product.gender === "WOMEN" ? "women" : "men";
@@ -155,7 +154,7 @@ export default async function ProductPage({ params }: Props) {
             <p className="font-label text-sm text-cyan">
               <Link href={`/size-guide?product=${product.slug}`}>Size guide →</Link>
             </p>
-            <WishlistButton productId={product.id} initialSaved={wishlisted} loggedIn={Boolean(session)} />
+            <WishlistButton productId={product.id} />
           </div>
 
           <div className="my-5 flex items-center gap-2 font-scrawl text-[15px] text-pink">
@@ -184,11 +183,7 @@ export default async function ProductPage({ params }: Props) {
       </div>
       <div className="max-w-[640px]">
         <ReviewList reviews={product.reviews} />
-        {session && (
-          <p className="mt-3 text-[13px] text-muted">
-            Bought this? <Link href="/account/orders" className="text-cyan">Write a review</Link> from your order history.
-          </p>
-        )}
+        <ReviewPrompt />
       </div>
     </section>
   );

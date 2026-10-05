@@ -1,13 +1,14 @@
 import Link from "next/link";
 import type { Metadata } from "next";
-import { db } from "@/lib/db";
+import { getPublishedPosts } from "@/lib/public-cache";
 import { PlaceholderFrame } from "@/components/ui/PlaceholderFrame";
 import { pickAccent } from "@/lib/accent-color";
 
 export const metadata: Metadata = { title: "Journal" };
+export const revalidate = 3600;
 
 export default async function JournalPage() {
-  const posts = await db.post.findMany({ where: { status: "PUBLISHED" }, orderBy: { publishedAt: "desc" } });
+  const posts = await getPublishedPosts();
 
   return (
     <section className="pg pb-16">

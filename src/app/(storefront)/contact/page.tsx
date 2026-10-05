@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
-import { getStoreInfo } from "@/lib/store-settings";
+import { getCachedStoreInfo } from "@/lib/public-cache";
 import { ContactForm } from "@/components/storefront/ContactForm";
 
 export const metadata: Metadata = { title: "Contact" };
+export const revalidate = 3600;
 
 export default async function ContactPage() {
-  const info = await getStoreInfo();
+  const info = await getCachedStoreInfo();
 
   return (
     <section className="pg pb-16">

@@ -1,31 +1,28 @@
-import { db } from "@/lib/db";
-import { getCustomerSession } from "@/lib/session";
 import { Header } from "@/components/layout/Header";
 import { Footer } from "@/components/layout/Footer";
 import { CartDrawer } from "@/components/layout/CartDrawer";
 import { ChatBubble } from "@/components/layout/ChatBubble";
 import { MarqueeTicker } from "@/components/layout/MarqueeTicker";
 import { DEFAULT_HERO, type HeroData } from "@/lib/hero-defaults";
-import { getChatWidgetSettings } from "@/lib/store-settings";
+import {
+  getActiveCampaigns,
+  getCachedChatWidgetSettings,
+  getContentBlock,
+  getNavCategories,
+} from "@/lib/public-cache";
 
 export default async function StorefrontLayout({ children }: { children: React.ReactNode }) {
-  const now = new Date();
-  const [activeCampaign, session, heroBlock, chatWidget, categoryRows] = await Promise.all([
-    db.campaign.findFirst({ where: { active: true, startsAt: { lte: now }, endsAt: { gte: now } } }),
-    getCustomerSession(),
-    db.contentBlock.findUnique({ where: { key: "home_hero" } }),
-    getChatWidgetSettings(),
-    db.category.findMany({
-      where: { gender: { in: ["MEN", "WOMEN"] } },
-      orderBy: { position: "asc" },
-      select: { slug: true, name: true, gender: true },
-    }),
+  // None of these read cookies()/headers() — logged-in state is shown client-side (see
+  // src/lib/use-logged-in.ts) so this layout's output is identical for every visitor and the
+  // ~60 public routes under it can be static/ISR instead of forced dynamic by a session check.
+  const [campaigns, heroBlock, chatWidget, categories] = await Promise.all([
+    getActiveCampaigns(),
+    getContentBlock("home_hero"),
+    getCachedChatWidgetSettings(),
+    getNavCategories(),
   ]);
+  const saleActive = campaigns.length > 0;
   const hero: HeroData = { ...DEFAULT_HERO, ...(heroBlock?.data as Partial<HeroData> | undefined) };
-  const categories = {
-    men: categoryRows.filter((c) => c.gender === "MEN").map((c) => ({ slug: c.slug, name: c.name })),
-    women: categoryRows.filter((c) => c.gender === "WOMEN").map((c) => ({ slug: c.slug, name: c.name })),
-  };
 
   const whatsappDigits = chatWidget.whatsappNumber.replace(/[^0-9]/g, "");
   const whatsappUrl =
@@ -42,8 +39,7 @@ export default async function StorefrontLayout({ children }: { children: React.R
       <div className="site-wall" aria-hidden="true" />
       <div className="site-grain" aria-hidden="true" />
       <Header
-        saleActive={Boolean(activeCampaign)}
-        customerName={session?.name ?? null}
+        saleActive={saleActive}
         brandName={hero.brandName}
         logoImageUrl={hero.logoImageUrl}
         categories={categories}

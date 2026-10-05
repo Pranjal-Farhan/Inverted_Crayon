@@ -58,6 +58,20 @@ export async function removeWishlistItem(productId: string) {
   revalidatePath("/account/wishlist");
 }
 
+/**
+ * Called client-side (see WishlistButton.tsx) rather than passed down from the product page's
+ * server render — the product page itself must stay session-free to be static/ISR. Safe to
+ * return false for a logged-out visitor instead of throwing, since this only feeds a UI flag.
+ */
+export async function getWishlistStatus(productId: string): Promise<{ inWishlist: boolean }> {
+  const session = await getCustomerSession();
+  if (!session) return { inWishlist: false };
+  const existing = await db.wishlistItem.findUnique({
+    where: { customerId_productId: { customerId: session.customerId, productId } },
+  });
+  return { inWishlist: Boolean(existing) };
+}
+
 export async function toggleWishlist(productId: string): Promise<{ inWishlist: boolean }> {
   const session = await getCustomerSession();
   if (!session) throw new Error("Log in to save items.");

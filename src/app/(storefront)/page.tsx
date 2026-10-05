@@ -1,6 +1,12 @@
 import Link from "next/link";
 import Image from "next/image";
-import { db } from "@/lib/db";
+import {
+  getActiveCampaigns,
+  getCachedProductById,
+  getContentBlock,
+  getHomeNewProducts,
+  getSpotlightCategories,
+} from "@/lib/public-cache";
 import { deriveProductDisplay } from "@/lib/product-view";
 import { PlaceholderFrame } from "@/components/ui/PlaceholderFrame";
 import { ProductCard } from "@/components/ui/ProductCard";
@@ -14,24 +20,22 @@ import { ScrambleHeadline } from "@/components/storefront/ScrambleHeadline";
 import { CrayonScribble } from "@/components/brand/CrayonScribble";
 import { DEFAULT_HERO, type HeroData } from "@/lib/hero-defaults";
 
+// Safety-net revalidation on top of the tag-based invalidation in public-cache.ts.
+export const revalidate = 3600;
+
 export default async function HomePage() {
   const now = new Date();
   const [heroBlock, featuredBlock, campaigns, newProductsRaw, spotlightCategories] = await Promise.all([
-    db.contentBlock.findUnique({ where: { key: "home_hero" } }),
-    db.contentBlock.findUnique({ where: { key: "home_featured_drop" } }),
-    db.campaign.findMany({ where: { active: true, startsAt: { lte: now }, endsAt: { gte: now } } }),
-    db.product.findMany({
-      where: { status: "ACTIVE" },
-      include: { variants: true, images: true, tags: { include: { tag: true } }, category: true },
-      orderBy: { publishedAt: "desc" },
-      take: 8,
-    }),
+    getContentBlock("home_hero"),
+    getContentBlock("home_featured_drop"),
+    getActiveCampaigns(),
+    getHomeNewProducts(),
     // The first few Men categories by position — same taxonomy the admin already manages from
     // /admin/categories (§5.1), so setting a tile image there is what drives this section; no
     // separate "spotlight" concept to configure. Men is just a stable default branch to draw
     // from (a Unisex category would work equally well via either /men/<slug> or /women/<slug>,
     // but none exist in this catalog today).
-    db.category.findMany({ where: { gender: "MEN" }, orderBy: { position: "asc" }, take: 3 }),
+    getSpotlightCategories(),
   ]);
 
   const hero: HeroData = { ...DEFAULT_HERO, ...(heroBlock?.data as Partial<HeroData> | undefined) };
@@ -39,12 +43,7 @@ export default async function HomePage() {
   const headlineRestText = headlineRest.join(" ");
 
   const featuredId = (featuredBlock?.data as { productId?: string } | undefined)?.productId;
-  const featuredProduct = featuredId
-    ? await db.product.findUnique({
-      where: { id: featuredId },
-      include: { variants: true, images: true, tags: { include: { tag: true } }, category: true },
-    })
-    : newProductsRaw[0];
+  const featuredProduct = featuredId ? await getCachedProductById(featuredId) : newProductsRaw[0];
 
   const newProducts = newProductsRaw.map((p) => deriveProductDisplay(p, campaigns, now));
   const featuredDisplay = featuredProduct ? deriveProductDisplay(featuredProduct, campaigns, now) : null;

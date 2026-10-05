@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
-import { db } from "@/lib/db";
+import { getCategoryByGenderSlug } from "@/lib/public-cache";
 import { PLPView } from "@/components/storefront/PLPView";
 import { parsePLPParams } from "@/lib/parse-plp-params";
 import type { RawSearchParams } from "@/lib/plp-url";
@@ -11,15 +11,19 @@ type Props = {
   searchParams: Promise<RawSearchParams>;
 };
 
+// Stays dynamic (ƒ): reads searchParams below to drive server-side sort/filter/pagination,
+// preserving the existing shareable-URL behavior rather than moving filtering client-side — see
+// "Fix 2e" in the perf report for why this was the safer call. The underlying catalog fetch
+// itself is cached (src/lib/plp.ts), so this no longer costs a DB round-trip on every request.
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { category } = await params;
-  const cat = await db.category.findFirst({ where: { gender: "MEN", slug: category } });
+  const cat = await getCategoryByGenderSlug("MEN", category);
   return { title: cat ? `Men / ${cat.name}` : "Men" };
 }
 
 export default async function MenCategoryPage({ params, searchParams }: Props) {
   const { category } = await params;
-  const cat = await db.category.findFirst({ where: { gender: "MEN", slug: category } });
+  const cat = await getCategoryByGenderSlug("MEN", category);
   if (!cat) notFound();
 
   const rest = parsePLPParams(await searchParams);
