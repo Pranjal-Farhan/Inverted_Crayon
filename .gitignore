@@ -48,3 +48,7 @@ next-env.d.ts
 
 # local debug scratch
 .scratch/
+
+# perf audit route-table snapshots (perf/reduce-invocations work) — local only, never committed
+perf-before.txt
+perf-after.txt
