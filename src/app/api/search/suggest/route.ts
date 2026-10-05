@@ -15,5 +15,6 @@ export async function GET(request: Request) {
 
   return NextResponse.json(
     products.map((p) => ({ title: p.title, slug: p.slug, price: Number(p.basePrice) })),
+    { headers: { "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600" } },
   );
 }
