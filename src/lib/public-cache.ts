@@ -20,6 +20,18 @@ import { getChatWidgetSettings, getStoreInfo } from "@/lib/store-settings";
  *
  * Invalidated from src/actions/* on the matching mutation — see the Fix 3 commit for the full
  * action-to-tag checklist.
+ *
+ * A handful of these (noted individually below) also carry a `revalidate: 300` option on top of
+ * their tags. Tag invalidation alone only fires when an admin *action* runs — a campaign's own
+ * startsAt/endsAt boundary passes with no action to trigger one, so a product's sale badge/price
+ * derived from an unstable_cache entry with no time limit would stay wrong indefinitely once a
+ * scheduled campaign starts or ends, not just for the page's own ISR window. Note that the page-
+ * level `export const revalidate` (the ISR shell timer) does NOT substitute for this: it only
+ * controls how often the page's rendered HTML regenerates, and a regeneration that calls back
+ * into one of these functions still gets whatever this cache already has until this cache's own
+ * timer or a tag invalidation says otherwise — this is Next's Data Cache, a separate layer from
+ * the page's Full Route Cache. 300s caps that "nothing invalidated it, nothing will" window; it's
+ * cosmetic (checkout and admin always read fresh regardless — ground rules 3/4).
  */
 
 const PRODUCT_CARD_INCLUDE = {
@@ -37,7 +49,9 @@ export const getActiveCampaigns = unstable_cache(
     return db.campaign.findMany({ where: { active: true, startsAt: { lte: now }, endsAt: { gte: now } } });
   },
   ["public-active-campaigns"],
-  { tags: ["campaigns"] },
+  // revalidate: this is the literal "is a campaign active right now" query — its own result is
+  // the thing that goes stale across a scheduled startsAt/endsAt boundary. See the module doc.
+  { tags: ["campaigns"], revalidate: 300 },
 );
 
 // ---- content blocks ----
@@ -104,6 +118,8 @@ export function getCategoryByGenderSlug(gender: "MEN" | "WOMEN", slug: string) {
 
 // ---- products ----
 
+// These four carry display-level sale pricing (ProductCard reads onSale/salePrice, derived from
+// campaigns), so they get the revalidate: 300 treatment too — see the module doc.
 export const getHomeNewProducts = unstable_cache(
   async () =>
     db.product.findMany({
@@ -113,7 +129,7 @@ export const getHomeNewProducts = unstable_cache(
       take: 8,
     }),
   ["public-home-new-products"],
-  { tags: ["products"] },
+  { tags: ["products"], revalidate: 300 },
 );
 
 export function getGenderHubProducts(gender: "MEN" | "WOMEN") {
@@ -126,7 +142,7 @@ export function getGenderHubProducts(gender: "MEN" | "WOMEN") {
         take: 8,
       }),
     ["public-gender-hub-products", gender],
-    { tags: ["products"] },
+    { tags: ["products"], revalidate: 300 },
   )();
 }
 
@@ -134,10 +150,12 @@ export function getCachedProductById(id: string) {
   return unstable_cache(
     () => db.product.findUnique({ where: { id }, include: PRODUCT_CARD_INCLUDE }),
     ["public-product-by-id", id],
-    { tags: ["products", `product:${id}`] },
+    { tags: ["products", `product:${id}`], revalidate: 300 },
   )();
 }
 
+// No revalidate here: lookbook renders images/links only, no price or sale badge, so it has no
+// campaign-boundary staleness risk.
 export const getLookbookProducts = unstable_cache(
   async () => db.product.findMany({ where: { status: "ACTIVE" }, orderBy: { publishedAt: "desc" }, take: 8 }),
   ["public-lookbook-products"],
@@ -153,7 +171,7 @@ export const getCartRecommendations = unstable_cache(
       take: 4,
     }),
   ["public-cart-recommendations"],
-  { tags: ["products"] },
+  { tags: ["products"], revalidate: 300 },
 );
 
 // ---- journal ----

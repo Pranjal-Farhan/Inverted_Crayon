@@ -7,8 +7,9 @@ import { ProductCard } from "@/components/ui/ProductCard";
 export const metadata: Metadata = { title: "Your Bag" };
 // The bag's own contents are 100% client-side (localStorage via cart-context.tsx) — this page
 // has no session/cookie read, only the cached "you might also like" query below, so it's
-// static/ISR too.
-export const revalidate = 3600;
+// static/ISR too. 300s revalidate, not 3600s: that rail shows campaign-derived sale pricing —
+// see the matching comment on product/[slug]/page.tsx.
+export const revalidate = 300;
 
 export default async function CartPage() {
   const now = new Date();

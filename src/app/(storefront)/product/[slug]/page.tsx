@@ -17,9 +17,13 @@ import { WishlistButton } from "@/components/storefront/WishlistButton";
 
 type Props = { params: Promise<{ slug: string }> };
 
-// Safety-net revalidation on top of the tag-based invalidation in getCachedProductForPDP — see
-// src/actions/admin-products.ts for the revalidateTag calls that invalidate this on demand.
-export const revalidate = 3600;
+// 300s rather than the usual 3600s safety net: this page shows campaign-derived sale pricing
+// (display.onSale/salePrice), and a campaign's startsAt/endsAt boundary passes with zero admin
+// action — nothing calls revalidateTag at that exact moment, so this timer is what eventually
+// catches it. See src/actions/admin-products.ts/admin-campaigns.ts for the revalidateTag calls
+// that invalidate this on demand (an actual edit). Checkout always reads price fresh from the DB
+// (src/actions/checkout.ts), so a stale badge here is cosmetic, never an overcharge.
+export const revalidate = 300;
 
 export async function generateStaticParams() {
   const slugs = await getAllActiveProductSlugs();

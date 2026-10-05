@@ -62,7 +62,12 @@ function getCachedCatalogForScope(gender: PLPParams["gender"], categorySlug: str
       return { products, campaigns };
     },
     ["public-plp-catalog", gender ?? "all", categorySlug ?? "all"],
-    { tags: ["products", "campaigns"] },
+    // revalidate: 300 — this result carries both the campaign list and every product's derived
+    // sale pricing, so a scheduled campaign startsAt/endsAt boundary (no admin action, nothing to
+    // eagerly revalidateTag) would otherwise leave it wrong indefinitely — tag invalidation alone
+    // isn't enough here. See the module doc on src/lib/public-cache.ts for why the page-level
+    // `export const revalidate` on the pages that call this doesn't substitute for this.
+    { tags: ["products", "campaigns"], revalidate: 300 },
   )();
 }
 

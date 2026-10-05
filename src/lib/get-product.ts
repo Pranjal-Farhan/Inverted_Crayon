@@ -53,7 +53,15 @@ export async function getCachedProductForPDP(slug: string) {
     // "reviews" tagged here too (not a separately-cached read) — review approval/rejection
     // invalidates by this generic tag rather than needing to resolve which product a review
     // belongs to. See src/actions/admin-reviews.ts.
-    { tags: ["products", `product:${slug}`, "reviews"] },
+    //
+    // revalidate: 300 — display.onSale/salePrice (this product and its `related` list) are
+    // derived from whichever campaigns are active right now. A campaign's startsAt/endsAt
+    // crossing with no admin action never calls revalidateTag, so without this the PDP's sale
+    // badge/price could stay wrong indefinitely rather than for a bounded window. The page's own
+    // `export const revalidate = 300` (product/[slug]/page.tsx) controls how often the page's
+    // HTML regenerates, not whether this specific cached read is still considered fresh when it
+    // does — this option is what actually bounds that.
+    { tags: ["products", `product:${slug}`, "reviews"], revalidate: 300 },
   )();
   if (!data) return data;
   return {

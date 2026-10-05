@@ -20,8 +20,12 @@ import { ScrambleHeadline } from "@/components/storefront/ScrambleHeadline";
 import { CrayonScribble } from "@/components/brand/CrayonScribble";
 import { DEFAULT_HERO, type HeroData } from "@/lib/hero-defaults";
 
-// Safety-net revalidation on top of the tag-based invalidation in public-cache.ts.
-export const revalidate = 3600;
+// 300s rather than the usual 3600s safety net: this page shows campaign-derived sale pricing
+// (onSale/salePrice), and a campaign's startsAt/endsAt boundary passes with zero admin action —
+// nothing calls revalidateTag at that exact moment, so only this timer catches it. Checkout
+// still recomputes price fresh from the DB regardless (src/actions/checkout.ts), so the risk
+// here is a stale *displayed* badge/price for up to 5 minutes, never an actual overcharge.
+export const revalidate = 300;
 
 export default async function HomePage() {
   const now = new Date();

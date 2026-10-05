@@ -8,8 +8,8 @@ type Props = {
   params: Promise<{ category: string }>;
 };
 
-// Now fully static (○/ISR) — see the matching comment in men/[category]/page.tsx.
-export const revalidate = 3600;
+// Now fully static (○/ISR), 300s revalidate — see the matching comment in men/[category]/page.tsx.
+export const revalidate = 300;
 
 export async function generateStaticParams() {
   try {

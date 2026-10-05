@@ -5,8 +5,9 @@ export const metadata: Metadata = { title: "New Arrivals", alternates: { canonic
 
 // Now fully static (○/ISR) — no searchParams read here at all. Defaults to "newest" sort
 // (matching the old server-side `rest.sort ?? "newest"`), but the sort control can still
-// override that client-side.
-export const revalidate = 3600;
+// override that client-side. 300s revalidate, not 3600s — see the matching comment on
+// men/[category]/page.tsx (campaign boundaries can change sale pricing with no admin action).
+export const revalidate = 300;
 
 export default function NewArrivalsPage() {
   return (
