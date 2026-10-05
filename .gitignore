@@ -52,3 +52,4 @@ next-env.d.ts
 # perf audit route-table snapshots (perf/reduce-invocations work) — local only, never committed
 perf-before.txt
 perf-after.txt
+perf-after-2.txt
