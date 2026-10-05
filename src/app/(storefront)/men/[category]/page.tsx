@@ -1,38 +1,44 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
-import { getCategoryByGenderSlug } from "@/lib/public-cache";
-import { PLPView } from "@/components/storefront/PLPView";
-import { parsePLPParams } from "@/lib/parse-plp-params";
-import type { RawSearchParams } from "@/lib/plp-url";
+import { getCategoryByGenderSlug, getGenderCategories } from "@/lib/public-cache";
+import { StaticPLPView } from "@/components/storefront/StaticPLPView";
 
 type Props = {
   params: Promise<{ category: string }>;
-  searchParams: Promise<RawSearchParams>;
 };
 
-// Stays dynamic (ƒ): reads searchParams below to drive server-side sort/filter/pagination,
-// preserving the existing shareable-URL behavior rather than moving filtering client-side — see
-// "Fix 2e" in the perf report for why this was the safer call. The underlying catalog fetch
-// itself is cached (src/lib/plp.ts), so this no longer costs a DB round-trip on every request.
+// Now fully static (○/ISR): no searchParams read anywhere in this file — filtering/sorting/
+// pagination moved entirely client-side (see StaticPLPView.tsx / StaticPLPClient.tsx). Safety-net
+// revalidation on top of the tag-based invalidation already wired in src/lib/invalidate.ts.
+export const revalidate = 3600;
+
+export async function generateStaticParams() {
+  try {
+    const categories = await getGenderCategories("MEN");
+    return categories.map((c) => ({ category: c.slug }));
+  } catch {
+    return [];
+  }
+}
+
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { category } = await params;
   const cat = await getCategoryByGenderSlug("MEN", category);
-  // Canonical points at the clean URL without ?sort/?size/?color/etc, so crawlers don't treat
-  // every filter combination as a separate page.
+  // Canonical points at the clean URL without ?sort/?size/?color/etc — those params no longer
+  // even reach the server, but a crawler could still encounter them in a shared link.
   return { title: cat ? `Men / ${cat.name}` : "Men", alternates: { canonical: `/men/${category}` } };
 }
 
-export default async function MenCategoryPage({ params, searchParams }: Props) {
+export default async function MenCategoryPage({ params }: Props) {
   const { category } = await params;
   const cat = await getCategoryByGenderSlug("MEN", category);
   if (!cat) notFound();
 
-  const rest = parsePLPParams(await searchParams);
-
   return (
-    <PLPView
-      params={{ gender: "MEN", categorySlug: category, ...rest }}
+    <StaticPLPView
+      gender="MEN"
+      categorySlug={category}
       title={
         <>
           Men / <span className="text-lime">{cat.name}</span>

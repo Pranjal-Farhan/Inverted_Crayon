@@ -1,3 +1,4 @@
+import "server-only";
 import { unstable_cache } from "next/cache";
 import { db } from "@/lib/db";
 import { deriveProductDisplay, type ProductDisplay } from "@/lib/product-view";
@@ -63,6 +64,34 @@ function getCachedCatalogForScope(gender: PLPParams["gender"], categorySlug: str
     ["public-plp-catalog", gender ?? "all", categorySlug ?? "all"],
     { tags: ["products", "campaigns"] },
   )();
+}
+
+export type PLPCatalogItem = ProductDisplay & {
+  /** Distinct variant sizes/colors for this product — carried alongside ProductDisplay so a
+   * client-side filter (src/lib/plp-filter.ts) can filter by size/color without needing the raw
+   * Prisma variant rows. */
+  sizes: string[];
+  colors: string[];
+};
+
+/**
+ * Server-side fetch of the full, unfiltered, already-scoped catalog for a gender/category —
+ * used by /men/[category], /women/[category], /new, /sale, now that those pages are static and
+ * do all filtering/sorting/pagination client-side (see StaticPLPView.tsx / StaticPLPClient.tsx).
+ * Deliberately returns every item, not just one page of PAGE_SIZE — the static HTML this
+ * produces is what a crawler sees, so every product in the category should be a real link in it.
+ */
+export async function getPLPCatalog(
+  gender: PLPParams["gender"],
+  categorySlug: string | undefined,
+): Promise<PLPCatalogItem[]> {
+  const { products, campaigns } = await getCachedCatalogForScope(gender, categorySlug);
+  const now = new Date();
+  return products.map((p) => ({
+    ...deriveProductDisplay(p, campaigns, now),
+    sizes: [...new Set(p.variants.map((v) => v.size))],
+    colors: [...new Set(p.variants.map((v) => v.color))],
+  }));
 }
 
 export async function getPLPResults(params: PLPParams) {

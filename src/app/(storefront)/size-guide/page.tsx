@@ -1,30 +1,27 @@
 import type { Metadata } from "next";
-import { unstable_cache } from "next/cache";
-import { db } from "@/lib/db";
-import { GENERIC_SIZE_GUIDE, parseSizeGuide } from "@/lib/size-guide";
+import { Suspense } from "react";
+import { GENERIC_SIZE_GUIDE } from "@/lib/size-guide";
+import { SizeGuideReadTable } from "@/components/storefront/SizeGuideReadTable";
+import { SizeGuideClient } from "@/components/storefront/SizeGuideClient";
 
-export const metadata: Metadata = { title: "Size Guide" };
+export const metadata: Metadata = { title: "Size Guide", alternates: { canonical: "/size-guide" } };
 
-type Props = { searchParams: Promise<{ product?: string }> };
+// Now fully static — this file has zero DB reads of its own (moved into the
+// getSizeGuideForProduct server action, called client-side by SizeGuideClient.tsx) and no
+// searchParams read, so there's nothing left to revalidate on a timer.
 
-// Stays dynamic (ƒ) — reads searchParams to decide whether to show a specific product's size
-// guide. Low-traffic, informational page; the per-slug DB read itself is still cached below.
-function getCachedSizeGuideProduct(slug: string) {
-  return unstable_cache(
-    () => db.product.findUnique({ where: { slug }, select: { title: true, sizeGuide: true } }),
-    ["public-size-guide-product", slug],
-    { tags: ["products", `product:${slug}`] },
-  )();
+// The original markup kept the intro paragraph inside the same centered heading block as the
+// <h1> (sharing its text-center) and the table as a separate, non-centered sibling below. The
+// Suspense boundary has to wrap both together (one fetch feeds both), so the centering is
+// applied directly to the paragraph here instead of inherited from an ancestor — same rendered
+// result, without needing the Suspense boundary to straddle two different parent elements.
+function GenericSizeGuideIntro() {
+  return (
+    <p className="mx-auto mt-3 max-w-[52ch] text-center text-muted">Measurements in inches. Oversized fits run 1 size roomy.</p>
+  );
 }
 
-export default async function SizeGuidePage({ searchParams }: Props) {
-  const { product: slug } = await searchParams;
-
-  const product = slug ? await getCachedSizeGuideProduct(slug) : null;
-  const parsed = product ? parseSizeGuide(product.sizeGuide) : null;
-  const table = parsed ?? GENERIC_SIZE_GUIDE;
-  const isProductSpecific = Boolean(parsed);
-
+export default function SizeGuidePage() {
   return (
     <section className="pg pb-16">
       <div className="mx-auto max-w-[760px]">
@@ -32,44 +29,17 @@ export default async function SizeGuidePage({ searchParams }: Props) {
           <h1 className="font-impact text-[clamp(40px,6vw,72px)] uppercase leading-[0.85] tracking-[1px]">
             Size <span className="text-lime">Guide</span>
           </h1>
-          <p className="mx-auto mt-3 max-w-[52ch] text-muted">
-            {isProductSpecific ? (
-              <>
-                Measurements in inches for <span className="text-paper">{product!.title}</span>.
-              </>
-            ) : slug ? (
-              "That product doesn't have measurements entered yet — here's our general reference chart. Oversized fits run 1 size roomy."
-            ) : (
-              "Measurements in inches. Oversized fits run 1 size roomy."
-            )}
-          </p>
         </div>
-        <div className="doc py-4">
-          <table className="w-full border-collapse text-center text-sm">
-            <thead>
-              <tr>
-                <th className="font-label border-b border-line-2 p-2.5 tracking-[1px] text-muted">Size</th>
-                {table.columns.map((col) => (
-                  <th key={col} className="font-label border-b border-line-2 p-2.5 tracking-[1px] text-muted">
-                    {col}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {table.rows.map((row) => (
-                <tr key={row.size}>
-                  <td className="border-b border-line p-2.5">{row.size}</td>
-                  {table.columns.map((col, i) => (
-                    <td key={col} className="border-b border-line p-2.5">
-                      {row.values[i] ?? ""}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <Suspense
+          fallback={
+            <>
+              <GenericSizeGuideIntro />
+              <SizeGuideReadTable table={GENERIC_SIZE_GUIDE} />
+            </>
+          }
+        >
+          <SizeGuideClient />
+        </Suspense>
       </div>
     </section>
   );

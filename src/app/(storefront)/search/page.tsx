@@ -6,8 +6,15 @@ import type { RawSearchParams } from "@/lib/plp-url";
 
 export const metadata: Metadata = { title: "Search" };
 
-// Stays dynamic (ƒ) by nature — it's a search-results page, inherently driven by the query
-// string. The underlying catalog fetch is cached (src/lib/plp.ts).
+// Deliberately NOT converted to the static/client-filtered pattern used by
+// /men/[category], /women/[category], /new and /sale (see StaticPLPView.tsx). Those pages have a
+// fixed, enumerable scope (a gender/category combination, or "everything") that can be fetched
+// and cached once and then filtered client-side. A free-text search query is unbounded — there's
+// no finite set of "all possible /search pages" to prerender or cache a shell for, and shipping
+// the *entire* catalog to the client just so it can be searched offline would make this page's
+// JS payload scale with the whole store rather than with one query. So this one stays genuinely
+// dynamic: it reads searchParams server-side and reuses the original server-filtered PLPView,
+// same as before. The underlying catalog fetch it calls into is still cached (src/lib/plp.ts).
 export default async function SearchPage({ searchParams }: { searchParams: Promise<RawSearchParams> }) {
   const raw = await searchParams;
   const rest = parsePLPParams(raw);
