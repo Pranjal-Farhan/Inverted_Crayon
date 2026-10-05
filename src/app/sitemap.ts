@@ -1,11 +1,13 @@
 import type { MetadataRoute } from "next";
 import { getAllActiveProductSlugs } from "@/lib/get-product";
 import { getAllPublishedPostSlugs, getNavCategories } from "@/lib/public-cache";
+import { PRODUCTION_SITE_URL } from "@/lib/site-url";
 
 // Same reasoning as robots.ts for not using getSiteOrigin() (avoids a headers() call that would
-// make this dynamic). Safety-net revalidation on top of the tag-based invalidation the
-// underlying cached reads already have.
-const SITE_ORIGIN = (process.env.SITE_URL ?? "http://localhost:3000").replace(/\/$/, "");
+// make this dynamic) and for falling back to the real production domain rather than localhost.
+// Safety-net revalidation on top of the tag-based invalidation the underlying cached reads
+// already have.
+const SITE_ORIGIN = (process.env.SITE_URL ?? PRODUCTION_SITE_URL).replace(/\/$/, "");
 export const revalidate = 3600;
 
 const STATIC_PATHS = [
