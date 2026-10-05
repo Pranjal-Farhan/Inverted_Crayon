@@ -50,7 +50,10 @@ export async function getCachedProductForPDP(slug: string) {
   const data = await unstable_cache(
     () => getProductForPDP(slug),
     ["pdp-product", slug],
-    { tags: ["products", `product:${slug}`] },
+    // "reviews" tagged here too (not a separately-cached read) — review approval/rejection
+    // invalidates by this generic tag rather than needing to resolve which product a review
+    // belongs to. See src/actions/admin-reviews.ts.
+    { tags: ["products", `product:${slug}`, "reviews"] },
   )();
   if (!data) return data;
   return {

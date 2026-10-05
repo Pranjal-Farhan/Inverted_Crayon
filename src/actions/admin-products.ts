@@ -14,6 +14,7 @@ import { ensureMirrorCategories } from "@/actions/admin-categories";
 import { slugify } from "@/lib/slugify";
 import { APPAREL_SIZES, ONE_SIZE } from "@/lib/sizes";
 import { MAX_SIZE_GUIDE_COLUMNS } from "@/lib/size-guide";
+import { invalidateProduct } from "@/lib/invalidate";
 
 const VALID_SIZES = [...APPAREL_SIZES, ONE_SIZE] as [string, ...string[]];
 
@@ -362,6 +363,8 @@ export async function saveProduct(input: ProductFormInput): Promise<ProductSaveR
 
     revalidatePath("/admin/products");
     revalidatePath(`/admin/products/${product.id}`);
+    invalidateProduct({ id: product.id, slug: product.slug });
+    if (existing && existing.slug !== product.slug) invalidateProduct({ slug: existing.slug });
     return { ok: true, id: product.id };
   } catch (e) {
     // ensureUniqueSlug/ensureUniqueSku already resolve the overwhelming majority of collisions
@@ -380,6 +383,7 @@ export async function saveProduct(input: ProductFormInput): Promise<ProductSaveR
 
 export async function deleteProduct(id: string) {
   await requireAdmin();
+  const existing = await db.product.findUnique({ where: { id }, select: { slug: true } });
   try {
     await db.product.delete({ where: { id } });
   } catch (e) {
@@ -388,6 +392,7 @@ export async function deleteProduct(id: string) {
   }
   await fs.rm(path.join(process.cwd(), "public", "uploads", "products", id), { recursive: true, force: true });
   revalidatePath("/admin/products");
+  invalidateProduct({ id, slug: existing?.slug });
   redirect("/admin/products");
 }
 
@@ -397,7 +402,7 @@ export type UploadImagesResult = { ok: true; images: ProductImageRow[] } | { ok:
 export async function uploadProductImages(productId: string, formData: FormData): Promise<UploadImagesResult> {
   await requireAdmin();
 
-  const product = await db.product.findUnique({ where: { id: productId }, select: { id: true, title: true } });
+  const product = await db.product.findUnique({ where: { id: productId }, select: { id: true, title: true, slug: true } });
   if (!product) return { ok: false, error: "Product not found — save the product first." };
 
   const files = formData.getAll("files").filter((f): f is File => f instanceof File && f.size > 0);
@@ -439,6 +444,7 @@ export async function uploadProductImages(productId: string, formData: FormData)
 
   revalidatePath(`/admin/products/${productId}`);
   revalidatePath("/admin/products");
+  invalidateProduct({ id: productId, slug: product.slug });
   return { ok: true, images: created };
 }
 
@@ -454,5 +460,7 @@ export async function deleteProductImage(id: string): Promise<{ ok: true } | { o
 
   revalidatePath(`/admin/products/${image.productId}`);
   revalidatePath("/admin/products");
+  const owner = await db.product.findUnique({ where: { id: image.productId }, select: { slug: true } });
+  invalidateProduct({ id: image.productId, slug: owner?.slug });
   return { ok: true };
 }

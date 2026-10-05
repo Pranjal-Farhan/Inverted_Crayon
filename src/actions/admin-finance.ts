@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { getAdminSession } from "@/lib/session";
+import { invalidateProduct } from "@/lib/invalidate";
 
 export async function createStockOwner(
   _prev: { ok: boolean; error: string } | null,
@@ -71,5 +72,7 @@ export async function recordStockPurchase(
 
   revalidatePath("/admin/finance");
   revalidatePath("/admin/inventory");
+  // A stock purchase increments stockQty, which can flip a sold-out/preorder badge.
+  invalidateProduct({ id: variant.productId, slug: variant.product.slug });
   return { ok: true, error: "" };
 }

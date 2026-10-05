@@ -15,6 +15,7 @@ import { getSiteOrigin } from "@/lib/site-url";
 import { restockAndCancelOrder } from "@/lib/payments/rollback";
 import { bkashConfigured, createBkashPayment } from "@/lib/payments/bkash";
 import { sslcommerzConfigured, initSslcommerzSession } from "@/lib/payments/sslcommerz";
+import { invalidateProduct } from "@/lib/invalidate";
 
 const MAX_ORDER_NUMBER_ATTEMPTS = 5;
 
@@ -273,6 +274,15 @@ export async function placeOrder(input: CheckoutInput): Promise<CheckoutResult> 
       }
       // else: order-number collision with attempts left — loop retries with a freshly generated number.
     }
+  }
+
+  // Stock was just decremented (non-preorder lines) inside the transaction above, which can flip
+  // a sold-out/preorder badge on every public page that shows these products. Reads above this
+  // point all went straight to the DB per ground rule 3 — this invalidation only affects what the
+  // *next* visitor sees, never this order's own pricing/stock.
+  const orderedProducts = new Map(variants.map((v) => [v.productId, v.product.slug]));
+  for (const [productId, slug] of orderedProducts) {
+    invalidateProduct({ id: productId, slug });
   }
 
   if (usesLiveGateway) {

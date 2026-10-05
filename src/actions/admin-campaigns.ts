@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { getAdminSession } from "@/lib/session";
+import { invalidateCampaigns } from "@/lib/invalidate";
 
 async function requireAdmin() {
   const session = await getAdminSession();
@@ -44,6 +45,7 @@ export async function saveCampaign(input: z.infer<typeof schema>) {
   });
   revalidatePath("/admin/campaigns");
   revalidatePath("/sale");
+  invalidateCampaigns();
 }
 
 export async function deleteCampaign(id: string) {
@@ -51,4 +53,5 @@ export async function deleteCampaign(id: string) {
   await db.campaign.delete({ where: { id } });
   revalidatePath("/admin/campaigns");
   revalidatePath("/sale");
+  invalidateCampaigns();
 }

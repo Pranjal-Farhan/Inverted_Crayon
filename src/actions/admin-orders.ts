@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { getAdminSession } from "@/lib/session";
 import { sendMail } from "@/lib/mail";
+import { invalidateProduct } from "@/lib/invalidate";
 
 async function requireAdmin() {
   const session = await getAdminSession();
@@ -37,6 +38,7 @@ export async function markOrderDelivered(orderId: string) {
 
 export async function refundOrder(orderId: string) {
   await requireAdmin();
+  const restockedProductIds = new Set<string>();
   await db.$transaction(async (tx) => {
     const order = await tx.order.findUniqueOrThrow({ where: { id: orderId }, include: { items: true } });
 
@@ -52,11 +54,16 @@ export async function refundOrder(orderId: string) {
     for (const item of order.items) {
       if (!item.isPreorder && item.variantId) {
         await tx.variant.update({ where: { id: item.variantId }, data: { stockQty: { increment: item.qty } } });
+        if (item.productId) restockedProductIds.add(item.productId);
       }
     }
   });
   revalidatePath(`/admin/orders/${orderId}`);
   revalidatePath("/admin/orders");
+  if (restockedProductIds.size > 0) {
+    const products = await db.product.findMany({ where: { id: { in: [...restockedProductIds] } }, select: { id: true, slug: true } });
+    for (const p of products) invalidateProduct({ id: p.id, slug: p.slug });
+  }
 }
 
 export async function updateOrderNotes(orderId: string, notes: string) {
