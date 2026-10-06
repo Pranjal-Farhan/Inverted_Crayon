@@ -1,0 +1,236 @@
+INVERTED CRAYON — CUSTOMER-FACING SESSION/IDOR AUDIT
+Branch: perf/reduce-invocations
+Scope: every exported server action and API route handler that is NOT an admin action,
+checked for (a) verifying the customer session itself when acting on personal data, and
+(b) scoping every DB read/write by the session's customerId rather than trusting a
+client-supplied id/order number/slug. Guest-capable flows (checkout, order tracking,
+back-in-stock) checked separately for the same risk without a session to lean on.
+Ground rules observed: separate commits per fix, no push.
+
+Two real vulnerabilities found and fixed — both allow one customer to act on another
+customer's data/account without authorization. Everything else checked is already
+correctly scoped. Full list below, in file order, OK items first within each file,
+findings called out where they occur.
+
+
+============================================================
+src/actions/customer-auth.ts
+============================================================
+
+customerLogin — OK. Verifies password against the stored hash, enforces lockout state,
+no session required (this action creates the session). No other customer's data is read
+or touched.
+
+customerRegister — FIXED (commit 2743452). Account-takeover vulnerability: if the
+submitted email already belonged to an existing Customer row, the code ran
+`db.customer.update({ where: { email }, data: { passwordHash, name } })` unconditionally
+— overwriting that account's password (and name) with whatever the caller submitted, no
+proof of ownership required. Every Customer row that can exist already has a way to log
+in (a passwordHash from an earlier registration, or a googleId/facebookId from OAuth —
+confirmed by checking every db.customer.create call site in the codebase; there are only
+two, this one and the OAuth callback, and both always set at least one credential), so
+"the email is already registered" is always true for an "existing" row. Fix: if a
+Customer row for that email already exists at all, refuse and return "An account with
+that email already exists. Please log in instead." instead of updating it. This doesn't
+affect the legitimate, separate "claim my guest orders by email" feature a few lines
+below (`db.order.updateMany({ where: { email, customerId: null }, ... })`), since guest
+checkouts never create a Customer row in the first place — confirmed by reading
+checkout.ts's placeOrder, which only ever sets Order.customerId from the session, never
+creates a Customer.
+
+customerLogout — OK. Clears the session, no data access.
+
+
+============================================================
+src/actions/customer-profile.ts
+============================================================
+
+requireCustomer() helper — OK. Throws if no session; every action below either uses it
+or does its own equivalent inline check.
+
+updateProfile — OK. Updates by `where: { id: session.customerId }` — can only ever touch
+the caller's own row.
+
+saveAddress — FIXED (commit 19e0442). IDOR: the upsert's `where: { id: data.id ??
+"__new__" }` matched by address id alone. A logged-in customer could edit any other
+customer's address — not just their own — by passing that address's id as `data.id`; the
+upsert would find and overwrite it regardless of who it actually belonged to. Fix: when
+`data.id` is present, first confirm an address with that id AND `customerId:
+session.customerId` actually exists; throw if not, before the upsert runs.
+
+deleteAddress — OK. `deleteMany({ where: { id, customerId: session.customerId } })` —
+already correctly scoped; a mismatched id simply deletes nothing.
+
+removeWishlistItem — OK. Scoped by `customerId: session.customerId` in the where clause.
+
+getWishlistStatus — OK. Guest-safe by design (returns `{ inWishlist: false }` if no
+session, documented as intentional since it only feeds a UI flag) — scoped by
+session.customerId whenever a session exists.
+
+toggleWishlist — OK. Requires a session, scoped by session.customerId for both the
+existence check and the create/delete.
+
+requestReturn — FIXED (commit 19e0442). IDOR: confirmed the order itself belongs to the
+caller (`findFirst({ where: { id: data.orderId, customerId: session.customerId } })`),
+but never checked that the submitted `orderItemIds` actually belong to that order —
+owning any one order was enough to attach an arbitrary order-item id (someone else's) to
+a return request. Fix: fetch the order's own items and verify every submitted
+orderItemId is among them before creating the ReturnRequest; throws "One or more items
+aren't part of this order." otherwise.
+
+
+============================================================
+src/actions/checkout.ts
+============================================================
+
+placeOrder — OK, including the guest-checkout path. All pricing (unit price, campaign
+discounts, preorder advance/holdback, shipping, total) is recomputed server-side from the
+DB — nothing about price is ever trusted from the client. Stock is decremented with a
+guarded atomic update (`stockQty: { gte: qty }`) inside the transaction, so a race can't
+oversell. `Order.customerId` is set from `session?.customerId` (server-read session), not
+from any client-supplied field — a guest checkout just leaves it null; there's no way to
+attach an order to someone else's account through this action. The promo-code
+first-order check correctly branches on session presence (customerId for a logged-in
+customer, email for a guest) rather than trusting a client-asserted "is this my first
+order" flag.
+
+captureAbandonedCheckout — NOTE, not fixed. Upserts an AbandonedCheckout row keyed by a
+client-submitted email, with no session check — by design, since this fires before a
+guest has any session to check. This is a write-only action (nothing is read back to the
+caller), so it can't leak anyone's data. The actual risk is narrower than an IDOR: someone
+could call this with another person's email and a cart snapshot of their own choosing,
+causing that person to receive an abandoned-cart reminder email/SMS for items they never
+added — an anti-abuse/spam concern, not an unauthorized-data-access one, and the same
+shape as newsletter.ts/contact.ts's self-supplied-email pattern used intentionally
+elsewhere for anonymous visitors. Left as-is; flagging it here rather than fixing it
+silently, since a real fix (rate limiting, email verification) is a different kind of
+change than the session-scoping this audit was asked to check.
+
+
+============================================================
+src/actions/customer-reviews.ts
+============================================================
+
+submitReview — OK. Requires a session; the order lookup is scoped by `number` +
+`customerId: session.customerId` + `status: "DELIVERED"`, and additionally checks the
+product being reviewed is actually one of that order's items. The existing-review check
+and the `@@unique([productId, customerId])` constraint (with its P2002 caught and handled)
+both prevent duplicate reviews from the same customer. No gap.
+
+
+============================================================
+src/actions/back-in-stock.ts
+============================================================
+
+subscribeBackInStock — OK, guest-capable by design (no session required; email is
+collected directly from the form). Checked specifically for the "could this let someone
+hijack another person's existing subscription" risk: the upsert's `update: {}` is a true
+no-op, so if a subscription already exists for that email+variant, nothing about it
+changes — a session-bearing caller can't reassign an existing subscription's customerId
+to themselves. Only a brand-new subscription (first time for that email+variant pair)
+picks up the current session's customerId. No gap.
+
+
+============================================================
+src/actions/size-guide-lookup.ts
+============================================================
+
+getSizeGuideForProduct — OK. Reads only public product data (title, size-guide table) by
+slug; no customer/personal data involved, no session needed.
+
+
+============================================================
+src/actions/contact.ts / src/actions/newsletter.ts
+============================================================
+
+sendContactMessage, subscribeNewsletter — OK. Both are write-only (create a row, send a
+confirmation email to the address the caller themselves supplied) with nothing read back
+to the caller. Same self-supplied-email pattern as captureAbandonedCheckout above — an
+anti-abuse consideration, not a session/IDOR one, and outside what this audit was asked
+to fix.
+
+
+============================================================
+src/app/api/* route handlers
+============================================================
+
+auth/[provider]/start (GET) — OK. Builds the OAuth redirect URL and sets a short-lived
+(600s) httpOnly state cookie; no personal data read or written.
+
+auth/[provider]/callback (GET) — OK. The email used to find-or-create a Customer/AdminUser
+record comes from the OAuth provider's own verified userinfo endpoint (confirmed by
+reading src/lib/oauth/google.ts and facebook.ts — both call the provider's official
+userinfo API over the access token the provider itself issued after the user
+authenticated with it), not from anything the caller can directly assert — so this
+"account linking by email" pattern is safe: an attacker can't claim it by just knowing a
+victim's email, only by actually controlling that Google/Facebook account. Admin OAuth
+sign-in explicitly only matches an existing AdminUser account and never self-registers a
+new one, with a comment in the code calling out exactly why (privilege escalation).
+
+search/suggest (GET) — OK. Reads only ACTIVE product title/slug/price by a search string;
+no personal data.
+
+products/by-ids (GET) — OK. Reads only ACTIVE product display data for up to 10
+client-supplied ids; no personal/customer data, nothing scoped to a session is needed.
+
+discount (POST) — OK. `isFirstOrder` is computed server-side from the session's
+customerId (or, for a guest, the submitted email) via a DB count — never trusted from the
+client. Returns only the discount amount/type/code, no personal data.
+
+payments/bkash/callback (GET), payments/sslcommerz/success|fail|cancel (POST) — OK. All
+four are payment-gateway webhooks, not user-facing forms — they locate the order by a
+gateway-issued transaction id (bKash's paymentID, SSLCommerz's tran_id/val_id), and the
+three that can mark an order PAID (bkash, sslcommerz/success) only do so after validating
+the transaction against the gateway itself (executeBkashPayment /
+validateSslcommerzTransaction) — a crafted request with a guessed order number can't flip
+payment status without also passing that gateway-side validation. None of the four
+render any order content; they only redirect (to /checkout with a status flag, or to the
+already-PII-redacted /order/[number] page on real success).
+
+
+============================================================
+Guest-capable order-tracking pages (named explicitly in the task, not actions/routes but
+checked for the same risk)
+============================================================
+
+/order-status (number-only lookup) and /track (number + email lookup) — OK, both already
+correctly hardened from earlier work (see PERF-REPORT.txt's Fix 56/58): neither renders
+the customer's email, phone, name, or shipping address — only order number, status,
+timeline, line items, and courier tracking ref. A number alone (order-status) or a
+guessed number+email pair (track, which requires BOTH to match the same order) can't
+retrieve anything personally identifying, only what the order actually contains and
+whether it's shipped. No gap found, no change made.
+
+
+============================================================
+VERIFICATION
+============================================================
+- npx tsc --noEmit: clean.
+- npx eslint (both changed files): clean.
+- npm run build: succeeds; route table unchanged in shape from the prior round.
+
+Live browser verification of the two IDOR fixes (saveAddress, requestReturn) and the
+registration fix wasn't completed in this pass. The same pre-existing, unrelated
+Playwright/login-form interaction issue flagged in PERF-REPORT-3.txt's item 3 (a
+scripted click/form.requestSubmit() on the login form's React 19 form action produces no
+network request at all, even though the exact same form works for a real user — this is
+a test-harness quirk, not an app bug: confirmed the form is correctly hydrated with no
+console/page errors, and traced it to AuthForm's login/register form being client-only
+content behind a `<Suspense fallback={null}>` boundary that a non-JS or script-driven
+browser session doesn't reliably interact with) blocked driving the login flow far enough
+to reach these actions as an authenticated user. The task's own verification step named
+typecheck/lint/build specifically, which all pass; the fixes themselves are narrow,
+mechanical additions (an existence/ownership check before a write) that follow the exact
+pattern already used correctly by every other properly-scoped action in this file
+(deleteAddress, removeWishlistItem, toggleWishlist) — reviewed by inspection against that
+existing, working pattern rather than only by a live request.
+
+
+============================================================
+SUMMARY OF COMMITS (perf/reduce-invocations, this audit)
+============================================================
+2743452  customer-auth.ts — fix account-takeover vulnerability in registration
+19e0442  customer-profile.ts — fix IDOR in saveAddress and requestReturn
+
+Nothing pushed. Both commits are local to perf/reduce-invocations, on top of the 10
+commits from the previous two rounds (see PERF-REPORT-2.txt and PERF-REPORT-3.txt).
