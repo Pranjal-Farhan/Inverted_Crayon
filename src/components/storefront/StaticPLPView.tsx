@@ -21,6 +21,8 @@ export async function StaticPLPView({
   emptyMessage = "Nothing here yet — try clearing a filter.",
   defaultSort,
   forcedTag,
+  categories,
+  genderPath,
 }: {
   gender?: PLPParams["gender"];
   categorySlug?: string;
@@ -29,6 +31,10 @@ export async function StaticPLPView({
   emptyMessage?: string;
   defaultSort?: PLPSort;
   forcedTag?: PLPTag;
+  /** Sibling categories for the sidebar's Category filter — see men/[category]/page.tsx. Omitted
+   * (no filter group rendered) on pages with no single gender/category scope, like /new and /sale. */
+  categories?: { slug: string; name: string }[];
+  genderPath?: "men" | "women";
 }) {
   const catalog = await getPLPCatalog(gender, categorySlug);
 
@@ -40,7 +46,15 @@ export async function StaticPLPView({
       </div>
 
       <Suspense fallback={<StaticPLPFallback catalog={catalog} />}>
-        <StaticPLPClient catalog={catalog} emptyMessage={emptyMessage} defaultSort={defaultSort} forcedTag={forcedTag} />
+        <StaticPLPClient
+          catalog={catalog}
+          emptyMessage={emptyMessage}
+          defaultSort={defaultSort}
+          forcedTag={forcedTag}
+          categories={categories}
+          genderPath={genderPath}
+          currentCategorySlug={categorySlug}
+        />
       </Suspense>
     </section>
   );
