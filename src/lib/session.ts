@@ -1,6 +1,7 @@
 import "server-only";
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
+import { CUSTOMER_HINT_COOKIE } from "@/lib/customer-hint";
 
 const SESSION_SECRET_ENV = process.env.SESSION_SECRET;
 if (!SESSION_SECRET_ENV) {
@@ -88,6 +89,16 @@ export async function setCustomerSession(payload: CustomerSessionPayload) {
     path: "/",
     maxAge: MAX_AGE_SECONDS,
   });
+  // Non-httpOnly sibling flag (no id/email/name) so public pages can read "logged in or not"
+  // client-side instead of calling cookies()/getCustomerSession() during render — see
+  // src/lib/customer-hint.ts.
+  store.set(CUSTOMER_HINT_COOKIE, "1", {
+    httpOnly: false,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+    maxAge: MAX_AGE_SECONDS,
+  });
 }
 
 export async function getCustomerSession(): Promise<CustomerSessionPayload | null> {
@@ -98,6 +109,7 @@ export async function getCustomerSession(): Promise<CustomerSessionPayload | nul
 export async function clearCustomerSession() {
   const store = await cookies();
   store.delete(CUSTOMER_COOKIE);
+  store.delete(CUSTOMER_HINT_COOKIE);
 }
 
 /**

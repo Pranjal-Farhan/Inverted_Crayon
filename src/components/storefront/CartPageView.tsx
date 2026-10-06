@@ -95,7 +95,7 @@ export function CartPageView() {
               <span className="font-impact text-xl">Total</span>
               <span className="price text-xl">{formatTaka(subtotal)}</span>
             </div>
-            <Button href="/checkout" className="mt-4 w-full">
+            <Button href="/checkout" prefetch={false} className="mt-4 w-full">
               Checkout
             </Button>
             <Link href="/new" className="crumb mt-3 block text-center">

@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { getAdminSession } from "@/lib/session";
+import { invalidateJournal } from "@/lib/invalidate";
 
 async function requireAdmin() {
   const session = await getAdminSession();
@@ -59,6 +60,8 @@ export async function savePost(input: z.infer<typeof schema>): Promise<PostSaveR
     revalidatePath("/admin/journal");
     revalidatePath("/journal");
     revalidatePath(`/journal/${post.slug}`);
+    invalidateJournal(post.slug);
+    if (existing && existing.slug !== post.slug) invalidateJournal(existing.slug);
     return { ok: true, id: post.id };
   } catch (e) {
     if (e instanceof Error && e.message.includes("Unique constraint")) {
@@ -70,8 +73,10 @@ export async function savePost(input: z.infer<typeof schema>): Promise<PostSaveR
 
 export async function deletePost(id: string) {
   await requireAdmin();
+  const existing = await db.post.findUnique({ where: { id }, select: { slug: true } });
   await db.post.delete({ where: { id } });
   revalidatePath("/admin/journal");
   revalidatePath("/journal");
+  invalidateJournal(existing?.slug);
   redirect("/admin/journal");
 }

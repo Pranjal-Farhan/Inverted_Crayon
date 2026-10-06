@@ -56,14 +56,19 @@ export async function customerRegister(
   }
   const email = parsed.data.email.toLowerCase();
 
+  // Refuse to touch an account that already exists — every Customer row already has a way to
+  // log in (a passwordHash from an earlier registration, or a googleId/facebookId from OAuth),
+  // so silently overwriting it here would let anyone take over any account just by knowing its
+  // email address. Guest orders (customerId: null) never create a Customer row, so this can't
+  // block the legitimate "claim my guest orders" case below.
   const existing = await db.customer.findUnique({ where: { email } });
+  if (existing) {
+    return { ok: false, error: "An account with that email already exists. Please log in instead." };
+  }
   const passwordHash = await bcrypt.hash(parsed.data.password, 10);
+  const customer = await db.customer.create({ data: { email, passwordHash, name: parsed.data.name } });
 
   // registering with an email used for guest orders claims those orders (§08)
-  const customer = existing
-    ? await db.customer.update({ where: { email }, data: { passwordHash, name: parsed.data.name } })
-    : await db.customer.create({ data: { email, passwordHash, name: parsed.data.name } });
-
   await db.order.updateMany({ where: { email, customerId: null }, data: { customerId: customer.id } });
 
   await setCustomerSession({ customerId: customer.id, email: customer.email, name: customer.name });

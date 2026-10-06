@@ -1,10 +1,12 @@
+import { redirect } from "next/navigation";
 import { getCustomerSession } from "@/lib/session";
 import { db } from "@/lib/db";
 
 export default async function AccountBackInStockPage() {
   const session = await getCustomerSession();
+  if (!session) redirect("/account/login");
   const subs = await db.backInStockSubscription.findMany({
-    where: { customerId: session!.customerId },
+    where: { customerId: session.customerId },
     include: { variant: { include: { product: true } } },
     orderBy: { createdAt: "desc" },
   });

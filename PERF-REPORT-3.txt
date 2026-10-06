@@ -1,0 +1,211 @@
+INVERTED CRAYON — SMALL CLEANUP REPORT
+Branch: perf/reduce-invocations
+Scope: 4-item cleanup of PERF-REPORT-2.txt's follow-up work
+Ground rules observed: separate commits per item, no push.
+
+
+============================================================
+1. PRODUCTION_SITE_URL — CONFIRMED DOMAIN
+============================================================
+Commit: 82332a2
+
+Changed src/lib/site-url.ts's PRODUCTION_SITE_URL from the unconfirmed guess
+"https://invertedcrayon.com" to the confirmed production URL,
+"https://invertedcrayon.vercel.app". robots.ts and sitemap.ts both consume this constant
+unchanged, so this is a one-line fix.
+
+IMPORTANT, as requested: SITE_URL must still be set in Vercel. This constant is only the
+fallback for the case SITE_URL is missed — getSiteOrigin() (src/lib/site-url.ts, used for
+payment-gateway callback links) reads process.env.SITE_URL directly and does not use this
+constant at all. If SITE_URL in Vercel ever differs from
+https://invertedcrayon.vercel.app, the two will disagree: payment callbacks will go to
+whatever SITE_URL says, while a missed-SITE_URL robots.txt/sitemap.xml will fall back to
+this hardcoded value. Keep them in sync.
+
+
+============================================================
+2. ACCOUNT PROFILE PAGE — NULL CHECK INSTEAD OF NON-NULL ASSERTION
+============================================================
+Commit: a28a880
+
+src/app/(storefront)/account/(protected)/page.tsx used session!.customerId, trusting
+that the (protected) layout had already redirected if there's no session. Next.js
+evaluates a layout and its page concurrently, so on an unauthenticated request this page
+component still ran and threw "Cannot read properties of null (reading 'customerId')" —
+harmless to the actual response (the layout's redirect() still won), but logged as an
+error on every unauthenticated hit.
+
+Replaced with an explicit check: if (!session) redirect("/account/login"); directly in
+the page, before touching session.customerId. Verified live against a real `next start`
+build — the log is now completely clean on an unauthenticated request to this page
+(previously showed the TypeError on every hit).
+
+
+============================================================
+3. SESSION-VERIFICATION AUDIT — ADMIN ACTIONS + ACCOUNT DATA READS
+============================================================
+Commit: e5b4c9b
+
+ADMIN SERVER ACTIONS (src/actions/admin-*.ts) — all 16 files checked, every exported
+mutating function verified:
+
+  admin-2fa.ts            initiateTwoFactorSetup, confirmTwoFactorSetup, disableTwoFactor
+  admin-auth.ts           adminLogin, verifyAdminTwoFactor, adminLogout
+                          (no check needed — these ARE the auth bootstrap/teardown)
+  admin-campaigns.ts      saveCampaign, deleteCampaign
+  admin-categories.ts     createCategory, setCategoryImage, removeCategoryImage,
+                          deleteCategory
+  admin-content.ts        saveHomeHero, saveFeaturedDrop, uploadLogoImage, saveGenderHero,
+                          uploadGenderHeroImage, uploadHeroImages
+  admin-discounts.ts      saveDiscount, deleteDiscount
+  admin-finance.ts        createStockOwner, recordStockPurchase
+  admin-inventory.ts      setVariantStock
+  admin-marketing.ts      sendAbandonedReminder, sendAllAbandonedReminders
+  admin-orders.ts         markOrderShipped, markOrderDelivered, refundOrder,
+                          updateOrderNotes, markBalanceCollected
+  admin-posts.ts          savePost, deletePost
+  admin-products.ts       saveProduct, deleteProduct, uploadProductImages,
+                          deleteProductImage
+  admin-reviews.ts        setReviewStatus, replyToReview
+  admin-settings.ts       saveShippingRates, savePaymentGateways, saveStoreInfo,
+                          saveTaxSettings, saveEmailTemplates, saveChatWidgetSettings
+  admin-size-guides.ts    saveSizeGuideTemplate, deleteSizeGuideTemplate
+  admin-staff.ts          inviteStaff, updateStaffRole, removeStaff
+
+RESULT: every one of them already verifies the session itself, via a shared
+requireAdmin()/requireOwnAdmin() helper (most files) or an inline
+getAdminSession() + `if (!session) throw/return` (admin-2fa.ts, admin-finance.ts,
+admin-inventory.ts) — never by assuming the admin dashboard layout already gated access.
+This is correct and necessary regardless of any layout: a server action can be invoked
+directly (e.g. a replayed request) no matter which page rendered the form that called it,
+so there is no layout in the call path to lean on in the first place. No fixes needed
+here — this part of the audit found nothing wrong.
+
+ACCOUNT DATA READS (pages under src/app/(storefront)/account/(protected)/) — this is
+where the gap actually was. 6 of the 7 pages (the 7th, the profile page, was already
+fixed in item 2) used the exact same session!.customerId non-null-assertion pattern,
+trusting the (protected) layout's redirect the same way the profile page did:
+
+  addresses/page.tsx            — fixed
+  wishlist/page.tsx              — fixed
+  orders/page.tsx                 — fixed
+  orders/[number]/page.tsx        — fixed (two call sites: the order lookup itself, and
+                                    the review-status lookup below it)
+  returns/page.tsx                — fixed
+  back-in-stock/page.tsx          — fixed
+
+Same fix applied to all six: `if (!session) redirect("/account/login");` right after
+getCustomerSession(), then session.customerId with the assertion dropped.
+
+EXTRA FINDING, outside the two categories named but caught by the same grep for
+`session!.`: src/app/admin/(dashboard)/settings/page.tsx used session!.adminId twice
+(once to find the signed-in admin's own row, once passed as a prop), trusting the admin
+dashboard layout the same way. This is an admin PAGE read, not a server action or an
+account data read, so it's strictly outside what was asked — flagging that I fixed it
+anyway since it's the identical bug, a one-line fix, and the audit had already turned it
+up. Fixed the same way (redirect to /admin/login instead of asserting).
+
+A repo-wide grep for `session!.` after all of the above confirms zero remaining matches
+outside an explanatory code comment.
+
+VERIFICATION: typecheck, lint, and a full production build (npm run build) all pass
+cleanly. Live-tested all 7 fixed account pages plus the admin settings page against a
+real `next start` build (not the dev server) — every one correctly redirects an
+unauthenticated visitor to the right login page, and the server log is completely clean
+(previously, each page logged a "Cannot read properties of null" error on every
+unauthenticated hit — that noise is now gone everywhere, not just on the profile page).
+
+NOT completed in this pass: a full logged-in walkthrough of every account page (loading
+each one as an authenticated customer and checking its content, not just the
+unauthenticated redirect). A Playwright login-form interaction issue — the headless
+browser's programmatic click on the login form's submit button triggered a React warning
+("A React form was unexpectedly submitted...") and the login never completed — blocked
+driving that flow end-to-end in this session. This looks like a test-authoring issue
+(possibly React 19/Next's form-action handling reacting oddly to a scripted click, rather
+than a real app bug), not something the actual code change here could have caused — the
+code path that changed in every file above is specifically the unauthenticated branch
+(the new redirect), which was verified directly and live. If you want the logged-in path
+walked as well, it's worth a dedicated pass with a more deliberate login harness (e.g.
+submitting the form via a real Enter keypress, or calling the server action directly)
+rather than a scripted button click.
+
+
+============================================================
+4. LOWEST REVALIDATE PER STOREFRONT ROUTE
+============================================================
+Report only — no code change. Figures below are from a fresh `npm run build` on this
+branch (same build used to verify item 3).
+
+Every static/SSG public storefront page builds with the same figure: 5m (300 seconds).
+This is the cascade documented in PERF-REPORT-2.txt's Task 2: (storefront)/layout.tsx
+calls getActiveCampaigns() at revalidate: 300 for the header's sale-dot indicator, and
+Next.js takes the lowest revalidate across every layout and page of a route — so every
+page under that layout inherits this 300s ceiling regardless of its own setting.
+
+  Route                           Revalidate   Expire
+  /                                5m            1y
+  /men                             5m            1y
+  /men/[category] (10 pages)       5m            1y     — each individually
+  /women                           5m            1y
+  /women/[category] (10 pages)     5m            1y     — each individually
+  /new                             5m            1y
+  /sale                            5m            1y
+  /size-guide                      5m            1y
+  /cart                            5m            1y
+  /product/[slug] (34 pages)       5m            1y     — each individually
+  /journal                         5m            1y
+  /journal/[slug] (3 pages)        5m            1y     — each individually
+  /lookbook                        5m            1y
+  /contact                         5m            1y
+  /faq                             5m            1y
+  /privacy                         5m            1y
+  /shipping-returns                5m            1y
+  /terms                           5m            1y
+  /account/login                   5m            1y
+  /account/register                5m            1y
+
+One exception, NOT subject to the layout cascade because it's a root-level metadata-route
+file outside the (storefront) route group entirely:
+
+  /sitemap.xml                     1h            1y   (its own explicit
+                                                        `export const revalidate = 3600`
+                                                        in src/app/sitemap.ts)
+
+/robots.txt has no revalidate column in the build output at all — it has no
+`export const revalidate` of its own and isn't under (storefront), so Next treats it as
+plain static output with no ISR timer (equivalent to being revalidated only on a new
+deploy/build).
+
+Every other public route (/account/*, /admin/*, /api/*, /checkout, /search,
+/order-status, /order/[number], /track) is fully dynamic (ƒ) — rendered per-request, so
+it has no revalidate value to report at all.
+
+For judging whether 300s is too aggressive: the pages this actually matters for (sale-
+badge/price accuracy) are the product/category/home pages — those need a bound of some
+kind because of the campaign-boundary issue from PERF-REPORT-2.txt's Task 2. The pages
+that inherit 300s purely as a side effect of the layout cascade and have nothing
+time-sensitive of their own are: /journal, /journal/[slug], /lookbook, /contact, /faq,
+/privacy, /shipping-returns, /terms, /account/login, /account/register. If 300s feels too
+aggressive for the regeneration cost of those specific pages (legal/content pages that
+rarely change), the two options are: (a) accept the current trade-off as documented
+(small over-regeneration cost on a handful of low-traffic, cheap-to-render pages, in
+exchange for the header's sale indicator never drifting more than 5 minutes anywhere on
+the site), or (b) pull the header's saleActive flag out of the shared layout and into a
+narrower mechanism that doesn't impose a route-wide ceiling (e.g. a small client
+component that fetches it separately, at the cost of one extra request per page view
+instead of a cache-layer dependency) — that's a real architectural change, not a one-line
+tweak, so I didn't make it without being asked.
+
+
+============================================================
+SUMMARY OF COMMITS (perf/reduce-invocations, this cleanup round)
+============================================================
+82332a2  Item 1 — PRODUCTION_SITE_URL → confirmed invertedcrayon.vercel.app
+a28a880  Item 2 — account profile page: null check instead of non-null assertion
+e5b4c9b  Item 3 — session-verification audit: 6 account pages + 1 admin page fixed
+
+Item 4 required no code change — it's the report section above, sourced from a real
+build on this branch.
+
+Nothing pushed. All 3 commits are local to perf/reduce-invocations, on top of the 6
+commits from the previous follow-up round (see PERF-REPORT-2.txt).

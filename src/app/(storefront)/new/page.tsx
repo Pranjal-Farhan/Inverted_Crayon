@@ -1,19 +1,18 @@
 import type { Metadata } from "next";
-import { PLPView } from "@/components/storefront/PLPView";
-import { parsePLPParams } from "@/lib/parse-plp-params";
-import type { RawSearchParams } from "@/lib/plp-url";
+import { StaticPLPView } from "@/components/storefront/StaticPLPView";
 
-export const metadata: Metadata = { title: "New Arrivals" };
+export const metadata: Metadata = { title: "New Arrivals", alternates: { canonical: "/new" } };
 
-export default async function NewArrivalsPage({
-  searchParams,
-}: {
-  searchParams: Promise<RawSearchParams>;
-}) {
-  const rest = parsePLPParams(await searchParams);
+// Now fully static (○/ISR) — no searchParams read here at all. Defaults to "newest" sort
+// (matching the old server-side `rest.sort ?? "newest"`), but the sort control can still
+// override that client-side. 300s revalidate, not 3600s — see the matching comment on
+// men/[category]/page.tsx (campaign boundaries can change sale pricing with no admin action).
+export const revalidate = 300;
+
+export default function NewArrivalsPage() {
   return (
-    <PLPView
-      params={{ ...rest, sort: rest.sort ?? "newest" }}
+    <StaticPLPView
+      defaultSort="newest"
       title={
         <>
           New <span className="text-lime">Arrivals</span>

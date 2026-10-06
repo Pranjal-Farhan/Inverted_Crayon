@@ -7,6 +7,7 @@ import { Prisma } from "@/generated/prisma/client";
 import { getAdminSession } from "@/lib/session";
 import { slugify } from "@/lib/slugify";
 import { uploadToImgBb } from "@/lib/imgbb";
+import { invalidateCategories } from "@/lib/invalidate";
 
 function isUniqueConstraintError(e: unknown): boolean {
   return e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002";
@@ -29,6 +30,7 @@ function revalidateStorefront() {
   revalidatePath("/");
   revalidatePath("/men");
   revalidatePath("/women");
+  invalidateCategories();
 }
 
 /**

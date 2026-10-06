@@ -23,6 +23,7 @@ export function AccountNav() {
           <Link
             key={l.href}
             href={l.href}
+            prefetch={false}
             className={`block border-b border-line py-2.5 font-label text-base tracking-[1.2px] ${active ? "text-lime" : "text-muted hover:text-paper"}`}
           >
             {l.label}

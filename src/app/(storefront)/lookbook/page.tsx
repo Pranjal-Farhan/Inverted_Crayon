@@ -1,17 +1,14 @@
 import Link from "next/link";
 import type { Metadata } from "next";
-import { db } from "@/lib/db";
+import { getLookbookProducts } from "@/lib/public-cache";
 import { PlaceholderFrame } from "@/components/ui/PlaceholderFrame";
 import { pickAccent } from "@/lib/accent-color";
 
 export const metadata: Metadata = { title: "Lookbook" };
+export const revalidate = 3600;
 
 export default async function LookbookPage() {
-  const products = await db.product.findMany({
-    where: { status: "ACTIVE" },
-    orderBy: { publishedAt: "desc" },
-    take: 8,
-  });
+  const products = await getLookbookProducts();
 
   return (
     <section className="pg pb-16">

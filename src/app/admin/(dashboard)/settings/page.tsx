@@ -6,12 +6,14 @@ import {
   getEmailTemplates,
   getChatWidgetSettings,
 } from "@/lib/store-settings";
+import { redirect } from "next/navigation";
 import { getAdminSession } from "@/lib/session";
 import { db } from "@/lib/db";
 import { SettingsView } from "@/components/admin/SettingsView";
 
 export default async function AdminSettingsPage() {
   const session = await getAdminSession();
+  if (!session) redirect("/admin/login");
   const [rates, gateways, storeInfo, tax, emailTemplates, chatWidget, staff] = await Promise.all([
     getShippingRates(),
     getPaymentGateways(),
@@ -25,7 +27,7 @@ export default async function AdminSettingsPage() {
     }),
   ]);
 
-  const self = staff.find((s) => s.id === session!.adminId);
+  const self = staff.find((s) => s.id === session.adminId);
 
   return (
     <SettingsView
@@ -36,7 +38,7 @@ export default async function AdminSettingsPage() {
       emailTemplates={emailTemplates}
       chatWidget={chatWidget}
       staff={staff}
-      selfId={session!.adminId}
+      selfId={session.adminId}
       twoFactorEnabled={self?.twoFactorEnabled ?? false}
     />
   );

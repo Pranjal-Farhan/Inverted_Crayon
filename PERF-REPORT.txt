@@ -1,0 +1,441 @@
+INVERTED CRAYON — VERCEL FUNCTION INVOCATION REDUCTION
+Branch: perf/reduce-invocations (not pushed, not merged, not deployed)
+================================================================================
+
+All work is committed to perf/reduce-invocations as 8 separate commits (one per
+fix, plus one addendum caught in testing). Nothing has been pushed, merged, or
+deployed. Rollback is: delete the branch, or just don't merge it.
+
+
+1. ROOT CAUSES FOUND, RANKED BY LIKELY INVOCATION IMPACT
+================================================================================
+
+1a. src/app/(storefront)/layout.tsx called getCustomerSession() (which calls
+    cookies() in src/lib/session.ts) on every request, solely to pass a
+    customerName string down to Header.tsx for two small UI decisions (the
+    account link's href, and a label swap). Next.js treats any cookies() call
+    inside a shared layout as "this entire route tree is dynamic" — there is
+    no partial opt-out in the caching model this app uses (cacheComponents is
+    off). This single call was the reason the baseline build showed every
+    public route as dynamic (ƒ) except /_not-found and /admin/login — the
+    single highest-impact finding in this audit.
+
+1b. The same layout performed 4 uncached database reads on every request,
+    independent of (1a): db.campaign.findFirst (sale-badge flag),
+    db.contentBlock.findUnique (home_hero, for brand name/logo),
+    getChatWidgetSettings() (db.storeSetting.findUnique), and
+    db.category.findMany (header nav). None were tagged or cached.
+
+1c. src/proxy.ts ran on the Node.js runtime (Next 16 changed this from Edge)
+    on every single request matched by its catch-all matcher — including bot
+    probes and crawler hits — purely to set 5 static security headers. No
+    auth, no redirects, no other logic.
+
+1d. Every individual storefront page additionally ran its own uncached,
+    per-request queries on top of (1b): home page (5 queries), product page
+    (3 queries + a session read + a wishlist lookup), men/women category
+    pages (a category lookup + a full-catalog scan), cart page (2 queries),
+    men/women hub pages (4 queries each). None were cached or tagged.
+
+1e. src/lib/plp.ts's getPLPResults() loaded the entire matching product
+    catalog on every call (no SQL-level filter for size/color/price/tag/
+    stock) and filtered, sorted, and paginated in JavaScript — used by
+    /men/[category], /women/[category], /new, /sale, and /search. These
+    pages also read searchParams directly for that filtering, which
+    independently forces dynamic rendering regardless of (1a)/(1b).
+
+1f. No robots.ts, sitemap.ts, or vercel.json existed anywhere in the repo.
+    Crawlers had zero guidance and could (and very likely did) hit every
+    dynamic route repeatedly, including /admin, /account, /cart, /checkout,
+    and API routes that require auth anyway.
+
+1g. Minor, pre-existing inefficiencies in client widgets: the search-
+    suggestions hook debounced at 200ms with no AbortController and no
+    client-side result cache; the abandoned-checkout capture re-sent on
+    every blur of the email field even if nothing had changed.
+
+
+2. EVERY CHANGE MADE, GROUPED BY FIX NUMBER
+================================================================================
+
+FIX 1 — Security headers out of proxy.ts  (commit: "Fix 1")
+  - next.config.ts: added the same 5 headers (X-Frame-Options,
+    X-Content-Type-Options, Referrer-Policy, Permissions-Policy,
+    Strict-Transport-Security) to an async headers() function, applied with
+    no per-request function invocation.
+  - src/proxy.ts: deleted entirely (it did nothing else).
+  - Verified: admin (src/app/admin/(dashboard)/layout.tsx) and account
+    (src/app/(storefront)/account/(protected)/layout.tsx) protection is
+    enforced independently via their own getAdminSession()/getCustomerSession
+    + redirect() checks — proxy.ts was never load-bearing for auth.
+
+FIX 2 — Make public pages static/ISR  (commit: "Fix 2")
+  - New non-httpOnly cookie "ic_customer_hint" (src/lib/customer-hint.ts),
+    set/cleared in lockstep with the real httpOnly session cookie inside
+    setCustomerSession()/clearCustomerSession() (src/lib/session.ts). Carries
+    no id/email/name — presence only.
+  - New client hook src/lib/use-logged-in.ts: reads that cookie after mount,
+    defaults to false (same as the server-rendered shell) — the same
+    neutral-default-then-hydrate pattern cart-context.tsx already uses for
+    the cart badge.
+  - src/components/layout/Header.tsx: dropped the customerName prop entirely,
+    uses useLoggedIn() instead. (storefront)/layout.tsx no longer calls
+    getCustomerSession() at all.
+  - Product page's own session read (for wishlist state + a "write a review"
+    prompt) removed the same way: new getWishlistStatus action
+    (src/actions/customer-profile.ts) fetched client-side by
+    WishlistButton.tsx only for visitors the hint cookie says are logged in;
+    the review prompt moved into a new client component ReviewPrompt.tsx.
+  - New src/lib/public-cache.ts: tagged unstable_cache wrappers for every
+    shared read used by public pages (categories, settings subset, content
+    blocks, campaigns, product lists/by-id, journal posts) — see the cache
+    tag map in section 4. cacheComponents is not enabled in next.config.ts,
+    so this is deliberately the Next 16 "Caching (Previous Model)" API per
+    the task's own ground rules, not "use cache".
+  - src/lib/get-product.ts: new getCachedProductForPDP (per-slug tagged
+    cache) and getAllActiveProductSlugs (for generateStaticParams).
+  - generateStaticParams + ISR (revalidate=3600 safety net) added to
+    /product/[slug] (34 products prerendered at build) and /journal/[slug]
+    (3 posts prerendered at build).
+  - revalidate=3600 added to: home, /cart, /contact, /journal, /lookbook,
+    /men, /women.
+  - Rewired to the new cached reads: src/app/(storefront)/page.tsx,
+    src/components/storefront/GenderHub.tsx, src/app/(storefront)/cart/page.tsx,
+    src/app/(storefront)/contact/page.tsx, src/app/(storefront)/lookbook/page.tsx,
+    src/app/(storefront)/journal/page.tsx, src/app/(storefront)/journal/[slug]/page.tsx.
+  - src/lib/plp.ts: the base catalog fetch (unfiltered product list) behind
+    getPLPResults is now cached per (gender, categorySlug) scope; the q
+    (free-text search) filter moved to an in-memory filter on top of the
+    cache, the same way size/color/price/tag already worked, rather than
+    being baked into a per-query cache key (unbounded cardinality).
+  - men/[category] and women/[category] pages: switched their category
+    lookup to the new cached getCategoryByGenderSlug.
+  - Handled unstable_cache's JSON serialization explicitly where it mattered:
+    product.reviews[].createdAt and journal posts' publishedAt are
+    re-hydrated back to real Date objects after the cache read, because
+    ReviewList.tsx and the journal pages call .toLocaleDateString() on them
+    directly. Decimal fields (basePrice, priceOverride, preorderAdvanceAmount)
+    needed no change — toNumber() in src/lib/money.ts already handles both
+    a Decimal object and the string it becomes after JSON round-tripping.
+  - Verified live (Playwright): logged-out → register → header switches to
+    ACCOUNT, hint cookie present and non-httpOnly; wishlist save persists
+    across reload; logout clears the hint cookie and reverts the header.
+    Zero console/hydration warnings in any of it.
+
+FIX 3 — Cache invalidation for every mutating action  (commit: "Fix 3")
+  - New src/lib/invalidate.ts: centralized revalidateTag helpers
+    (invalidateProduct, invalidateCategories, invalidateContent,
+    invalidateSettings, invalidateCampaigns, invalidateJournal,
+    invalidateReviews), all using revalidateTag(tag, { expire: 0 }) rather
+    than the stale-while-revalidate "max" profile Next's docs generally
+    recommend — chosen because stock/price-driven badges (sold-out,
+    preorder, sale) must be correct for the very next visitor after an
+    admin change, not just eventually. See section 4 for the full map.
+  - Wired into: src/actions/admin-products.ts (saveProduct, deleteProduct,
+    uploadProductImages, deleteProductImage), admin-categories.ts (create/
+    delete/set-image/remove-image), admin-content.ts (saveHomeHero,
+    saveFeaturedDrop, saveGenderHero), admin-settings.ts (saveStoreInfo,
+    saveChatWidgetSettings), admin-campaigns.ts (saveCampaign,
+    deleteCampaign), admin-posts.ts (savePost, deletePost), admin-reviews.ts
+    (setReviewStatus, replyToReview), admin-inventory.ts (setVariantStock),
+    admin-finance.ts (recordStockPurchase), admin-orders.ts (refundOrder),
+    checkout.ts (placeOrder), src/lib/payments/rollback.ts
+    (restockAndCancelOrder, shared by all 4 bKash/SSLCommerz callback
+    routes).
+  - Verified live end-to-end: edited a product's title in the admin UI, then
+    loaded the public product page in a brand-new browser context
+    immediately after — no restart, no redeploy — and the new title was
+    there on the very first request.
+
+FIX 4 — prefetch={false} on links to pages that stay dynamic  (commit:
+  "Fix 4" + a same-day addendum commit)
+  - Header.tsx: account/login link (desktop+mobile), the men/women category
+    dropdown + mobile accordion links, the ALL/SALE nav links.
+  - Homepage + GenderHub.tsx: category spotlight/grid tiles, "Shop {label}"
+    button.
+  - CartDrawer.tsx and CartPageView.tsx: both Checkout buttons.
+  - Product page: the "Size guide →" link.
+  - AccountNav.tsx: all 6 account sub-nav links. AdminSidebar.tsx: all 16
+    nav items.
+  - Button.tsx and ScribbleLink.tsx gained a prefetch passthrough prop
+    (neither exposed one before).
+  - /cart deliberately left at the default — Fix 2 made it static, so
+    prefetching it is now free.
+
+FIX 5 — Client widgets that call the server  (commit: "Fix 5")
+  - src/lib/use-search-suggestions.ts: debounce widened 200ms → 350ms, added
+    an AbortController (a fast typist's superseded keystrokes no longer
+    leave a stale request running), added a module-level per-query result
+    cache (retyping an already-seen query is now free).
+  - src/app/api/search/suggest/route.ts: added
+    Cache-Control: public, s-maxage=300, stale-while-revalidate=600.
+  - CheckoutView.tsx: the abandoned-checkout capture (email field onBlur)
+    now tracks the last-captured value in a ref and skips the server-action
+    call if the email hasn't actually changed since the last successful
+    capture.
+  - Confirmed already clean, nothing to change: ProductCard.tsx never
+    fetches wishlist/stock status per card; RecentlyViewed.tsx already
+    batches into one /api/products/by-ids call; there is no polling/
+    auto-refresh anywhere (order-status, /track, admin dashboard); there is
+    no page-view/analytics call anywhere to report on removing.
+
+FIX 6 — Route handlers, metadata, bot surface  (commit: "Fix 6")
+  - New src/app/robots.ts: disallows /admin, /account, /cart, /checkout,
+    /api/, /search, /order-status, /order/, /track; points at /sitemap.xml.
+    Builds its origin from SITE_URL directly rather than
+    src/lib/site-url.ts's getSiteOrigin() (which falls back to headers()
+    when SITE_URL is unset) — that fallback would have made this file
+    dynamic instead of static. Confirmed static (○) in the build output.
+  - New src/app/sitemap.ts: every active product, every published journal
+    post, every category under /men and /women, plus the static pages —
+    built from the same cached reads Fix 2 added, with revalidate=3600 as a
+    safety net. Confirmed static (○) in the build output.
+  - alternates.canonical added to /men/[category], /women/[category], /new,
+    and /sale, pointing at the clean path without filter query params.
+  - Confirmed already clean: /api/products/by-ids already sends
+    Cache-Control; no vercel.json (no crons to review); no opengraph-image/
+    twitter-image route anywhere; both not-found.tsx files are plain static
+    markup, and the storefront one stopped forcing a dynamic render the
+    moment Fix 2 removed the layout's cookies() call.
+
+FIX 7 — Images (REPORT ONLY, no code changed)
+  - next.config.ts already whitelists i.ibb.co via images.remotePatterns.
+  - Zero raw <img> tags anywhere in src — every product/category/logo image
+    already goes through next/image, so Vercel Image Optimization is
+    already active for all of them. Nothing to change.
+  - Recommendation only (not implemented — out of this task's scope): if
+    ImgBB-hosted originals are large, pre-sizing at upload time would save
+    bandwidth on top of what next/image's resizing already does.
+
+FIX 8 — Database connection safety (REPORT ONLY, no code changed)
+  - src/lib/db.ts already uses the correct globalThis singleton pattern for
+    both the PrismaClient and the PrismaPg adapter — not a bug.
+  - Risk, not a bug: the PrismaPg adapter is constructed with only a
+    connectionString, no explicit pool size/idle-timeout. In a serverless
+    deployment, every concurrent function instance opens its own pool
+    (the singleton only helps within one warm instance), so under
+    concurrent load this can approach a Postgres provider's connection
+    limit. This is a known Vercel+Postgres pattern, not specific to this
+    codebase, and the right fix depends entirely on which Postgres provider
+    is used in production (most offer a pooled/PgBouncer connection string
+    as a drop-in DATABASE_URL replacement) — see section 6.
+
+
+3. ROUTE TABLE: BEFORE vs AFTER
+================================================================================
+
+BEFORE (baseline build, perf-before.txt): every route dynamic (ƒ) except
+/_not-found and /admin/login. 66 dynamic route patterns total.
+
+AFTER (perf-after.txt): 51 dynamic route patterns. The following converted
+from dynamic to static/ISR/SSG:
+
+  /                      -> ○ static, 1h ISR
+  /account/login         -> ○ fully static
+  /account/register      -> ○ fully static
+  /cart                  -> ○ static, 1h ISR
+  /contact               -> ○ static, 1h ISR
+  /faq                   -> ○ fully static
+  /journal               -> ○ static, 1h ISR
+  /journal/[slug]        -> ● SSG (3 posts prerendered, ISR fallback)
+  /lookbook              -> ○ static, 1h ISR
+  /men                   -> ○ static, 1h ISR
+  /women                 -> ○ static, 1h ISR
+  /privacy               -> ○ fully static
+  /product/[slug]        -> ● SSG (34 products prerendered, ISR fallback)
+  /shipping-returns      -> ○ fully static
+  /terms                 -> ○ fully static
+  (+ new: /robots.txt and /sitemap.xml, both ○ fully static)
+
+PUBLIC ROUTES STILL DYNAMIC (ƒ), AND WHY — all deliberate:
+  /men/[category], /women/[category], /new, /sale
+      Read searchParams to drive server-side sort/filter/pagination,
+      preserving the existing shareable-URL behavior. The safer,
+      lower-risk call per the task's own fallback guidance, rather than
+      rewriting filtering to run client-side. The expensive unfiltered
+      catalog fetch underneath is cached (src/lib/plp.ts), so this no
+      longer costs a DB round-trip on every request even though the
+      function itself still runs.
+  /search
+      Inherently query-string-driven; same catalog-cache mitigation.
+  /size-guide
+      Reads a ?product= searchParam to pick which chart to show; low-
+      traffic informational page. The per-slug DB read is cached.
+  /order-status, /order/[number], /track
+      Order-number lookup pages — deliberately never cached, by design
+      from the earlier order-tracking feature: caching a specific order's
+      page risks serving one visitor's order data to the next on a cache
+      hit. This is a correctness/privacy choice, not an oversight.
+  /account, /account/addresses, /account/orders, /account/orders/[number],
+  /account/returns, /account/wishlist, /account/back-in-stock, /checkout
+      Personalized, session-gated pages — correctly stay dynamic.
+  /admin/* (all)
+      Admin pages, by design, always read fresh data.
+  /api/* (all)
+      API and payment-callback routes.
+
+
+4. CACHE TAG MAP
+================================================================================
+
+  TAG          | WHAT IT GATES (src/lib/public-cache.ts)      | INVALIDATED BY
+  -------------|-----------------------------------------------|---------------------------------------
+  "categories" | nav categories, spotlight categories, gender- | admin-categories.ts: createCategory,
+               | hub categories, category-by-slug lookups      | setCategoryImage, removeCategoryImage,
+               |                                                 | deleteCategory
+  "content"    | ContentBlock rows: home_hero,                  | admin-content.ts: saveHomeHero,
+               | home_featured_drop, men_hero, women_hero        | saveFeaturedDrop, saveGenderHero
+  "settings"   | chat widget settings, store info (contact page) | admin-settings.ts: saveStoreInfo,
+               | — NOT shipping/payment/tax/email templates,     | saveChatWidgetSettings
+               | which checkout/admin read fresh, uncached       |
+  "campaigns"  | active campaign list (sale badge, PLP base      | admin-campaigns.ts: saveCampaign,
+               | catalog fetch)                                  | deleteCampaign
+  "products"   | home new-in, gender-hub grids, lookbook,         | admin-products.ts (save/delete/
+               | cart recs, PLP base catalog fetch — the          | upload-image/delete-image),
+               | "every product list" tag                        | admin-inventory.ts (setVariantStock),
+               |                                                  | admin-finance.ts (recordStockPurchase),
+               |                                                  | checkout.ts (placeOrder),
+               |                                                  | admin-orders.ts (refundOrder),
+               |                                                  | payments/rollback.ts
+               |                                                  | (restockAndCancelOrder)
+  "product:<slug-or-id>"| that one product's PDP cache entry      | same actions as "products", scoped
+               | (also invalidates the old slug if it changed)   | to the specific product(s) touched
+  "reviews"    | co-tagged on the PDP cache (reviews are         | admin-reviews.ts: setReviewStatus,
+               | embedded there, not cached separately)          | replyToReview
+  "journal"    | published-posts list                            | admin-posts.ts: savePost, deletePost
+  "journal:<slug>"| that one post's page cache                   | admin-posts.ts (also invalidates the
+               |                                                  | old slug if it changed)
+
+
+5. DELIBERATELY NOT CHANGED, AND WHY
+================================================================================
+
+  - checkout.ts and every price/stock-guard code path: never touched to read
+    through a cache. It imports getShippingRates (the fresh version from
+    store-settings.ts), not the cached getCachedChatWidgetSettings/
+    getCachedStoreInfo from public-cache.ts. Confirmed by grep: zero files
+    under src/actions/ or src/app/admin/ import public-cache.ts at all.
+  - cacheComponents was NOT enabled. The task's own ground rules say not to
+    enable it without completing the migration safely, and this codebase has
+    zero existing Suspense-boundary structure around dynamic data — turning
+    it on would be a much larger, separately-scoped migration. Flagged as a
+    recommendation in section 6, not attempted here.
+  - Category/search/new/sale/size-guide listing pages were NOT rewritten to
+    filter client-side, even though that would let them go fully static too.
+    Moving server-side filter/sort/pagination logic to the client is a
+    materially larger, riskier change (shareable-URL semantics, SEO,
+    pagination) than this task's risk budget — the ground rules explicitly
+    sanction falling back to "keep it, but cache the base query" in this
+    case, which is what was done.
+  - Order-status/order/track pages were NOT cached, by design — see section
+    3. Caching a specific order lookup risks a privacy leak across visitors.
+  - revalidateTag's "max" (stale-while-revalidate) profile was NOT used, in
+    favor of { expire: 0 } (immediate) — see Fix 3 above. Trades a little of
+    "max"'s perf benefit for the correctness guarantee that stock/price
+    badges are right on the very next visit after an admin change.
+  - Fix 7/8 (images, DB connection pooling): report only, no code changed,
+    per the task's own instruction not to guess at infra changes blindly.
+  - A handful of lower-traffic internal links (pagination/filter links
+    within the already-dynamic PLP pages, pointing at other variations of
+    that same still-dynamic route) were not swept for prefetch={false} —
+    diminishing returns, since the user is already paying that page's
+    dynamic cost on every such click regardless of prefetch.
+
+
+6. RISKS AND OWNER DECISIONS NEEDED
+================================================================================
+
+  - cacheComponents (Next 16's newer caching model): NOT enabled. Could
+    shrink the public-cache.ts boilerplate and give finer-grained partial
+    prerendering, but migrating safely means restructuring every dynamic
+    read behind Suspense boundaries — a real, separately-scoped project.
+    Recommend evaluating it only after confirming this branch's impact on
+    actual invocation counts.
+  - DB connection pool sizing (Fix 8): no code changed. If the production
+    DATABASE_URL points at a direct (non-pooled) Postgres connection rather
+    than a pooler/PgBouncer endpoint, concurrent serverless instances could
+    approach the database's max_connections under real traffic. This is a
+    deployment-configuration decision (which connection string to use), not
+    a code bug — needs the owner to check which Postgres provider/plan is
+    in use and whether it offers a pooled endpoint.
+  - Images (Fix 7): no code changed. If ImgBB-hosted product photos are
+    uploaded at very large original sizes, pre-sizing at upload time is a
+    bandwidth optimization worth considering later — not implemented here,
+    as it's a feature change beyond "reduce invocations."
+  - The { expire: 0 } (immediate) invalidation profile chosen throughout
+    Fix 3 is more conservative (and slightly more DB load on the first
+    request after any admin edit) than Next's generally-recommended "max"
+    profile. This was a deliberate correctness-over-performance call because
+    of the stock/price-badge concern — worth knowing it's there if Vercel's
+    post-deploy numbers want to be squeezed further later.
+  - This branch has NOT been pushed, merged, or deployed, per the task's own
+    instructions. Someone needs to explicitly decide to merge and deploy it.
+
+
+7. ESTIMATED REDUCTION (LABELED AS AN ESTIMATE) + WHAT TO MONITOR
+================================================================================
+
+This is an estimate, not a measurement — there is no access to this
+deployment's actual Vercel invocation-by-route breakdown from this
+environment. The baseline finding was that literally 100% of storefront page
+views (plus every matched request's separate proxy invocation) counted as a
+Vercel Function Invocation. After this branch:
+
+  - The highest-traffic public pages (home, every product page, every
+    category hub landing page, cart, contact, lookbook, journal) now serve
+    from a static shell or build-time-prerendered page with zero function
+    execution on a cache hit — only re-running at most once per hour per
+    path, or on-demand right after an admin edit invalidates its tag.
+  - proxy.ts, which ran on every single request including bot probes, no
+    longer exists as a separate invocation at all.
+  - For a typical storefront traffic mix (product/category/home pages
+    usually dominate total page views over checkout/account/admin by a wide
+    margin), this plausibly puts the reduction in the 60-85% range for
+    Function Invocations specifically — but this is a judgment call based on
+    the shape of the fix, not a number pulled from real traffic data.
+
+WHAT TO MONITOR AFTER DEPLOYING:
+  - Vercel's Usage/Observability tab, Functions breakdown, 24-48h after
+    deploy, compared to the same window before — the only real measurement.
+  - That admin edits still show up on the public site promptly (the Fix 3
+    live test confirmed this works; worth re-confirming once on production
+    data).
+  - That checkout pricing/stock-guard behavior is unchanged (it reads
+    straight from the database exactly as before — nothing about its logic
+    was touched, only the caching added everywhere else).
+  - Error rates / 404s on /product/[slug] and /journal/[slug] for items
+    that didn't exist at build time — these fall back to on-demand ISR
+    (dynamicParams stays true), so they should resolve normally, but it's
+    worth a spot check.
+
+
+8. OWNER-ONLY CHECKS (NEED THE VERCEL DASHBOARD — CANNOT BE DONE FROM HERE)
+================================================================================
+
+  a. Vercel project → Observability/Usage tab: sort functions by invocation
+     count and compare the top routes against the root causes in section 1.
+  b. Note the billing-period start date. If most of the 750K/1M invocations
+     happened in a short burst of days, that points at a bot/crawler spike
+     or an uptime monitor rather than steady organic traffic.
+  c. Logs: filter by user-agent for known crawlers/bots, and by path for
+     probe attempts (/wp-login.php, /.env, /phpmyadmin, etc.).
+  d. Vercel Firewall: turn on bot protection, and add a rule blocking the
+     obvious probe paths found in (c).
+  e. Check any external uptime monitor (UptimeRobot or similar) and confirm
+     it's pointed at a static page (e.g. /robots.txt or the homepage) on a
+     slow interval, not hammering a dynamic route.
+  f. After deploying this branch, compare Usage 24-48h later against the
+     pre-deploy baseline from (a) to get a real number instead of the
+     estimate in section 7.
+
+
+================================================================================
+Commits on perf/reduce-invocations (newest last), all local, none pushed:
+  Fix 1 — security headers out of proxy.ts into next.config.ts
+  Fix 2 — make public pages static/ISR
+  Fix 3 — cache invalidation for every mutating action
+  Fix 4 — prefetch=false on links to pages that stay dynamic
+  Fix 5 — debounce/abort/cache search, dedupe abandoned-checkout capture
+  Fix 6 — robots.txt, sitemap.xml, canonical URLs on listing pages
+  Fix 4 addendum — prefetch=false on cart page's own Checkout button
+54 files changed, 778 insertions(+), 188 deletions(-) across the whole branch.

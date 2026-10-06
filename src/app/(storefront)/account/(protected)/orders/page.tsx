@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { getCustomerSession } from "@/lib/session";
 import { db } from "@/lib/db";
 import { formatTaka, toNumber } from "@/lib/money";
@@ -17,7 +18,8 @@ const BADGE: Record<string, string> = {
 
 export default async function AccountOrdersPage() {
   const session = await getCustomerSession();
-  const orders = await db.order.findMany({ where: { customerId: session!.customerId }, orderBy: { createdAt: "desc" } });
+  if (!session) redirect("/account/login");
+  const orders = await db.order.findMany({ where: { customerId: session.customerId }, orderBy: { createdAt: "desc" } });
 
   return (
     <table className="w-full text-sm">

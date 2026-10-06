@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { getCustomerSession } from "@/lib/session";
 import { db } from "@/lib/db";
 import { deriveProductDisplay } from "@/lib/product-view";
@@ -5,11 +6,12 @@ import { ProductCard } from "@/components/ui/ProductCard";
 
 export default async function AccountWishlistPage() {
   const session = await getCustomerSession();
+  if (!session) redirect("/account/login");
   const now = new Date();
 
   const [items, campaigns] = await Promise.all([
     db.wishlistItem.findMany({
-      where: { customerId: session!.customerId },
+      where: { customerId: session.customerId },
       include: {
         product: { include: { variants: true, images: true, tags: { include: { tag: true } }, category: true } },
       },

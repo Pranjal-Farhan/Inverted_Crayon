@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { getAdminSession } from "@/lib/session";
+import { invalidateSettings } from "@/lib/invalidate";
 import type { ChatWidgetSettings, EmailTemplates, PaymentGatewaySettings, ShippingRates, StoreInfo, TaxSettings } from "@/lib/store-settings";
 
 async function requireAdmin() {
@@ -33,6 +34,7 @@ export async function saveStoreInfo(info: StoreInfo) {
   await db.storeSetting.upsert({ where: { key: "store_info" }, update: { value: info }, create: { key: "store_info", value: info } });
   revalidatePath("/admin/settings");
   revalidatePath("/contact");
+  invalidateSettings();
 }
 
 export async function saveTaxSettings(tax: TaxSettings) {
@@ -60,4 +62,5 @@ export async function saveChatWidgetSettings(settings: ChatWidgetSettings) {
   });
   revalidatePath("/admin/settings");
   revalidatePath("/", "layout");
+  invalidateSettings();
 }

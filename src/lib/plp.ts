@@ -1,3 +1,5 @@
+import "server-only";
+import { unstable_cache } from "next/cache";
 import { db } from "@/lib/db";
 import { deriveProductDisplay, type ProductDisplay } from "@/lib/product-view";
 import { APPAREL_SIZES, ONE_SIZE } from "@/lib/sizes";
@@ -22,35 +24,92 @@ export type PLPParams = {
 
 const PAGE_SIZE = 24;
 
-export async function getPLPResults(params: PLPParams) {
-  const where: Prisma.ProductWhereInput = { status: "ACTIVE" };
-  // A Unisex product belongs on both the Men and Women floors — matching the branch's own
-  // gender plus UNISEX (rather than strict equality) is what surfaces it there without
-  // duplicating the product row. See the Category model's doc comment in schema.prisma.
-  if (params.gender) where.gender = { in: [params.gender, "UNISEX"] };
-  // Category slugs aren't globally unique (the same slug exists once per gender branch —
-  // "jeans" under Men, Women, and Unisex are three different rows), so this matches by text
-  // only; combined with the gender filter above it naturally picks up the right branch's row
-  // (or, for a Unisex product under /men or /women, its own Unisex row by the same slug).
-  if (params.categorySlug) where.category = { slug: params.categorySlug };
-  if (params.q) where.title = { contains: params.q, mode: "insensitive" };
+/**
+ * Category/search/new/sale pages all stay dynamic (they read searchParams for filtering, which
+ * forces per-request rendering regardless — see the Fix 2e writeup in the perf report), but the
+ * expensive unfiltered catalog fetch underneath them doesn't need to re-run on every request.
+ * Cached per (gender, categorySlug) scope — not per search query `q`, since that's free text with
+ * effectively unbounded cardinality; `q` is instead applied in-memory below, the same way the
+ * other filters (tag/size/color/price/sort) already are.
+ */
+function getCachedCatalogForScope(gender: PLPParams["gender"], categorySlug: string | undefined) {
+  return unstable_cache(
+    async () => {
+      const where: Prisma.ProductWhereInput = { status: "ACTIVE" };
+      // A Unisex product belongs on both the Men and Women floors — matching the branch's own
+      // gender plus UNISEX (rather than strict equality) is what surfaces it there without
+      // duplicating the product row. See the Category model's doc comment in schema.prisma.
+      if (gender) where.gender = { in: [gender, "UNISEX"] };
+      // Category slugs aren't globally unique (the same slug exists once per gender branch —
+      // "jeans" under Men, Women, and Unisex are three different rows), so this matches by text
+      // only; combined with the gender filter above it naturally picks up the right branch's row
+      // (or, for a Unisex product under /men or /women, its own Unisex row by the same slug).
+      if (categorySlug) where.category = { slug: categorySlug };
 
+      const now = new Date();
+      const [products, campaigns] = await Promise.all([
+        db.product.findMany({
+          where,
+          include: {
+            variants: true,
+            images: true,
+            tags: { include: { tag: true } },
+            category: true,
+          },
+        }),
+        db.campaign.findMany({ where: { active: true, startsAt: { lte: now }, endsAt: { gte: now } } }),
+      ]);
+      return { products, campaigns };
+    },
+    ["public-plp-catalog", gender ?? "all", categorySlug ?? "all"],
+    // revalidate: 300 — this result carries both the campaign list and every product's derived
+    // sale pricing, so a scheduled campaign startsAt/endsAt boundary (no admin action, nothing to
+    // eagerly revalidateTag) would otherwise leave it wrong indefinitely — tag invalidation alone
+    // isn't enough here. See the module doc on src/lib/public-cache.ts for why the page-level
+    // `export const revalidate` on the pages that call this doesn't substitute for this.
+    { tags: ["products", "campaigns"], revalidate: 300 },
+  )();
+}
+
+export type PLPCatalogItem = ProductDisplay & {
+  /** Distinct variant sizes/colors for this product — carried alongside ProductDisplay so a
+   * client-side filter (src/lib/plp-filter.ts) can filter by size/color without needing the raw
+   * Prisma variant rows. */
+  sizes: string[];
+  colors: string[];
+};
+
+/**
+ * Server-side fetch of the full, unfiltered, already-scoped catalog for a gender/category —
+ * used by /men/[category], /women/[category], /new, /sale, now that those pages are static and
+ * do all filtering/sorting/pagination client-side (see StaticPLPView.tsx / StaticPLPClient.tsx).
+ * Deliberately returns every item, not just one page of PAGE_SIZE — the static HTML this
+ * produces is what a crawler sees, so every product in the category should be a real link in it.
+ */
+export async function getPLPCatalog(
+  gender: PLPParams["gender"],
+  categorySlug: string | undefined,
+): Promise<PLPCatalogItem[]> {
+  const { products, campaigns } = await getCachedCatalogForScope(gender, categorySlug);
   const now = new Date();
-  const [products, campaigns] = await Promise.all([
-    db.product.findMany({
-      where,
-      include: {
-        variants: true,
-        images: true,
-        tags: { include: { tag: true } },
-        category: true,
-      },
-    }),
-    db.campaign.findMany({ where: { active: true, startsAt: { lte: now }, endsAt: { gte: now } } }),
-  ]);
+  return products.map((p) => ({
+    ...deriveProductDisplay(p, campaigns, now),
+    sizes: [...new Set(p.variants.map((v) => v.size))],
+    colors: [...new Set(p.variants.map((v) => v.color))],
+  }));
+}
+
+export async function getPLPResults(params: PLPParams) {
+  const { products, campaigns } = await getCachedCatalogForScope(params.gender, params.categorySlug);
 
   const variantsByProduct = new Map(products.map((p) => [p.id, p.variants]));
+  const now = new Date();
   let display: ProductDisplay[] = products.map((p) => deriveProductDisplay(p, campaigns, now));
+
+  if (params.q) {
+    const q = params.q.toLowerCase();
+    display = display.filter((d) => d.title.toLowerCase().includes(q));
+  }
 
   if (params.tag === "sale") display = display.filter((d) => d.onSale);
   if (params.tag === "preorder") display = display.filter((d) => d.isPreorder);

@@ -1,6 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
-import { db } from "@/lib/db";
+import { getActiveCampaigns, getContentBlock, getGenderCategories, getGenderHubProducts } from "@/lib/public-cache";
 import { deriveProductDisplay } from "@/lib/product-view";
 import { PlaceholderFrame } from "@/components/ui/PlaceholderFrame";
 import { ProductCard } from "@/components/ui/ProductCard";
@@ -15,15 +15,10 @@ export async function GenderHub({ gender }: { gender: "MEN" | "WOMEN" }) {
   const now = new Date();
 
   const [products, campaigns, categories, heroBlock] = await Promise.all([
-    db.product.findMany({
-      where: { gender: { in: [gender, "UNISEX"] }, status: "ACTIVE" },
-      include: { variants: true, images: true, tags: { include: { tag: true } }, category: true },
-      orderBy: { publishedAt: "desc" },
-      take: 8,
-    }),
-    db.campaign.findMany({ where: { active: true, startsAt: { lte: now }, endsAt: { gte: now } } }),
-    db.category.findMany({ where: { gender }, orderBy: { position: "asc" } }),
-    db.contentBlock.findUnique({ where: { key: gender === "MEN" ? "men_hero" : "women_hero" } }),
+    getGenderHubProducts(gender),
+    getActiveCampaigns(),
+    getGenderCategories(gender),
+    getContentBlock(gender === "MEN" ? "men_hero" : "women_hero"),
   ]);
   const display = products.map((p) => deriveProductDisplay(p, campaigns, now));
   const hero: GenderHeroData = { ...DEFAULT_GENDER_HERO, ...(heroBlock?.data as Partial<GenderHeroData> | undefined) };
@@ -48,7 +43,7 @@ export async function GenderHub({ gender }: { gender: "MEN" | "WOMEN" }) {
           <PlaceholderFrame accentColor="#ff2d84" shape="x" label={`${label.toUpperCase()} · EDITORIAL HERO`} className="h-full w-full" />
         )}
         {categories[0] && (
-          <Button href={`/${path}/${categories[0].slug}`} className="absolute bottom-5 left-5">
+          <Button href={`/${path}/${categories[0].slug}`} prefetch={false} className="absolute bottom-5 left-5">
             Shop {label}
           </Button>
         )}
@@ -62,6 +57,7 @@ export async function GenderHub({ gender }: { gender: "MEN" | "WOMEN" }) {
               <Link
                 key={c.slug}
                 href={`/${path}/${c.slug}`}
+                prefetch={false}
                 className="relative flex aspect-[1/1.2] items-end overflow-hidden border border-line bg-ink"
               >
                 {c.imageUrl ? (

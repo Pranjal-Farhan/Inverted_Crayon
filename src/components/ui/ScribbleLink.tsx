@@ -11,6 +11,7 @@ export function ScribbleLink({
   className = "",
   stroke,
   onClick,
+  prefetch,
   children,
 }: {
   href: string;
@@ -18,10 +19,12 @@ export function ScribbleLink({
   /** Underline color — defaults to the link's own text color (currentColor). */
   stroke?: string;
   onClick?: () => void;
+  /** Forwarded to next/link. Default (undefined) lets Next decide; pass false for a link to a personalized/dynamic page. */
+  prefetch?: boolean;
   children: ReactNode;
 }) {
   return (
-    <Link href={href} onClick={onClick} className={`scribble-link ${className}`}>
+    <Link href={href} onClick={onClick} prefetch={prefetch} className={`scribble-link ${className}`}>
       {children}
       <svg viewBox="0 0 100 10" preserveAspectRatio="none" aria-hidden="true" style={stroke ? ({ "--scribble-stroke": stroke } as React.CSSProperties) : undefined}>
         <path d="M2 6 C 20 2, 45 9, 62 5 S 90 2, 98 6" />

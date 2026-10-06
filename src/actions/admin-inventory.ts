@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { getAdminSession } from "@/lib/session";
 import { sendMail } from "@/lib/mail";
+import { invalidateProduct } from "@/lib/invalidate";
 
 export async function setVariantStock(variantId: string, stockQty: number) {
   const session = await getAdminSession();
@@ -69,4 +70,6 @@ export async function setVariantStock(variantId: string, stockQty: number) {
 
   revalidatePath("/admin/inventory");
   revalidatePath("/admin/products");
+  // Stock drives the sold-out/preorder badges on every public listing + the PDP itself.
+  invalidateProduct({ id: before.productId, slug: before.product.slug });
 }

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { getAdminSession } from "@/lib/session";
 import { uploadToImgBb } from "@/lib/imgbb";
+import { invalidateContent } from "@/lib/invalidate";
 import type { HeroData } from "@/lib/hero-defaults";
 import type { GenderHeroData } from "@/lib/gender-hero-defaults";
 
@@ -17,6 +18,7 @@ export async function saveHomeHero(data: HeroData) {
   await db.contentBlock.upsert({ where: { key: "home_hero" }, update: { data }, create: { key: "home_hero", data } });
   revalidatePath("/");
   revalidatePath("/admin/content");
+  invalidateContent();
 }
 
 export async function saveFeaturedDrop(productId: string | null) {
@@ -28,6 +30,7 @@ export async function saveFeaturedDrop(productId: string | null) {
   });
   revalidatePath("/");
   revalidatePath("/admin/content");
+  invalidateContent();
 }
 
 const MAX_SITE_IMAGE_BYTES = 8 * 1024 * 1024;
@@ -67,6 +70,7 @@ export async function saveGenderHero(gender: "MEN" | "WOMEN", data: GenderHeroDa
   await db.contentBlock.upsert({ where: { key }, update: { data }, create: { key, data } });
   revalidatePath(`/${gender.toLowerCase()}`);
   revalidatePath("/admin/content");
+  invalidateContent();
 }
 
 export async function uploadGenderHeroImage(gender: "MEN" | "WOMEN", formData: FormData): Promise<UploadSiteImageResult> {
