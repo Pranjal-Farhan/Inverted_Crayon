@@ -34,6 +34,14 @@ export async function saveAddress(input: z.infer<typeof addressSchema>) {
   const session = await requireCustomer();
   const data = addressSchema.parse(input);
 
+  // Confirm the address being edited actually belongs to this customer first — the upsert
+  // below matches by id alone, so without this check a customer could overwrite any other
+  // customer's address row just by sending its id.
+  if (data.id) {
+    const owned = await db.address.findFirst({ where: { id: data.id, customerId: session.customerId } });
+    if (!owned) throw new Error("Address not found.");
+  }
+
   if (data.isDefault) {
     await db.address.updateMany({ where: { customerId: session.customerId }, data: { isDefault: false } });
   }
@@ -98,8 +106,18 @@ export async function requestReturn(input: z.infer<typeof returnSchema>) {
   const session = await requireCustomer();
   const data = returnSchema.parse(input);
 
-  const order = await db.order.findFirst({ where: { id: data.orderId, customerId: session.customerId } });
+  const order = await db.order.findFirst({
+    where: { id: data.orderId, customerId: session.customerId },
+    include: { items: true },
+  });
   if (!order) throw new Error("Order not found.");
+
+  // Every submitted item id must actually belong to this order — otherwise owning the order
+  // alone would let a customer attach someone else's order item to their own return request.
+  const ownItemIds = new Set(order.items.map((i) => i.id));
+  if (!data.orderItemIds.every((id) => ownItemIds.has(id))) {
+    throw new Error("One or more items aren't part of this order.");
+  }
 
   await db.returnRequest.create({
     data: {
