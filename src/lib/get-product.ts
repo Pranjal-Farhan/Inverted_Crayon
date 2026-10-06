@@ -24,8 +24,13 @@ export async function getProductForPDP(slug: string) {
   const now = new Date();
   const display = deriveProductDisplay(product, campaigns, now);
 
+  // "Complete the look" suggests across the whole gender branch (any category), not just more of
+  // this exact category — a Unisex product also pulls from both Men and Women, same convention
+  // as the gender-scoped PLP catalogs in src/lib/plp.ts.
+  const relatedGenders: ("MEN" | "WOMEN" | "UNISEX")[] =
+    product.gender === "UNISEX" ? ["MEN", "WOMEN", "UNISEX"] : [product.gender, "UNISEX"];
   const relatedRaw = await db.product.findMany({
-    where: { categoryId: product.categoryId, id: { not: product.id }, status: "ACTIVE" },
+    where: { gender: { in: relatedGenders }, id: { not: product.id }, status: "ACTIVE" },
     include: { variants: true, images: true, tags: { include: { tag: true } }, category: true },
     take: 4,
   });
