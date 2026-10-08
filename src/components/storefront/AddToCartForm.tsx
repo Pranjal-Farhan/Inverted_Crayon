@@ -138,7 +138,6 @@ export function AddToCartForm({
             {productIsPreorder && preorderShipDate
               ? `Preorder — ships ${preorderShipDate}.`
               : "This size just sold out — preorder it and we'll ship in 7–15 days."}{" "}
-            <span className="text-lime">Free delivery.</span>
           </span>
         </div>
       )}
