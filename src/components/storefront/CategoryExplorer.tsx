@@ -191,8 +191,7 @@ function GenderCard({
 
 function CategoryCard({ category, index, onClick }: { category: ExplorerCategory; index: number; onClick: () => void }) {
   const accent = pickAccent(`explorer-${category.gender}-${category.slug}`);
-  const mark = pickMark(`explorer-mark-${category.gender}-${category.slug}`);
-  const hoverColor = pickMark(`explorer-hover-${category.gender}-${category.slug}`, mark.color).color;
+  const hoverColor = pickMark(`explorer-hover-${category.gender}-${category.slug}`, accent.color).color;
   const [hovered, setHovered] = useState(false);
   return (
     <div
@@ -224,21 +223,18 @@ function CategoryCard({ category, index, onClick }: { category: ExplorerCategory
         )}
         <span className="font-label relative z-[4] p-3 text-[15px] tracking-[1.2px]">{category.name}</span>
       </button>
-      <HandDrawnMark
-        id={`cat-${category.id}`}
-        kind={mark.kind}
-        color={mark.color}
-        delay={120 + index * 60}
-        className="ce-mark -right-4 -top-4 z-[5] h-24 w-28 rotate-6"
-      />
+      {/* Hover/focus-only "circle this" mark, and nothing else — centered and rotated 90° so the
+          mark's native landscape oval reorients to the card's own portrait aspect instead of being
+          non-uniformly stretched into it (see HandDrawnMark's `stretch` prop, deliberately unused
+          here). Sized well past 100% so it still reads as roughly covering the whole card once that
+          rotation eats into its effective footprint. */}
       <HandDrawnMark
         id={`cat-${category.id}-hover`}
         kind="circle-loop"
         color={hoverColor}
         duration={500}
         visible={hovered}
-        stretch
-        className="ce-mark absolute -inset-4 z-[6] rotate-1"
+        className="ce-mark left-1/2 top-1/2 z-[6] h-[160%] w-[160%] -translate-x-1/2 -translate-y-1/2 rotate-90"
       />
     </div>
   );
@@ -281,8 +277,7 @@ function ProductsStep({
 }
 
 function ProductTile({ product, index }: { product: ProductDisplay; index: number }) {
-  const mark = pickMark(`explorer-prod-${product.id}`);
-  const hoverColor = pickMark(`explorer-hover-prod-${product.id}`, mark.color).color;
+  const hoverColor = pickMark(`explorer-hover-prod-${product.id}`).color;
   const [hovered, setHovered] = useState(false);
   return (
     <div
@@ -293,21 +288,15 @@ function ProductTile({ product, index }: { product: ProductDisplay; index: numbe
       onFocus={() => setHovered(true)}
       onBlur={() => setHovered(false)}
     >
-      <HandDrawnMark
-        id={`prod-${product.id}`}
-        kind={mark.kind}
-        color={mark.color}
-        delay={100 + index * 70}
-        className="ce-mark -right-3 -top-3 z-[7] h-20 w-24 rotate-6"
-      />
+      {/* Hover/focus-only "circle this" mark, and nothing else — see the matching comment on
+          CategoryCard for why this rotates 90° instead of stretching to the card's aspect. */}
       <HandDrawnMark
         id={`prod-${product.id}-hover`}
         kind="circle-loop"
         color={hoverColor}
         duration={500}
         visible={hovered}
-        stretch
-        className="ce-mark absolute -inset-3 z-[8] -rotate-1"
+        className="ce-mark left-1/2 top-1/2 z-[8] h-[160%] w-[160%] -translate-x-1/2 -translate-y-1/2 rotate-90"
       />
       <ProductCard product={product} />
     </div>
