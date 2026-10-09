@@ -409,3 +409,35 @@ button {
   70% { box-shadow: 0 0 0 14px rgba(255, 210, 59, 0); }
   100% { box-shadow: 0 0 0 0 rgba(255, 210, 59, 0); }
 }
+
+/* Hand-drawn mark draw-on (HandDrawnMarks.tsx) — the stroke-dashoffset flip itself is JS-driven
+   (one state change a frame after mount, so reduced-motion is checked in the component, same
+   convention as ProductCard's tilt effect), this transition is just what animates that flip. */
+.hdm-path {
+  transition-property: stroke-dashoffset;
+  transition-timing-function: cubic-bezier(0.65, 0, 0.35, 1);
+}
+
+/* Homepage "Shop by category" drill-down (CategoryExplorer.tsx) — gender cards, then subcategory
+   cards, then a product grid, each step swapping in with a staggered card-by-card reveal and
+   swapping out with a quick collective fade+shrink. Reduced-motion is handled for free: globals.css
+   already neutralizes every animation/transition duration to ~0 under that media query (see this
+   section's header comment), so both keyframes below just resolve instantly instead of needing
+   their own guard. */
+@keyframes ce-card-in {
+  from { opacity: 0; transform: translateY(22px) scale(0.95); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.ce-card {
+  animation: ce-card-in 0.55s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.ce-step-leaving {
+  transition: opacity 0.3s ease, transform 0.3s ease;
+  opacity: 0;
+  transform: scale(0.95);
+}
+.ce-mark {
+  position: absolute;
+  pointer-events: none;
+  z-index: 4;
+}

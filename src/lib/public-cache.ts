@@ -94,19 +94,53 @@ export const getNavCategories = unstable_cache(
   { tags: ["categories"] },
 );
 
-// Every category across every gender branch that actually has an active product — Men first,
-// then Women, then Unisex (the Gender enum's declared order, which Postgres sorts by), each in
-// its own admin-configured position. The product filter keeps an empty category (nothing to
-// browse yet) from showing up as a dead-end tile. Tagged with "products" too, not just
-// "categories", since a product's status change can flip a category in or out of this list.
-export const getSpotlightCategories = unstable_cache(
-  async () =>
-    db.category.findMany({
+export type ExplorerCategory = {
+  id: string;
+  name: string;
+  slug: string;
+  imageUrl: string | null;
+  gender: "MEN" | "WOMEN" | "UNISEX";
+};
+
+// Data for the homepage's Male/Female -> subcategory -> product drill-down (CategoryExplorer.tsx).
+// Only categories with at least one active product are ever offered (nothing leads to a dead end).
+// A Unisex category (e.g. Essentials) has no gender card of its own — the drill-down only opens
+// from Male or Female — so it's appended to *both* branch's subcategory list instead, same
+// "reaches both branches" convention get-product.ts already uses for "Complete the Look."
+// Product previews are capped per category (take 8) and fetched once here rather than re-queried
+// per click, since this whole function sits behind the homepage's unstable_cache + revalidate:300 —
+// the extra rows cost nothing per visit, only once every 5 minutes at most.
+export const getHomeCategoryExplorerData = unstable_cache(
+  async () => {
+    const categoryRows = await db.category.findMany({
       where: { products: { some: { status: "ACTIVE" } } },
       orderBy: [{ gender: "asc" }, { position: "asc" }],
-    }),
-  ["public-spotlight-categories"],
-  { tags: ["categories", "products"] },
+    });
+    const men = categoryRows.filter((c) => c.gender === "MEN");
+    const women = categoryRows.filter((c) => c.gender === "WOMEN");
+    const unisex = categoryRows.filter((c) => c.gender === "UNISEX");
+
+    const productRows = await db.product.findMany({
+      where: { status: "ACTIVE", categoryId: { in: categoryRows.map((c) => c.id) } },
+      include: PRODUCT_CARD_INCLUDE,
+      orderBy: { publishedAt: "desc" },
+    });
+    const productsByCategory: Record<string, typeof productRows> = {};
+    for (const p of productRows) {
+      (productsByCategory[p.categoryId] ??= []).push(p);
+    }
+    for (const key of Object.keys(productsByCategory)) {
+      productsByCategory[key] = productsByCategory[key].slice(0, 8);
+    }
+
+    return {
+      men: [...men, ...unisex],
+      women: [...women, ...unisex],
+      productsByCategory,
+    };
+  },
+  ["public-home-category-explorer"],
+  { tags: ["categories", "products"], revalidate: 300 },
 );
 
 export function getGenderCategories(gender: "MEN" | "WOMEN") {

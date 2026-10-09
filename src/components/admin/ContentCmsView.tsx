@@ -9,9 +9,12 @@ import {
   uploadHeroImages,
   saveGenderHero,
   uploadGenderHeroImage,
+  saveGenderCards,
+  uploadGenderCardImage,
 } from "@/actions/admin-content";
 import type { HeroData } from "@/lib/hero-defaults";
 import type { GenderHeroData } from "@/lib/gender-hero-defaults";
+import type { GenderCardsData } from "@/lib/gender-cards-defaults";
 import { Panel } from "@/components/admin/Panel";
 
 export function ContentCmsView({
@@ -20,12 +23,14 @@ export function ContentCmsView({
   products,
   menHero,
   womenHero,
+  genderCards,
 }: {
   hero: HeroData;
   featuredProductId: string | null;
   products: { id: string; title: string }[];
   menHero: GenderHeroData;
   womenHero: GenderHeroData;
+  genderCards: GenderCardsData;
 }) {
   const [data, setData] = useState(hero);
   const [productId, setProductId] = useState(featuredProductId ?? "");
@@ -42,6 +47,37 @@ export function ContentCmsView({
   const [genderHeroError, setGenderHeroError] = useState<string | null>(null);
   const menHeroInputRef = useRef<HTMLInputElement>(null);
   const womenHeroInputRef = useRef<HTMLInputElement>(null);
+
+  const [genderCardsData, setGenderCardsData] = useState(genderCards);
+  const [genderCardUploading, setGenderCardUploading] = useState<"male" | "female" | null>(null);
+  const [genderCardError, setGenderCardError] = useState<string | null>(null);
+  const maleCardInputRef = useRef<HTMLInputElement>(null);
+  const femaleCardInputRef = useRef<HTMLInputElement>(null);
+
+  async function handleGenderCardFile(which: "male" | "female", file: File) {
+    setGenderCardError(null);
+    setGenderCardUploading(which);
+    const formData = new FormData();
+    formData.append("file", file);
+    const res = await uploadGenderCardImage(which, formData);
+    setGenderCardUploading(null);
+    if (!res.ok) {
+      setGenderCardError(res.error);
+      return;
+    }
+    const next = { ...genderCardsData, [which === "male" ? "maleImageUrl" : "femaleImageUrl"]: res.url };
+    setGenderCardsData(next);
+    await saveGenderCards(next);
+    flash(`${which}-card`);
+  }
+
+  function removeGenderCardImage(which: "male" | "female") {
+    const next = { ...genderCardsData, [which === "male" ? "maleImageUrl" : "femaleImageUrl"]: null };
+    setGenderCardsData(next);
+    startTransition(async () => {
+      await saveGenderCards(next);
+    });
+  }
 
   async function handleGenderHeroFile(gender: "MEN" | "WOMEN", file: File) {
     setGenderHeroError(null);
@@ -333,6 +369,59 @@ export function ContentCmsView({
                   </button>
                 )}
                 {saved === `${gender.toLowerCase()}-hero` && <span className="text-[12px] text-lime">Saved ✓</span>}
+              </div>
+            </div>
+          ))}
+        </div>
+      </Panel>
+
+      <Panel title="Shop by category — Male/Female cards" className="mt-4.5">
+        <p className="mb-3 text-[13px] text-muted">
+          The two cards that open the homepage&apos;s &quot;Shop by category&quot; drill-down. Leave either unset to
+          keep the drawn placeholder.
+        </p>
+        {genderCardError && <p className="mb-2 text-[13px] text-error">{genderCardError}</p>}
+        <div className="grid grid-cols-1 gap-4 desktop:grid-cols-2">
+          {(
+            [
+              { which: "male" as const, label: "Male", url: genderCardsData.maleImageUrl, inputRef: maleCardInputRef },
+              { which: "female" as const, label: "Female", url: genderCardsData.femaleImageUrl, inputRef: femaleCardInputRef },
+            ]
+          ).map(({ which, label, url, inputRef }) => (
+            <div key={which}>
+              <label className="font-label mb-1 block text-[12px] tracking-[1px] text-muted">{label} card image</label>
+              <div className="mb-2 aspect-[4/5] overflow-hidden border border-line-2 bg-panel-2">
+                {url ? (
+                  <Image src={url} alt="" width={300} height={375} className="h-full w-full object-cover" />
+                ) : (
+                  <div className="grid h-full place-items-center text-[11px] text-muted-2">default placeholder</div>
+                )}
+              </div>
+              <input
+                ref={inputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  if (e.target.files?.[0]) handleGenderCardFile(which, e.target.files[0]);
+                  e.target.value = "";
+                }}
+              />
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => inputRef.current?.click()}
+                  disabled={genderCardUploading === which}
+                  className="border border-line-2 px-3 py-1.5 text-[13px] hover:border-lime disabled:opacity-50"
+                >
+                  {genderCardUploading === which ? "Uploading…" : url ? "Change image" : "Upload image"}
+                </button>
+                {url && (
+                  <button type="button" onClick={() => removeGenderCardImage(which)} className="text-[13px] text-error hover:underline">
+                    Remove
+                  </button>
+                )}
+                {saved === `${which}-card` && <span className="text-[12px] text-lime">Saved ✓</span>}
               </div>
             </div>
           ))}
