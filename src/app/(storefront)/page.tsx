@@ -27,6 +27,13 @@ import { DEFAULT_HERO, type HeroData } from "@/lib/hero-defaults";
 // here is a stale *displayed* badge/price for up to 5 minutes, never an actual overcharge.
 export const revalidate = 300;
 
+/** "Pants" -> "Men's Pants" / "Women's Pants" — a Unisex category's name already reads fine alone. */
+function categoryLabel(gender: "MEN" | "WOMEN" | "UNISEX", name: string): string {
+  if (gender === "MEN") return `Men's ${name}`;
+  if (gender === "WOMEN") return `Women's ${name}`;
+  return name;
+}
+
 export default async function HomePage() {
   const now = new Date();
   const [heroBlock, featuredBlock, campaigns, newProductsRaw, spotlightCategories] = await Promise.all([
@@ -34,11 +41,8 @@ export default async function HomePage() {
     getContentBlock("home_featured_drop"),
     getActiveCampaigns(),
     getHomeNewProducts(),
-    // The first few Men categories by position — same taxonomy the admin already manages from
-    // /admin/categories (§5.1), so setting a tile image there is what drives this section; no
-    // separate "spotlight" concept to configure. Men is just a stable default branch to draw
-    // from (a Unisex category would work equally well via either /men/<slug> or /women/<slug>,
-    // but none exist in this catalog today).
+    // Every category across every gender branch — same taxonomy the admin already manages from
+    // /admin/categories (§5.1), so setting a tile image there is what drives this section.
     getSpotlightCategories(),
   ]);
 
@@ -133,7 +137,7 @@ export default async function HomePage() {
               ) : (
                 <PlaceholderFrame accentColor={accent.color} shape={accent.shape} stamp={false} className="absolute inset-0 z-[2] h-full w-full" />
               )}
-              <span className="font-scrawl relative z-[3] p-4.5 text-[26px]">{c.name}</span>
+              <span className="font-scrawl relative z-[3] p-4.5 text-[26px]">{categoryLabel(c.gender, c.name)}</span>
             </Link>
           );
         })}

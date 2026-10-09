@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { ProductCard } from "@/components/ui/ProductCard";
 import { StaticSortSelect } from "@/components/storefront/StaticSortSelect";
@@ -38,11 +39,17 @@ export function StaticPLPClient({
   emptyMessage,
   defaultSort,
   forcedTag,
+  categories,
+  genderPath,
+  currentCategorySlug,
 }: {
   catalog: PLPCatalogItem[];
   emptyMessage: string;
   defaultSort?: PLPSort;
   forcedTag?: PLPTag;
+  categories?: { slug: string; name: string }[];
+  genderPath?: "men" | "women";
+  currentCategorySlug?: string;
 }) {
   const pathname = usePathname();
   const initialSearchParams = useSearchParams();
@@ -114,6 +121,19 @@ export function StaticPLPClient({
   return (
     <div className="plp grid grid-cols-1 gap-7 py-6 desktop:grid-cols-[210px_1fr]">
       <FilterDrawer>
+        {categories && categories.length > 0 && genderPath && (
+          <FilterGroup title="Category">
+            {categories.map((c) => (
+              <CategoryLink
+                key={c.slug}
+                href={`/${genderPath}/${c.slug}${queryString ? `?${queryString}` : ""}`}
+                active={c.slug === currentCategorySlug}
+              >
+                {c.name}
+              </CategoryLink>
+            ))}
+          </FilterGroup>
+        )}
         <FilterGroup title="Size">
           {availableSizes.map((s) => (
             <FilterChip key={s} active={listParam(sp, "sizes").includes(s)} href={toggleListParam(sp, "sizes", s)} onNavigate={navigate}>
@@ -227,6 +247,25 @@ function FilterChip({
     >
       {children}
     </button>
+  );
+}
+
+/**
+ * Switching category is a real navigation to that category's own static page (e.g. /men/jeans),
+ * not a client-side re-filter — the catalog this component holds is already scoped to the
+ * current category server-side (src/lib/plp.ts), so a different category's products aren't in
+ * memory to filter into. Each category page is itself static/ISR and cheap to prefetch/visit, so
+ * this costs no more than the existing nav links do. The current query string rides along so
+ * price/stock/tag/sort selections carry over across the switch.
+ */
+function CategoryLink({ href, active, children }: { href: string; active: boolean; children: React.ReactNode }) {
+  return (
+    <Link
+      href={href}
+      className={`border px-2.5 py-1 text-xs ${active ? "border-lime text-lime" : "border-line-2 text-[#ddd] hover:border-lime hover:text-lime"}`}
+    >
+      {children}
+    </Link>
   );
 }
 

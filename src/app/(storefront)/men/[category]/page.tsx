@@ -34,7 +34,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function MenCategoryPage({ params }: Props) {
   const { category } = await params;
-  const cat = await getCategoryByGenderSlug("MEN", category);
+  const [cat, categories] = await Promise.all([getCategoryByGenderSlug("MEN", category), getGenderCategories("MEN")]);
   if (!cat) notFound();
 
   return (
@@ -51,6 +51,8 @@ export default async function MenCategoryPage({ params }: Props) {
           <Link href="/men">Men</Link> / {cat.name}
         </div>
       }
+      categories={categories.map((c) => ({ slug: c.slug, name: c.name }))}
+      genderPath="men"
     />
   );
 }

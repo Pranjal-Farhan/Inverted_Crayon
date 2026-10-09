@@ -94,10 +94,19 @@ export const getNavCategories = unstable_cache(
   { tags: ["categories"] },
 );
 
+// Every category across every gender branch that actually has an active product — Men first,
+// then Women, then Unisex (the Gender enum's declared order, which Postgres sorts by), each in
+// its own admin-configured position. The product filter keeps an empty category (nothing to
+// browse yet) from showing up as a dead-end tile. Tagged with "products" too, not just
+// "categories", since a product's status change can flip a category in or out of this list.
 export const getSpotlightCategories = unstable_cache(
-  async () => db.category.findMany({ where: { gender: "MEN" }, orderBy: { position: "asc" }, take: 3 }),
+  async () =>
+    db.category.findMany({
+      where: { products: { some: { status: "ACTIVE" } } },
+      orderBy: [{ gender: "asc" }, { position: "asc" }],
+    }),
   ["public-spotlight-categories"],
-  { tags: ["categories"] },
+  { tags: ["categories", "products"] },
 );
 
 export function getGenderCategories(gender: "MEN" | "WOMEN") {
