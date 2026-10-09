@@ -1,11 +1,10 @@
-import Link from "next/link";
 import Image from "next/image";
 import {
   getActiveCampaigns,
   getCachedProductById,
   getContentBlock,
+  getHomeCategoryExplorerData,
   getHomeNewProducts,
-  getSpotlightCategories,
 } from "@/lib/public-cache";
 import { deriveProductDisplay } from "@/lib/product-view";
 import { PlaceholderFrame } from "@/components/ui/PlaceholderFrame";
@@ -18,7 +17,9 @@ import { AddToCartForm } from "@/components/storefront/AddToCartForm";
 import { HeroCarousel } from "@/components/storefront/HeroCarousel";
 import { ScrambleHeadline } from "@/components/storefront/ScrambleHeadline";
 import { CrayonScribble } from "@/components/brand/CrayonScribble";
+import { CategoryExplorer } from "@/components/storefront/CategoryExplorer";
 import { DEFAULT_HERO, type HeroData } from "@/lib/hero-defaults";
+import { DEFAULT_GENDER_CARDS, type GenderCardsData } from "@/lib/gender-cards-defaults";
 
 // 300s rather than the usual 3600s safety net: this page shows campaign-derived sale pricing
 // (onSale/salePrice), and a campaign's startsAt/endsAt boundary passes with zero admin action —
@@ -27,28 +28,26 @@ import { DEFAULT_HERO, type HeroData } from "@/lib/hero-defaults";
 // here is a stale *displayed* badge/price for up to 5 minutes, never an actual overcharge.
 export const revalidate = 300;
 
-/** "Pants" -> "Men's Pants" / "Women's Pants" — a Unisex category's name already reads fine alone. */
-function categoryLabel(gender: "MEN" | "WOMEN" | "UNISEX", name: string): string {
-  if (gender === "MEN") return `Men's ${name}`;
-  if (gender === "WOMEN") return `Women's ${name}`;
-  return name;
-}
-
 export default async function HomePage() {
   const now = new Date();
-  const [heroBlock, featuredBlock, campaigns, newProductsRaw, spotlightCategories] = await Promise.all([
+  const [heroBlock, featuredBlock, genderCardsBlock, campaigns, newProductsRaw, explorerData] = await Promise.all([
     getContentBlock("home_hero"),
     getContentBlock("home_featured_drop"),
+    getContentBlock("home_gender_cards"),
     getActiveCampaigns(),
     getHomeNewProducts(),
-    // Every category across every gender branch — same taxonomy the admin already manages from
-    // /admin/categories (§5.1), so setting a tile image there is what drives this section.
-    getSpotlightCategories(),
+    // Categories + a capped product preview per category, for the homepage drill-down — same
+    // taxonomy the admin already manages from /admin/categories (§5.1).
+    getHomeCategoryExplorerData(),
   ]);
 
   const hero: HeroData = { ...DEFAULT_HERO, ...(heroBlock?.data as Partial<HeroData> | undefined) };
   const [headlineFirst, ...headlineRest] = hero.headline.split(" ");
   const headlineRestText = headlineRest.join(" ");
+  const genderCards: GenderCardsData = {
+    ...DEFAULT_GENDER_CARDS,
+    ...(genderCardsBlock?.data as Partial<GenderCardsData> | undefined),
+  };
 
   const featuredId = (featuredBlock?.data as { productId?: string } | undefined)?.productId;
   const featuredProduct = featuredId ? await getCachedProductById(featuredId) : newProductsRaw[0];
@@ -57,6 +56,15 @@ export default async function HomePage() {
   const featuredDisplay = featuredProduct ? deriveProductDisplay(featuredProduct, campaigns, now) : null;
   const featuredAccent = featuredProduct ? pickAccent(featuredProduct.id) : null;
   const featuredImage = featuredProduct?.images.find((img) => img.url)?.url;
+
+  const explorerMen = explorerData.men.map((c) => ({ id: c.id, name: c.name, slug: c.slug, imageUrl: c.imageUrl, gender: c.gender }));
+  const explorerWomen = explorerData.women.map((c) => ({ id: c.id, name: c.name, slug: c.slug, imageUrl: c.imageUrl, gender: c.gender }));
+  const explorerProductsByCategory = Object.fromEntries(
+    Object.entries(explorerData.productsByCategory).map(([categoryId, products]) => [
+      categoryId,
+      products.map((p) => deriveProductDisplay(p, campaigns, now)),
+    ]),
+  );
 
   return (
     <>
@@ -119,29 +127,13 @@ export default async function HomePage() {
         Shop by category <Crown className="h-6 w-[34px] text-cyan" />
         <CrayonScribble id="collections-h" color="var(--color-ic-cyan)" className="h-6 w-10 -rotate-3 opacity-80" />
       </div>
-      <div className="grid grid-cols-1 gap-4 desktop:grid-cols-3">
-        {spotlightCategories.map((c) => {
-          const accent = pickAccent(`spotlight-${c.slug}`);
-          return (
-            <Link
-              key={c.id}
-              href={`/${c.gender.toLowerCase()}/${c.slug}`}
-              prefetch={false}
-              className="relative flex min-h-[280px] items-end overflow-hidden border border-line bg-ink"
-            >
-              {c.imageUrl ? (
-                <>
-                  <Image src={c.imageUrl} alt="" fill sizes="(min-width: 1024px) 33vw, 100vw" className="absolute inset-0 z-[2] h-full w-full object-cover" />
-                  <div className="absolute inset-x-0 bottom-0 z-[2] h-1/2 bg-gradient-to-t from-ink/80 to-transparent" />
-                </>
-              ) : (
-                <PlaceholderFrame accentColor={accent.color} shape={accent.shape} stamp={false} className="absolute inset-0 z-[2] h-full w-full" />
-              )}
-              <span className="font-scrawl relative z-[3] p-4.5 text-[26px]">{categoryLabel(c.gender, c.name)}</span>
-            </Link>
-          );
-        })}
-      </div>
+      <CategoryExplorer
+        maleImageUrl={genderCards.maleImageUrl}
+        femaleImageUrl={genderCards.femaleImageUrl}
+        men={explorerMen}
+        women={explorerWomen}
+        productsByCategory={explorerProductsByCategory}
+      />
 
       {/* FEATURED DROP */}
       {featuredProduct && featuredDisplay && featuredAccent && (
