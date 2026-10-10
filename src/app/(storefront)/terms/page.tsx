@@ -19,15 +19,14 @@ export default function TermsPage() {
 
         <h2 className="font-impact mt-6 mb-2 text-2xl uppercase tracking-[0.5px]">Preorders</h2>
         <p>
-          Preorder items are charged at the time of order and ship on the date shown on the product page at time of
-          purchase. Ship dates are estimates and may shift; we&apos;ll email you if a date changes.
+          Preorder now and our sales agent will reach out to confirm the details — no advance payment is required
+          online. Ship dates are estimates and may shift; we&apos;ll email you if a date changes.
         </p>
 
         <h2 className="font-impact mt-6 mb-2 text-2xl uppercase tracking-[0.5px]">Payments</h2>
         <p>
           We accept bKash, card / mobile banking via SSLCommerz, and cash on delivery (where available). Cash
-          on delivery orders may be limited by delivery area. Preorders require a minimum 20% advance payment via
-          bKash or card, with the remainder collected as cash on delivery.
+          on delivery orders may be limited by delivery area.
         </p>
 
         <h2 className="font-impact mt-6 mb-2 text-2xl uppercase tracking-[0.5px]">Returns &amp; refunds</h2>

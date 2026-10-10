@@ -143,6 +143,12 @@ export default async function ProductPage({ params }: Props) {
             isPreorder={display.isPreorder}
             preorderShipDate={display.preorderShipDate}
             accentColor={accent.color}
+            deliveryChargeInsideDhaka={
+              product.deliveryChargeInsideDhaka != null ? toNumber(product.deliveryChargeInsideDhaka) : null
+            }
+            deliveryChargeOutsideDhaka={
+              product.deliveryChargeOutsideDhaka != null ? toNumber(product.deliveryChargeOutsideDhaka) : null
+            }
           />
 
           {product.freeDelivery !== "NONE" && (

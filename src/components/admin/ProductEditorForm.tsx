@@ -190,6 +190,12 @@ export function ProductEditorForm({
   const [discountValue, setDiscountValue] = useState<number | "">(initial?.discountValue ?? "");
   const [status, setStatus] = useState<"DRAFT" | "ACTIVE">(initial?.status ?? "DRAFT");
   const [freeDelivery, setFreeDelivery] = useState<"NONE" | "INSIDE_DHAKA" | "NATIONWIDE">(initial?.freeDelivery ?? "NONE");
+  const [deliveryChargeInsideDhaka, setDeliveryChargeInsideDhaka] = useState<number | "">(
+    initial?.deliveryChargeInsideDhaka ?? "",
+  );
+  const [deliveryChargeOutsideDhaka, setDeliveryChargeOutsideDhaka] = useState<number | "">(
+    initial?.deliveryChargeOutsideDhaka ?? "",
+  );
   const [tagNew, setTagNew] = useState(initial?.tagNew ?? false);
   const [tagPreorder, setTagPreorder] = useState(initial?.tagPreorder ?? false);
   const [preorderShipDate, setPreorderShipDate] = useState(initial?.preorderShipDate ?? "");
@@ -408,6 +414,8 @@ export function ProductEditorForm({
           discountValue: discountType && discountValue !== "" ? discountValue : null,
           status,
           freeDelivery,
+          deliveryChargeInsideDhaka: deliveryChargeInsideDhaka === "" ? null : deliveryChargeInsideDhaka,
+          deliveryChargeOutsideDhaka: deliveryChargeOutsideDhaka === "" ? null : deliveryChargeOutsideDhaka,
           tagNew,
           tagPreorder,
           preorderShipDate,
@@ -521,8 +529,10 @@ export function ProductEditorForm({
             <a href="/admin/inventory" className="text-cyan hover:underline">
               Inventory
             </a>
-            . <strong className="text-paper">Preorder ৳</strong> is the advance charged online once this size sells
-            out (blank = just sold out, no preorder offered; 0 = free to reserve, everything due on delivery).
+            . <strong className="text-paper">Preorder ৳</strong> turns on preorder for this size once it sells out
+            (blank = just sold out, no preorder offered; any value, including 0, enables it). The amount itself
+            isn&apos;t shown or charged to the customer — they just see &quot;Preorder Now and Our Sales Agent Will
+            Reach Out&quot; and our sales agent follows up directly.
           </p>
 
           {variants.length === 0 && (
@@ -625,7 +635,7 @@ export function ProductEditorForm({
                               min={0}
                               value={v.preorderAdvanceAmount ?? ""}
                               placeholder="off"
-                              title="Advance due online once this size sells out — blank disables preorder for it, 0 means free to reserve."
+                              title="Enables preorder once this size sells out — blank disables it. Not shown or charged to the customer."
                               onChange={(e) =>
                                 updateVariant(key, { preorderAdvanceAmount: e.target.value ? Number(e.target.value) : null })
                               }
@@ -777,6 +787,26 @@ export function ProductEditorForm({
               <option value="INSIDE_DHAKA">Free delivery — Inside Dhaka</option>
               <option value="NATIONWIDE">Free delivery — Nationwide</option>
             </select>
+          </Field>
+          <Field label="Delivery charge ৳ (overrides the store default — leave blank to use it)">
+            <div className="flex gap-2">
+              <input
+                type="number"
+                min={0}
+                value={deliveryChargeInsideDhaka}
+                onChange={(e) => setDeliveryChargeInsideDhaka(e.target.value === "" ? "" : Number(e.target.value))}
+                placeholder="Inside Dhaka — store default"
+                className={inputClass}
+              />
+              <input
+                type="number"
+                min={0}
+                value={deliveryChargeOutsideDhaka}
+                onChange={(e) => setDeliveryChargeOutsideDhaka(e.target.value === "" ? "" : Number(e.target.value))}
+                placeholder="Outside Dhaka — store default"
+                className={inputClass}
+              />
+            </div>
           </Field>
         </Panel>
 

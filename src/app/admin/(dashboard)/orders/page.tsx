@@ -102,8 +102,13 @@ export default async function AdminOrdersPage({ searchParams }: Props) {
             {orders.map((o) => (
               <tr key={o.id} className="group border-b border-line hover:bg-panel-2">
                 <td className="p-0">
-                  <Link href={`/admin/orders/${o.id}`} className="block px-4 py-2.5 group-hover:text-lime">
+                  <Link href={`/admin/orders/${o.id}`} className="flex items-center gap-1.5 px-4 py-2.5 group-hover:text-lime">
                     {o.number}
+                    {o.isPreorder && (
+                      <span className="font-label inline-block bg-yellow px-1.5 py-0.5 text-[10px] tracking-[0.6px] text-ink">
+                        PREORDER
+                      </span>
+                    )}
                   </Link>
                 </td>
                 <td className="p-0">

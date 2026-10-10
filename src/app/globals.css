@@ -410,6 +410,18 @@ button {
   100% { box-shadow: 0 0 0 0 rgba(255, 210, 59, 0); }
 }
 
+/* Checkout heading's golden Preorder tag (CheckoutView.tsx) — a steady blink, not a one-shot
+   pulse, for as long as the cart has a preorder line in it. Reduced-motion is covered for free:
+   globals.css's blanket animation-duration neutralization (this file's header) resolves this to
+   a static, fully-opaque tag instead of looping. */
+.preorder-blink {
+  animation: preorder-blink 1.2s ease-in-out infinite;
+}
+@keyframes preorder-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
 /* Hand-drawn mark draw-on (HandDrawnMarks.tsx) — the stroke-dashoffset flip itself is JS-driven
    (one state change a frame after mount, so reduced-motion is checked in the component, same
    convention as ProductCard's tilt effect), this transition is just what animates that flip. */

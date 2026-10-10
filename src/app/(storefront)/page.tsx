@@ -179,6 +179,16 @@ export default async function HomePage() {
                 isPreorder={featuredDisplay.isPreorder}
                 preorderShipDate={featuredDisplay.preorderShipDate}
                 accentColor={featuredAccent.color}
+                deliveryChargeInsideDhaka={
+                  featuredProduct.deliveryChargeInsideDhaka != null
+                    ? toNumber(featuredProduct.deliveryChargeInsideDhaka)
+                    : null
+                }
+                deliveryChargeOutsideDhaka={
+                  featuredProduct.deliveryChargeOutsideDhaka != null
+                    ? toNumber(featuredProduct.deliveryChargeOutsideDhaka)
+                    : null
+                }
               />
             </div>
           </div>

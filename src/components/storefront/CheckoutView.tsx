@@ -9,9 +9,10 @@ import { placeOrder, captureAbandonedCheckout } from "@/actions/checkout";
 import { usePromoValidation } from "@/lib/use-promo";
 import { formatTaka } from "@/lib/money";
 import { Button } from "@/components/ui/Button";
+import { resolveShippingCost, type ShippingZoneKey } from "@/lib/shipping";
 import type { PaymentGatewaySettings, ShippingRates } from "@/lib/store-settings";
 
-type ShippingZoneKey = keyof ShippingRates;
+const PREORDER_NOTE = "Preorder Now and Our Sales Agent Will Reach Out";
 
 const ZONE_ORDER: ShippingZoneKey[] = ["INSIDE_DHAKA", "OUTSIDE_DHAKA"];
 
@@ -88,31 +89,17 @@ export function CheckoutView({
   const { result: promoResult } = usePromoValidation(cart.promoCode, subtotal);
   const freeShipping = promoResult?.ok && promoResult.type === "FREE_SHIPPING";
   const discountAmount = promoResult?.ok ? promoResult.amount : 0;
-  const shippingCost = freeShipping ? 0 : rates[zone].cost;
+  const shippingCost = freeShipping ? 0 : resolveShippingCost(cart.lines, zone, rates);
   const total = Math.max(subtotal - discountAmount + shippingCost, 0);
 
   const hasPreorder = cartHasPreorder(cart);
   const hasInStock = cartHasInStock(cart);
   const mixedCart = hasPreorder && hasInStock;
-
-  // Advance/balance are no longer a customer choice — each preorder line's advance is whatever
-  // the admin set on that variant (0 or more), snapshotted onto the cart line when it was added.
-  // Only the held-back portion of preorder items (unitPrice - advance) can ever become COD; the
-  // rest of the order (shipping, discount, any in-stock items) is always due now.
   const preorderLines = cart.lines.filter((l) => l.isPreorder);
-  const preorderHoldback = preorderLines.reduce(
-    (s, l) => s + (l.unitPrice - (l.preorderAdvanceAmount ?? l.unitPrice)) * l.qty,
-    0,
-  );
-  // Nothing is ever actually captured online for COD — matches the server's placeOrder computation.
-  const advanceAmount =
-    paymentMethod === "COD" ? 0 : Math.max(Math.round((total - preorderHoldback) * 100) / 100, 0);
-  const balanceDue = Math.max(Math.round((total - advanceAmount) * 100) / 100, 0);
 
-  // Preorder advances no longer gate COD out — see checkout.ts's matching removal of the
-  // anyMandatoryPreorderAdvance rejection. Nothing is ever captured online for a COD order
-  // (advanceAmount above is already forced to 0 for it), so a configured advance just becomes
-  // part of what's due on delivery instead of blocking the method entirely.
+  // No advance/balance split is shown or charged at checkout any more — a preorder is placed with
+  // nothing special required online, and our sales agent follows up on the specifics directly.
+  // Preorder no longer gates COD out either — see checkout.ts's matching removal of that rejection.
   const codAllowed = gateways.cod && (gateways.codRule === "nationwide" || zone === "INSIDE_DHAKA");
   const availableMethods = (["BKASH", "SSLCOMMERZ", "COD"] as const).filter((m) => {
     // bKash and card/mobile banking (SSLCommerz) are commented out for now — only COD is
@@ -130,14 +117,36 @@ export function CheckoutView({
     }
   }, [availableMethods, paymentMethod]);
 
+  // Rendered here (not in page.tsx's server component) because the blinking preorder tag beside
+  // it depends on the cart's contents, which only this client component — reading from
+  // localStorage via useCart — actually knows.
+  const heading = (
+    <div className="pagehead pb-1.5">
+      <div className="font-label text-sm tracking-[1.4px] text-muted">
+        {customer ? `Returning customer · ${customer.name ?? customer.email}` : "Guest checkout · no account needed"}
+      </div>
+      <div className="flex flex-wrap items-center gap-3">
+        <h1 className="font-impact text-[clamp(40px,6vw,72px)] uppercase leading-[0.85] tracking-[1px]">Checkout</h1>
+        {hasPreorder && (
+          <span className="preorder-blink font-label bg-yellow px-3 py-1 text-[13px] uppercase tracking-[1px] text-ink">
+            Preorder
+          </span>
+        )}
+      </div>
+    </div>
+  );
+
   if (cart.lines.length === 0) {
     return (
-      <div className="py-16 text-center">
-        <p className="text-muted">Your bag is empty — add something before checking out.</p>
-        <Button href="/new" className="mt-4">
-          Shop new arrivals
-        </Button>
-      </div>
+      <>
+        {heading}
+        <div className="py-16 text-center">
+          <p className="text-muted">Your bag is empty — add something before checking out.</p>
+          <Button href="/new" className="mt-4">
+            Shop new arrivals
+          </Button>
+        </div>
+      </>
     );
   }
 
@@ -187,7 +196,9 @@ export function CheckoutView({
   }
 
   return (
-    <div className="two grid grid-cols-1 gap-7 py-5 desktop:grid-cols-[1.5fr_1fr]">
+    <>
+      {heading}
+      <div className="two grid grid-cols-1 gap-7 py-5 desktop:grid-cols-[1.5fr_1fr]">
       <div className="min-w-0">
         <Step n={1} title="Contact">
           <Field label="Email" error={fieldErrors.email}>
@@ -259,30 +270,17 @@ export function CheckoutView({
         </Step>
 
         {hasPreorder && (
-          <Step n={4} title="Preorder advance">
-            <p className="mb-3 text-sm text-muted">
-              The advance for each preorder item is set by us, not chosen at checkout — some are free to reserve. The
-              rest is collected as cash on delivery.
-            </p>
+          <Step n={4} title="Preorder Process">
+            <p className="mb-3 text-sm text-muted">{PREORDER_NOTE}.</p>
             <div className="flex flex-col gap-1.5">
-              {preorderLines.map((l) => {
-                const advance = l.preorderAdvanceAmount ?? l.unitPrice;
-                return (
-                  <div key={l.variantId} className="flex justify-between text-[13px]">
-                    <span className="text-muted">
-                      {l.title} · {l.size} × {l.qty}
-                    </span>
-                    <span>
-                      {advance > 0 ? `${formatTaka(advance * l.qty)} now` : "Free to reserve"}
-                      {l.unitPrice - advance > 0 && ` · ${formatTaka((l.unitPrice - advance) * l.qty)} on delivery`}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-            <div className="mt-3 flex justify-between border-t border-line-2 pt-2.5 text-[13px]">
-              <span>Pay now: {formatTaka(advanceAmount)}</span>
-              {balanceDue > 0 && <span>Due on delivery: {formatTaka(balanceDue)}</span>}
+              {preorderLines.map((l) => (
+                <div key={l.variantId} className="flex justify-between text-[13px] text-muted">
+                  <span>
+                    {l.title} · {l.size} × {l.qty}
+                  </span>
+                  <span className="text-yellow">Preorder</span>
+                </div>
+              ))}
             </div>
           </Step>
         )}
@@ -305,12 +303,6 @@ export function CheckoutView({
               </label>
             ))}
           </div>
-          {hasPreorder && preorderHoldback > 0 && (
-            <p className="mt-2 text-[12px] text-muted">
-              This preorder&apos;s advance is collected on delivery along with the rest of the order — nothing is
-              charged online right now.
-            </p>
-          )}
           {gateways.cod && !codAllowed && (
             <p className="mt-2 text-[12px] text-muted">Cash on delivery is available inside Dhaka only.</p>
           )}
@@ -372,30 +364,20 @@ export function CheckoutView({
           <span className="price text-xl">{formatTaka(total)}</span>
         </div>
         {hasPreorder && (
-          <div className="mt-2 border-t border-dashed border-line-2 pt-2 text-sm">
-            <div className="flex justify-between text-lime">
-              <span>Pay now</span>
-              <span>{formatTaka(advanceAmount)}</span>
-            </div>
-            {balanceDue > 0 && (
-              <div className="flex justify-between text-muted">
-                <span>Due on delivery</span>
-                <span>{formatTaka(balanceDue)}</span>
-              </div>
-            )}
-          </div>
+          <p className="mt-2 border-t border-dashed border-line-2 pt-2 text-[13px] text-yellow">{PREORDER_NOTE}.</p>
         )}
 
         {error && <p className="mt-3 text-[13px] text-error">{error}</p>}
 
         <Button className="mt-4 w-full" onClick={submit} loading={pending}>
-          Place order
+          {hasPreorder ? "PreOrder" : "Place order"}
         </Button>
         <p className="mt-3 text-center text-[12px] text-muted">
           <Link href="/cart">← Back to bag</Link>
         </p>
       </div>
-    </div>
+      </div>
+    </>
   );
 }
 

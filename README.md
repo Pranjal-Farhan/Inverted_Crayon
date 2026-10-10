@@ -10,7 +10,7 @@ Streetwear storefront + admin, built from the [Build Specification v1.0](.) — 
 - **Database**: PostgreSQL via Prisma 7 (`@prisma/adapter-pg` driver adapter)
 - **Styling**: Tailwind CSS v4, design tokens in `src/app/globals.css` matching Build Spec §02–§04
 - **Auth**: Signed JWT session cookies (`jose`) — separate admin and customer sessions. Email/password always works; Google and Facebook sign-in work too once you add OAuth credentials (see below) — until then the buttons bounce back with a clear message instead of erroring. Admin/staff accounts can additionally turn on TOTP two-factor authentication (Google Authenticator-compatible) from `/admin/settings` → Security.
-- **Payments**: bKash and SSLCommerz (cards/mobile banking) are wired for real and go live the moment you add real merchant credentials (see below) — but are currently **commented out at checkout** (`CheckoutView.tsx`/`checkout.ts`), so **cash on delivery is the only option offered right now**, for every order including preorders with a configured advance (nothing is captured online; the advance is just collected as part of the COD total at delivery).
+- **Payments**: bKash and SSLCommerz (cards/mobile banking) are wired for real and go live the moment you add real merchant credentials (see below) — but are currently **commented out at checkout** (`CheckoutView.tsx`/`checkout.ts`), so **cash on delivery is the only option offered right now**, for every order including preorders (nothing is captured online for a preorder either — see "Preorders" below).
 - **Emails**: Every "send" always writes to an `EmailLog` outbox (viewable at `/admin/emails`); add a Resend API key (see below) and it also actually sends. See `src/lib/mail.ts`.
 - **Order-confirmation SMS**: same outbox pattern as email — every confirmed order writes to an `SmsLog` outbox (viewable at `/admin/sms`); add SSL Wireless credentials (see below) and it also actually sends. See `src/lib/sms.ts`.
 - **Image hosting**: Product photos, the CMS logo, and hero images upload to ImgBB when `IMGBB_API_KEY` is set. The database stores the returned CDN URL instead of Base64 or local files.
@@ -89,13 +89,17 @@ Both P1 (launch-critical) and P2 (fast-follow) from the spec's §13 checklist ar
 
 `/admin/content` → **Brand identity** and **Homepage hero** panels control, without a code deploy: the logo image (falls back to the drawn monogram + wordmark when unset), brand name, motto (shown in the footer), the hero eyebrow/headline/sub-copy/badge text, a hero background color override, and a hero image carousel (falls back to a styled placeholder when empty). All of it renders live on `/` and in the header/footer immediately after publishing.
 
-## Preorders — admin-set advance, not a customer choice
+## Preorders — "Preorder Now and Our Sales Agent Will Reach Out"
 
-Any size/color becomes a preorder **the moment it sells out**, if you've set a **Preorder ৳** advance for it in that product's editor (per row in the variant table) — blank means it just stays "sold out", any set amount (including `0`) means it keeps selling. This covers two cases with one mechanism: a genuinely pre-launch product (every size starts at 0 stock, tag it **Preorder** in the Tags panel too for the ship-date banner) and an ordinary product where one size just ran out (no tag needed — it flashes a "Preorder — ships in 7–15 days · Free delivery" banner and stays purchasable automatically).
+Any size/color becomes a preorder **the moment it sells out**, if you've turned preorder on for it in that product's editor (the **Preorder ৳** field, per row in the variant table) — blank means it just stays "sold out", any value set (including `0`) means it keeps selling. This covers two cases with one mechanism: a genuinely pre-launch product (every size starts at 0 stock, tag it **Preorder** in the Tags panel too for the ship-date banner) and an ordinary product where one size just ran out (no tag needed — it flashes a "Preorder it and our sales agent will reach out" banner and stays purchasable automatically).
 
-The advance is **per unit**, admin-set, not something the customer picks at checkout — `0` means free to reserve, everything due on delivery; a nonzero advance is still tracked the same way, but (while bKash/card are commented out — see below) it's never captured online: it just becomes part of what's collected as cash on delivery alongside the rest of the order. Admins see and mark the outstanding balance collected from the order-detail page's **Mark COD balance collected** button, and the exact advance-paid/balance-due split shows up on the customer's order confirmation, the SMS, the confirmation email, and the printable receipt.
+No advance payment is ever shown to or charged against the customer — the **Preorder ৳** field is purely an on/off switch (kept under that name so a future bKash/SSLCommerz reactivation has a per-unit amount ready to use again). Every customer-facing surface — the PDP, cart, checkout, order confirmation, SMS, email, and the receipt — shows one fixed line instead: **"Preorder Now and Our Sales Agent Will Reach Out."** At checkout, a cart with a preorder item shows a blinking golden "Preorder" tag beside the "CHECKOUT" heading, a **"Preorder Process"** step with that fixed line, and the submit button reads **PreOrder** instead of Place order.
 
-> **bKash / card checkout is currently commented out.** `CheckoutView.tsx` only ever offers **Cash on delivery**, and `placeOrder()` rejects a direct `BKASH`/`SSLCOMMERZ` submission server-side too — both reversibly, pending re-enabling. COD works for every cart, preorders included, regardless of any configured advance.
+> **bKash / card checkout is currently commented out.** `CheckoutView.tsx` only ever offers **Cash on delivery**, and `placeOrder()` rejects a direct `BKASH`/`SSLCOMMERZ` submission server-side too — both reversibly, pending re-enabling. COD works for every cart, preorders included.
+
+## Delivery charges — store default or per-product override
+
+Shipping is normally one flat rate per zone (Inside/Outside Dhaka) set in `/admin/settings`. Any product can override that from its own editor — **Delivery charge ৳ (Inside/Outside Dhaka)**, blank keeps the store default — since the real cost to ship an item genuinely varies product to product. When a cart mixes several such products, the highest override applies (they ship together as one shipment); `resolveShippingCost()` (`src/lib/shipping.ts`) is the one place both the checkout page and the server's actual charge compute this from, so the number shown always matches what's billed.
 
 ## Order tracking — admin, account, and public
 
@@ -113,7 +117,7 @@ Every confirmed order texts the customer's contact number (the "Phone (delivery 
 
 - **Full paid** (bKash/card, nothing outstanding): order number, item(s), total paid, shipping location.
 - **Cash on delivery**: order number, item(s), total due at delivery, delivery location.
-- **Preorder partial payment**: order number, item(s), advance amount paid online, balance due as COD, delivery location.
+- **Preorder**: order number, item(s), the fixed "Preorder now and our sales agent will reach out" line (no amount), delivery location.
 
 Fires at every point an order actually becomes confirmed: the instant-paid/COD path in `placeOrder`, and both the bKash and SSLCommerz payment-success callbacks. Like email, it's mocked by default (every "send" lands in the `SmsLog` outbox at `/admin/sms`) and switches to real delivery once SSL Wireless credentials are set (see above).
 

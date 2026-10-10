@@ -50,7 +50,7 @@ export function CartPageView() {
                       {line.size} / {line.color}
                     </div>
                     {line.isPreorder && (
-                      <div className="mt-1 text-[12px] font-label tracking-[1px] text-yellow">{preorderLineNote(line)}</div>
+                      <div className="mt-1 text-[12px] font-label tracking-[1px] text-yellow">{preorderLineNote()}</div>
                     )}
                     <div className="mt-2 flex w-[110px] border border-line-2">
                       <button className="w-1/3 py-1 font-impact text-lg" onClick={() => setQty(line.variantId, line.qty - 1)}>

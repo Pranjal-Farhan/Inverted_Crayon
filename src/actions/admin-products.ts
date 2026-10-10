@@ -121,6 +121,9 @@ const productSchema = z.object({
   seoTitle: z.string().optional(),
   seoDescription: z.string().optional(),
   freeDelivery: z.enum(["NONE", "INSIDE_DHAKA", "NATIONWIDE"]).default("NONE"),
+  // Per-product shipping override — null keeps the store's default rate for that zone.
+  deliveryChargeInsideDhaka: z.number().min(0).nullable().default(null),
+  deliveryChargeOutsideDhaka: z.number().min(0).nullable().default(null),
   tagNew: z.boolean().default(false),
   tagPreorder: z.boolean().default(false),
   preorderShipDate: z.string().optional(),
@@ -254,6 +257,8 @@ export async function saveProduct(input: ProductFormInput): Promise<ProductSaveR
           seoTitle: data.seoTitle,
           seoDescription: data.seoDescription,
           freeDelivery: data.freeDelivery,
+          deliveryChargeInsideDhaka: data.deliveryChargeInsideDhaka,
+          deliveryChargeOutsideDhaka: data.deliveryChargeOutsideDhaka,
           sizeGuide: sizeGuideValue,
           // Only stamp publishedAt the first time a product goes live —
           // re-saving an already-active product must not re-trigger "New".
@@ -273,6 +278,8 @@ export async function saveProduct(input: ProductFormInput): Promise<ProductSaveR
           seoTitle: data.seoTitle,
           seoDescription: data.seoDescription,
           freeDelivery: data.freeDelivery,
+          deliveryChargeInsideDhaka: data.deliveryChargeInsideDhaka,
+          deliveryChargeOutsideDhaka: data.deliveryChargeOutsideDhaka,
           sizeGuide: sizeGuideValue,
           publishedAt: data.status === "ACTIVE" ? new Date() : null,
         },

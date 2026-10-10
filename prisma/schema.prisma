@@ -119,6 +119,14 @@ model Product {
   seoTitle       String?
   seoDescription String?
   freeDelivery   FreeDeliveryScope    @default(NONE)
+  // Per-product delivery-charge override — null means "use the store's default shipping rate for
+  // this zone" (store-settings.ts). Delivery cost varies order to order by what's actually being
+  // shipped, so the admin can set each product's own charge instead of one flat site-wide fee.
+  // When a cart mixes several such products, the highest of their overrides applies — see
+  // resolveShippingCost() in src/lib/shipping.ts, the one place both checkout.ts (authoritative)
+  // and CheckoutView.tsx (display) compute this from, so the number shown always matches the charge.
+  deliveryChargeInsideDhaka  Decimal?             @db.Decimal(10, 2)
+  deliveryChargeOutsideDhaka Decimal?             @db.Decimal(10, 2)
   // { columns: string[]; rows: { size: string; values: string[] }[] } — see src/lib/size-guide.ts.
   // Null = this product has no measurements entered yet; the PDP falls back to a generic chart.
   sizeGuide      Json?

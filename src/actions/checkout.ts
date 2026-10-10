@@ -7,6 +7,7 @@ import { formatTaka, toNumber } from "@/lib/money";
 import { generateOrderNumber } from "@/lib/order-number";
 import { validateDiscountCode } from "@/lib/discount";
 import { getShippingRates } from "@/lib/store-settings";
+import { resolveShippingCost } from "@/lib/shipping";
 import { getCustomerSession } from "@/lib/session";
 import { bestSalePrice } from "@/lib/product-view";
 import { sendMail } from "@/lib/mail";
@@ -156,7 +157,20 @@ export async function placeOrder(input: CheckoutInput): Promise<CheckoutResult> 
     }
   }
 
-  const shippingCost = freeShipping ? 0 : rates[data.shippingZone].cost;
+  // Per-product shipping override (admin-products.ts) — a cart mixing several such products ships
+  // as one shipment, so the highest override among the lines applies; falls back to the store's
+  // flat per-zone rate when nothing in the cart overrides it. Same helper CheckoutView.tsx uses
+  // for the number shown pre-payment, so what's shown always matches what's charged.
+  const deliveryOverrides = data.lines.map((line) => {
+    const variant = variants.find((v) => v.id === line.variantId)!;
+    return {
+      deliveryChargeInsideDhaka:
+        variant.product.deliveryChargeInsideDhaka != null ? toNumber(variant.product.deliveryChargeInsideDhaka) : null,
+      deliveryChargeOutsideDhaka:
+        variant.product.deliveryChargeOutsideDhaka != null ? toNumber(variant.product.deliveryChargeOutsideDhaka) : null,
+    };
+  });
+  const shippingCost = freeShipping ? 0 : resolveShippingCost(deliveryOverrides, data.shippingZone, rates);
   const total = Math.max(Math.round((subtotal - discountAmount + shippingCost) * 100) / 100, 0);
 
   // advanceAmount is "how much was actually captured online" — for COD, that's always 0 (nothing
@@ -315,9 +329,11 @@ export async function placeOrder(input: CheckoutInput): Promise<CheckoutResult> 
   await sendMail({
     to: data.email,
     subject: "Order confirmed",
-    body: `Order #${orderNumber} confirmed — ${formatTaka(advanceAmount)}${
-      balanceDue > 0 ? ` now, ${formatTaka(balanceDue)} due on delivery` : ""
-    }. ${hasPreorder ? "Includes a preorder item — we'll email you when it's ready to ship." : "We'll email you when it ships."}`,
+    body: `Order #${orderNumber} confirmed — ${formatTaka(total)} via ${data.paymentMethod}. ${
+      hasPreorder
+        ? "Preorder Now and Our Sales Agent Will Reach Out."
+        : "We'll email you when it ships."
+    }`,
     type: "ORDER_CONFIRMED",
     relatedOrderId: orderNumber,
   }).catch((e) => console.error("order-confirmation email failed", e));
