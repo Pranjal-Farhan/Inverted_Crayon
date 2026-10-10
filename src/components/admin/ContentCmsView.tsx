@@ -11,10 +11,12 @@ import {
   uploadGenderHeroImage,
   saveGenderCards,
   uploadGenderCardImage,
+  saveMarquee,
 } from "@/actions/admin-content";
 import type { HeroData } from "@/lib/hero-defaults";
 import type { GenderHeroData } from "@/lib/gender-hero-defaults";
 import type { GenderCardsData } from "@/lib/gender-cards-defaults";
+import { MARQUEE_MIN_LINES, MARQUEE_MAX_LINES, type MarqueeData } from "@/lib/marquee-defaults";
 import { Panel } from "@/components/admin/Panel";
 
 export function ContentCmsView({
@@ -24,6 +26,7 @@ export function ContentCmsView({
   menHero,
   womenHero,
   genderCards,
+  marquee,
 }: {
   hero: HeroData;
   featuredProductId: string | null;
@@ -31,6 +34,7 @@ export function ContentCmsView({
   menHero: GenderHeroData;
   womenHero: GenderHeroData;
   genderCards: GenderCardsData;
+  marquee: MarqueeData;
 }) {
   const [data, setData] = useState(hero);
   const [productId, setProductId] = useState(featuredProductId ?? "");
@@ -47,6 +51,30 @@ export function ContentCmsView({
   const [genderHeroError, setGenderHeroError] = useState<string | null>(null);
   const menHeroInputRef = useRef<HTMLInputElement>(null);
   const womenHeroInputRef = useRef<HTMLInputElement>(null);
+
+  const [marqueeData, setMarqueeData] = useState(marquee);
+  const [marqueeError, setMarqueeError] = useState<string | null>(null);
+
+  function updateMarqueeLine(i: number, value: string) {
+    setMarqueeData((m) => ({ lines: m.lines.map((l, idx) => (idx === i ? value : l)) }));
+  }
+  function addMarqueeLine() {
+    setMarqueeData((m) => (m.lines.length >= MARQUEE_MAX_LINES ? m : { lines: [...m.lines, ""] }));
+  }
+  function removeMarqueeLine(i: number) {
+    setMarqueeData((m) => (m.lines.length <= MARQUEE_MIN_LINES ? m : { lines: m.lines.filter((_, idx) => idx !== i) }));
+  }
+  function handleSaveMarquee() {
+    setMarqueeError(null);
+    startTransition(async () => {
+      const res = await saveMarquee(marqueeData);
+      if (!res.ok) {
+        setMarqueeError(res.error);
+        return;
+      }
+      flash("marquee");
+    });
+  }
 
   const [genderCardsData, setGenderCardsData] = useState(genderCards);
   const [genderCardUploading, setGenderCardUploading] = useState<"male" | "female" | null>(null);
@@ -300,6 +328,51 @@ export function ContentCmsView({
         >
           {saved === "hero" ? "Published ✓" : "Publish"}
         </button>
+      </Panel>
+
+      <Panel title="Marquee ticker" className="mt-4.5">
+        <p className="mb-3 text-[13px] text-muted">
+          The scrolling headline strip under the header, shown on every page. Enter {MARQUEE_MIN_LINES}–
+          {MARQUEE_MAX_LINES} headlines, any length.
+        </p>
+        <div className="flex flex-col gap-2">
+          {marqueeData.lines.map((line, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <input
+                value={line}
+                onChange={(e) => updateMarqueeLine(i, e.target.value)}
+                placeholder={`Headline ${i + 1}`}
+                className="w-full border border-line-2 bg-ink px-2.5 py-1.5 text-sm"
+              />
+              <button
+                type="button"
+                onClick={() => removeMarqueeLine(i)}
+                disabled={marqueeData.lines.length <= MARQUEE_MIN_LINES}
+                className="shrink-0 border border-line-2 px-2.5 py-1.5 text-[13px] text-error hover:border-error disabled:opacity-30"
+              >
+                Remove
+              </button>
+            </div>
+          ))}
+        </div>
+        <button
+          type="button"
+          onClick={addMarqueeLine}
+          disabled={marqueeData.lines.length >= MARQUEE_MAX_LINES}
+          className="mt-2.5 border border-line-2 px-3 py-1.5 text-[13px] hover:border-lime disabled:opacity-40"
+        >
+          + Add headline
+        </button>
+        {marqueeError && <p className="mt-2 text-[13px] text-error">{marqueeError}</p>}
+        <div className="mt-3">
+          <button
+            disabled={pending}
+            onClick={handleSaveMarquee}
+            className="btn-primary bg-lime px-4 py-2 font-impact text-sm text-ink disabled:opacity-50"
+          >
+            {saved === "marquee" ? "Published ✓" : "Publish"}
+          </button>
+        </div>
       </Panel>
 
       <Panel title="Featured drop" className="mt-4.5">

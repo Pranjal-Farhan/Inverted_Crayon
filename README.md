@@ -87,7 +87,7 @@ Both P1 (launch-critical) and P2 (fast-follow) from the spec's §13 checklist ar
 
 ## Homepage CMS
 
-`/admin/content` → **Brand identity** and **Homepage hero** panels control, without a code deploy: the logo image (falls back to the drawn monogram + wordmark when unset), brand name, motto (shown in the footer), the hero eyebrow/headline/sub-copy/badge text, a hero background color override, and a hero image carousel (falls back to a styled placeholder when empty). All of it renders live on `/` and in the header/footer immediately after publishing.
+`/admin/content` → **Brand identity**, **Marquee ticker**, and **Homepage hero** panels control, without a code deploy: the logo image (falls back to the drawn monogram + wordmark when unset), brand name, motto (shown in the footer), the scrolling strip's 3–5 headlines (any length), the hero eyebrow/headline/sub-copy/badge text, a hero background color override, and a hero image carousel (falls back to a styled placeholder when empty). All of it renders live site-wide (the marquee shows on every page, not just `/`) immediately after publishing.
 
 ## Preorders — "Preorder Now and Our Sales Agent Will Reach Out"
 
@@ -192,7 +192,7 @@ The storefront carries a small ambient/interactive motion layer, all opt-out via
 - **Background wall** — a fixed scatter of the site's own circle/square/X marks (`.site-wall` in `globals.css`, same fixed-div pattern as the film grain, mounted once in the storefront layout, negative `z-index` so it always stays behind content). Tuned to read clearly as a deliberate wallpaper without competing with foreground content.
 - **Crayon scribble accents** — `CrayonScribble.tsx`, a fan of textured crayon strokes (SVG `feTurbulence`/`feDisplacementMap` for the hand-drawn roughness) scattered across open space on the homepage hero, the three homepage section headers, the gender-hub PLP header, and the footer — each a distinct brand color, each `id` unique per page for its SVG filter.
 - **Film grain** — a fixed, near-invisible animated grain overlay (`.site-grain` in `globals.css`, mounted once in the storefront layout).
-- **Marquee ticker** — an endless-scroll brand strip (`MarqueeTicker.tsx`) between the header and page content.
+- **Marquee ticker** — an endless-scroll brand strip (`MarqueeTicker.tsx`) between the header and page content. Its headlines are admin-editable from `/admin/content`'s "Marquee ticker" panel (3–5 lines, any length) instead of hard-coded.
 - **Magnetic buttons** — `Button.tsx` pulls slightly toward the cursor on hover (pointer-move only, skipped on touch) with a lime glow; falls back to the existing CSS hover styles with the pointer away or reduced motion on.
 - **Button hover scribble** — every non-text `Button` draws in a hand-scribbled underline, sized to match the button's own full width exactly (not just centered text), below it on hover/focus. Color is chosen by a deterministic hash of the button's own label (stable, not random-each-render) from the brand palette minus that variant's own dominant color, so it always reads as a distinct accent rather than blending in. Pure CSS `:hover`/`:focus-visible` stroke-dashoffset draw-on, same technique as the nav's scribble-link underline.
 - **Scroll reveal + 3D tilt** — `ProductCard.tsx` fades/slides in as it enters the viewport (`IntersectionObserver`, defaults visible so it never breaks with JS off) and tilts toward the cursor on hover.
