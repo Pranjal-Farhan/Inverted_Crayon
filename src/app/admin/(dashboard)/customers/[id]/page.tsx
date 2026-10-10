@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { formatTaka, toNumber } from "@/lib/money";
 import { Panel } from "@/components/admin/Panel";
 import { StatusBadge } from "@/components/admin/StatusBadge";
+import { Avatar } from "@/components/ui/Avatar";
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -64,11 +65,14 @@ export default async function AdminCustomerDetailPage({ params }: Props) {
 
         <div>
           <Panel title="Profile">
-            <p className="text-sm text-muted">
-              {customer.name ?? "—"} · {customer.email}
-              <br />
-              {customer.phone ?? "No phone on file"}
-            </p>
+            <div className="flex items-center gap-3">
+              <Avatar src={customer.avatarUrl} name={customer.name} email={customer.email} size={48} />
+              <p className="text-sm text-muted">
+                {customer.name ?? "—"} · {customer.email}
+                <br />
+                {customer.phone ?? "No phone on file"}
+              </p>
+            </div>
             <p className="mt-2 text-sm">
               LTV: <span className="text-lime">{formatTaka(ltv)}</span>
             </p>

@@ -37,6 +37,9 @@ export type CustomerSessionPayload = {
   customerId: string;
   email: string;
   name: string | null;
+  // Same staleness tradeoff as `name` above: snapshotted at login, refreshed on next login — not
+  // re-read from the DB on every request, so the Header avatar needs no extra query per page.
+  avatarUrl: string | null;
 };
 
 async function sign(payload: Record<string, unknown>): Promise<string> {

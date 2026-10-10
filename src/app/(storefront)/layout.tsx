@@ -4,6 +4,7 @@ import { CartDrawer } from "@/components/layout/CartDrawer";
 import { ChatBubble } from "@/components/layout/ChatBubble";
 import { MarqueeTicker } from "@/components/layout/MarqueeTicker";
 import { DEFAULT_HERO, type HeroData } from "@/lib/hero-defaults";
+import { DEFAULT_MARQUEE, type MarqueeData } from "@/lib/marquee-defaults";
 import {
   getActiveCampaigns,
   getCachedChatWidgetSettings,
@@ -26,14 +27,16 @@ export default async function StorefrontLayout({ children }: { children: React.R
   // an acceptable, intentional trade: a handful of pages regenerate a bit more often than their
   // own content strictly requires, in exchange for the header's sale indicator never being
   // allowed to drift for longer than 5 minutes anywhere on the site.
-  const [campaigns, heroBlock, chatWidget, categories] = await Promise.all([
+  const [campaigns, heroBlock, marqueeBlock, chatWidget, categories] = await Promise.all([
     getActiveCampaigns(),
     getContentBlock("home_hero"),
+    getContentBlock("home_marquee"),
     getCachedChatWidgetSettings(),
     getNavCategories(),
   ]);
   const saleActive = campaigns.length > 0;
   const hero: HeroData = { ...DEFAULT_HERO, ...(heroBlock?.data as Partial<HeroData> | undefined) };
+  const marquee: MarqueeData = { ...DEFAULT_MARQUEE, ...(marqueeBlock?.data as Partial<MarqueeData> | undefined) };
 
   const whatsappDigits = chatWidget.whatsappNumber.replace(/[^0-9]/g, "");
   const whatsappUrl =
@@ -55,7 +58,7 @@ export default async function StorefrontLayout({ children }: { children: React.R
         logoImageUrl={hero.logoImageUrl}
         categories={categories}
       />
-      <MarqueeTicker />
+      <MarqueeTicker lines={marquee.lines} />
       <main className="wrap flex-1">{children}</main>
       <Footer brandName={hero.brandName} motto={hero.motto} logoImageUrl={hero.logoImageUrl} />
       <CartDrawer />

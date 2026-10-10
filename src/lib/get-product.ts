@@ -1,7 +1,8 @@
 import "server-only";
 import { unstable_cache } from "next/cache";
 import { db } from "@/lib/db";
-import { deriveProductDisplay } from "@/lib/product-view";
+import { bestSalePrice, deriveProductDisplay } from "@/lib/product-view";
+import { toNumber } from "@/lib/money";
 
 export async function getProductForPDP(slug: string) {
   const [product, campaigns] = await Promise.all([
@@ -24,6 +25,18 @@ export async function getProductForPDP(slug: string) {
   const now = new Date();
   const display = deriveProductDisplay(product, campaigns, now);
 
+  // The top price block above already shows display.basePrice/salePrice (the product-level sale
+  // price) — but AddToCartForm's size picker and the cart/checkout that follow it were built from
+  // each variant's own priceOverride-or-basePrice with no sale applied at all, a pre-existing gap
+  // (Campaign-era, not new to this discount feature) where the price shown while *choosing* a
+  // size didn't match the price shown just above it. Same bestSalePrice() checkout.ts now uses as
+  // the authoritative charge, so what's shown here always matches what's actually billed.
+  const variantPrices: Record<string, number> = {};
+  for (const v of product.variants) {
+    const base = v.priceOverride != null ? toNumber(v.priceOverride) : toNumber(product.basePrice);
+    variantPrices[v.id] = bestSalePrice(product, base, campaigns, now) ?? base;
+  }
+
   // "Complete the look" suggests across the whole gender branch (any category), not just more of
   // this exact category — a Unisex product also pulls from both Men and Women, same convention
   // as the gender-scoped PLP catalogs in src/lib/plp.ts.
@@ -36,7 +49,7 @@ export async function getProductForPDP(slug: string) {
   });
   const related = relatedRaw.map((p) => deriveProductDisplay(p, campaigns, now));
 
-  return { product, display, related };
+  return { product, display, related, variantPrices };
 }
 
 /**

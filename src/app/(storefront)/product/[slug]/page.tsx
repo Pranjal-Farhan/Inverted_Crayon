@@ -14,6 +14,7 @@ import { toNumber } from "@/lib/money";
 import { pickAccent } from "@/lib/accent-color";
 import { Crown } from "@/components/brand/Crown";
 import { WishlistButton } from "@/components/storefront/WishlistButton";
+import { DiscountPriceTag } from "@/components/brand/DiscountPriceTag";
 
 type Props = { params: Promise<{ slug: string }> };
 
@@ -41,7 +42,7 @@ export default async function ProductPage({ params }: Props) {
   const { slug } = await params;
   const data = await getCachedProductForPDP(slug);
   if (!data) notFound();
-  const { product, display, related } = data;
+  const { product, display, related, variantPrices } = data;
 
   // Wishlist-saved state and login state are both read client-side (WishlistButton /
   // ReviewPrompt) so this page itself never calls cookies()/getCustomerSession() and can stay
@@ -56,7 +57,7 @@ export default async function ProductPage({ params }: Props) {
     color: v.color,
     colorHex: v.colorHex,
     stockQty: v.stockQty,
-    price: v.priceOverride != null ? toNumber(v.priceOverride) : display.basePrice,
+    price: variantPrices[v.id],
     preorderAdvanceAmount: v.preorderAdvanceAmount != null ? toNumber(v.preorderAdvanceAmount) : null,
   }));
 
@@ -113,10 +114,7 @@ export default async function ProductPage({ params }: Props) {
 
           <div className="price my-1.5 text-[30px]">
             {display.onSale && display.salePrice != null ? (
-              <>
-                <span className="mr-2 text-[20px] text-muted-2 line-through">{formatTaka(display.basePrice)}</span>
-                <span className="text-yellow">{formatTaka(display.salePrice)}</span>
-              </>
+              <DiscountPriceTag id={product.id} basePrice={display.basePrice} salePrice={display.salePrice} size="lg" />
             ) : (
               formatTaka(display.basePrice)
             )}
@@ -145,6 +143,12 @@ export default async function ProductPage({ params }: Props) {
             isPreorder={display.isPreorder}
             preorderShipDate={display.preorderShipDate}
             accentColor={accent.color}
+            deliveryChargeInsideDhaka={
+              product.deliveryChargeInsideDhaka != null ? toNumber(product.deliveryChargeInsideDhaka) : null
+            }
+            deliveryChargeOutsideDhaka={
+              product.deliveryChargeOutsideDhaka != null ? toNumber(product.deliveryChargeOutsideDhaka) : null
+            }
           />
 
           {product.freeDelivery !== "NONE" && (

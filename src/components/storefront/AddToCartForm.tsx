@@ -34,6 +34,8 @@ export function AddToCartForm({
   isPreorder: productIsPreorder,
   preorderShipDate,
   accentColor,
+  deliveryChargeInsideDhaka = null,
+  deliveryChargeOutsideDhaka = null,
 }: {
   productId: string;
   slug: string;
@@ -43,6 +45,9 @@ export function AddToCartForm({
   isPreorder: boolean;
   preorderShipDate: string | null;
   accentColor: string;
+  /** Product-level shipping override, snapshotted onto the cart line — null uses the store default. */
+  deliveryChargeInsideDhaka?: number | null;
+  deliveryChargeOutsideDhaka?: number | null;
 }) {
   const colors = useMemo(() => [...new Set(variants.map((v) => v.color))], [variants]);
   // Every color carries the same fixed, permanent size set (see ProductEditorForm.tsx's
@@ -137,7 +142,7 @@ export function AddToCartForm({
           <span>
             {productIsPreorder && preorderShipDate
               ? `Preorder — ships ${preorderShipDate}.`
-              : "This size just sold out — preorder it and we'll ship in 7–15 days."}{" "}
+              : "This size just sold out — preorder it and our sales agent will reach out."}{" "}
           </span>
         </div>
       )}
@@ -188,6 +193,8 @@ export function AddToCartForm({
                 isPreorder: preorderEligible,
                 preorderShipDate: productIsPreorder ? preorderShipDate : null,
                 preorderAdvanceAmount: preorderEligible ? advancePerUnit : null,
+                deliveryChargeInsideDhaka,
+                deliveryChargeOutsideDhaka,
                 maxQty: preorderEligible ? 99 : variant.stockQty,
               });
             }}
@@ -201,9 +208,7 @@ export function AddToCartForm({
           {formatTaka(variant.price)}
           {" · "}
           {preorderEligible
-            ? advancePerUnit > 0
-              ? `pay ${formatTaka(advancePerUnit)} now, ${formatTaka(variant.price - advancePerUnit)} on delivery`
-              : "pay ৳0 now — reserve it, full amount on delivery"
+            ? "Preorder Now and Our Sales Agent Will Reach Out"
             : variantStock > 0
               ? `${variantStock} in stock`
               : "Out of stock in this size"}

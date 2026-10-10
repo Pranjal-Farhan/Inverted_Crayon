@@ -3,7 +3,9 @@ import { db } from "@/lib/db";
 import { formatTaka, toNumber } from "@/lib/money";
 import { StatusBadge } from "@/components/admin/StatusBadge";
 import { Panel } from "@/components/admin/Panel";
-import type { $Enums } from "@/generated/prisma/client";
+import { AutoSubmitSelect } from "@/components/admin/AutoSubmitSelect";
+import { parseSearchAmount, parseSearchDateRange } from "@/lib/admin-search";
+import type { $Enums, Prisma } from "@/generated/prisma/client";
 
 type Props = {
   searchParams: Promise<{ status?: string; payment?: string; q?: string }>;
@@ -22,7 +24,24 @@ const STATUSES: $Enums.OrderStatus[] = [
 const PAYMENT_METHODS: $Enums.PaymentMethod[] = ["BKASH", "SSLCOMMERZ", "COD"];
 
 export default async function AdminOrdersPage({ searchParams }: Props) {
-  const { status, payment, q } = await searchParams;
+  const { status, payment, q: rawQ } = await searchParams;
+  const q = rawQ?.trim();
+
+  const searchConditions: Prisma.OrderWhereInput[] = [];
+  if (q) {
+    searchConditions.push(
+      { number: { contains: q, mode: "insensitive" } },
+      { email: { contains: q, mode: "insensitive" } },
+      { shippingFullName: { contains: q, mode: "insensitive" } },
+      { phone: { contains: q, mode: "insensitive" } },
+      { shippingPhone: { contains: q, mode: "insensitive" } },
+      { trackingRef: { contains: q, mode: "insensitive" } },
+    );
+    const amount = parseSearchAmount(q);
+    if (amount != null) searchConditions.push({ total: amount });
+    const dateRange = parseSearchDateRange(q);
+    if (dateRange) searchConditions.push({ createdAt: dateRange });
+  }
 
   const orders = await db.order.findMany({
     where: {
@@ -31,9 +50,7 @@ export default async function AdminOrdersPage({ searchParams }: Props) {
         payment && PAYMENT_METHODS.includes(payment as $Enums.PaymentMethod)
           ? (payment as $Enums.PaymentMethod)
           : undefined,
-      OR: q
-        ? [{ number: { contains: q, mode: "insensitive" } }, { email: { contains: q, mode: "insensitive" } }]
-        : undefined,
+      OR: searchConditions.length > 0 ? searchConditions : undefined,
     },
     orderBy: { createdAt: "desc" },
     take: 100,
@@ -45,25 +62,25 @@ export default async function AdminOrdersPage({ searchParams }: Props) {
         <input
           name="q"
           defaultValue={q}
-          placeholder="Search orders…"
-          className="border border-line-2 bg-panel px-2.5 py-2 text-sm outline-none focus:border-lime"
+          placeholder="Search order #, name, email, phone, tracking, amount, date…"
+          className="min-w-[280px] border border-line-2 bg-panel px-2.5 py-2 text-sm outline-none focus:border-lime"
         />
-        <select name="status" defaultValue={status ?? ""} className="border border-line-2 bg-panel px-2.5 py-2 text-sm">
+        <AutoSubmitSelect name="status" defaultValue={status ?? ""} className="border border-line-2 bg-panel px-2.5 py-2 text-sm">
           <option value="">All statuses</option>
           {STATUSES.map((s) => (
             <option key={s} value={s}>
               {s}
             </option>
           ))}
-        </select>
-        <select name="payment" defaultValue={payment ?? ""} className="border border-line-2 bg-panel px-2.5 py-2 text-sm">
+        </AutoSubmitSelect>
+        <AutoSubmitSelect name="payment" defaultValue={payment ?? ""} className="border border-line-2 bg-panel px-2.5 py-2 text-sm">
           <option value="">All payments</option>
           {PAYMENT_METHODS.map((p) => (
             <option key={p} value={p}>
               {p}
             </option>
           ))}
-        </select>
+        </AutoSubmitSelect>
         <button type="submit" className="border border-line-2 px-3 py-2 text-sm hover:border-lime">
           Filter
         </button>
@@ -85,8 +102,13 @@ export default async function AdminOrdersPage({ searchParams }: Props) {
             {orders.map((o) => (
               <tr key={o.id} className="group border-b border-line hover:bg-panel-2">
                 <td className="p-0">
-                  <Link href={`/admin/orders/${o.id}`} className="block px-4 py-2.5 group-hover:text-lime">
+                  <Link href={`/admin/orders/${o.id}`} className="flex items-center gap-1.5 px-4 py-2.5 group-hover:text-lime">
                     {o.number}
+                    {o.isPreorder && (
+                      <span className="font-label inline-block bg-yellow px-1.5 py-0.5 text-[10px] tracking-[0.6px] text-ink">
+                        PREORDER
+                      </span>
+                    )}
                   </Link>
                 </td>
                 <td className="p-0">

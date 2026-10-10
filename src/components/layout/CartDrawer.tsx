@@ -64,7 +64,7 @@ export function CartDrawer() {
                         {line.size} / {line.color}
                       </div>
                       {line.isPreorder && (
-                        <div className="mt-1 text-[12px] font-label tracking-[1px] text-yellow">{preorderLineNote(line)}</div>
+                        <div className="mt-1 text-[12px] font-label tracking-[1px] text-yellow">{preorderLineNote()}</div>
                       )}
                       <div className="mt-2 flex w-[110px] border border-line-2">
                         <button

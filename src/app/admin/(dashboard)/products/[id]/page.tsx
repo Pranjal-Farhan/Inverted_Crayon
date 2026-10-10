@@ -39,8 +39,14 @@ export default async function EditProductPage({ params }: Props) {
         description: product.description,
         categoryId: product.categoryId,
         basePrice: toNumber(product.basePrice),
+        discountType: product.discountType,
+        discountValue: product.discountValue != null ? toNumber(product.discountValue) : null,
         status: product.status,
         freeDelivery: product.freeDelivery,
+        deliveryChargeInsideDhaka:
+          product.deliveryChargeInsideDhaka != null ? toNumber(product.deliveryChargeInsideDhaka) : null,
+        deliveryChargeOutsideDhaka:
+          product.deliveryChargeOutsideDhaka != null ? toNumber(product.deliveryChargeOutsideDhaka) : null,
         seoTitle: product.seoTitle ?? undefined,
         seoDescription: product.seoDescription ?? undefined,
         tagNew: product.tags.some((t) => t.tag.type === "NEW"),

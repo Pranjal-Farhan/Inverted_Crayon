@@ -123,13 +123,21 @@ function GenderCard({
   index: number;
   onClick: () => void;
 }) {
+  const [hovered, setHovered] = useState(false);
   // The mark overlays live on this outer wrapper, not inside the button below — the button needs
   // overflow-hidden to crop its photo/placeholder, which would also clip a mark positioned to bleed
   // past the card's edge (the "drawn around it" look the reference sheets have). Keeping the marks
   // as unclipped siblings, pointer-events: none (globals.css's .ce-mark), lets them hang over the
   // edge while clicks still land on the button beneath.
   return (
-    <div className="ce-card relative" style={{ animationDelay: `${index * 100}ms` }}>
+    <div
+      className="ce-card relative"
+      style={{ animationDelay: `${index * 100}ms` }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      onFocus={() => setHovered(true)}
+      onBlur={() => setHovered(false)}
+    >
       <button
         type="button"
         onClick={onClick}
@@ -166,13 +174,16 @@ function GenderCard({
         delay={160}
         className="ce-mark -left-4 -top-4 z-[5] h-20 w-28 -rotate-6"
       />
+      {/* Hover/focus-only "circle this" mark — roughly covers the whole card, draws on when this
+          card gains the pointer/focus and undraws (same transition, reversed) when it loses it. */}
       <HandDrawnMark
-        id={`gender-${label}-b`}
+        id={`gender-${label}-hover`}
         kind="circle-loop"
         color={accentB}
-        duration={800}
-        delay={460}
-        className="ce-mark -right-4 top-6 z-[5] h-16 w-32 rotate-3"
+        duration={500}
+        visible={hovered}
+        stretch
+        className="ce-mark absolute -inset-5 z-[6] -rotate-2"
       />
     </div>
   );
@@ -180,9 +191,17 @@ function GenderCard({
 
 function CategoryCard({ category, index, onClick }: { category: ExplorerCategory; index: number; onClick: () => void }) {
   const accent = pickAccent(`explorer-${category.gender}-${category.slug}`);
-  const mark = pickMark(`explorer-mark-${category.gender}-${category.slug}`);
+  const hoverColor = pickMark(`explorer-hover-${category.gender}-${category.slug}`, accent.color).color;
+  const [hovered, setHovered] = useState(false);
   return (
-    <div className="ce-card relative" style={{ animationDelay: `${index * 70}ms` }}>
+    <div
+      className="ce-card relative"
+      style={{ animationDelay: `${index * 70}ms` }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      onFocus={() => setHovered(true)}
+      onBlur={() => setHovered(false)}
+    >
       <button
         type="button"
         onClick={onClick}
@@ -204,12 +223,18 @@ function CategoryCard({ category, index, onClick }: { category: ExplorerCategory
         )}
         <span className="font-label relative z-[4] p-3 text-[15px] tracking-[1.2px]">{category.name}</span>
       </button>
+      {/* Hover/focus-only "circle this" mark, and nothing else — centered and rotated 90° so the
+          mark's native landscape oval reorients to the card's own portrait aspect instead of being
+          non-uniformly stretched into it (see HandDrawnMark's `stretch` prop, deliberately unused
+          here). Sized well past 100% so it still reads as roughly covering the whole card once that
+          rotation eats into its effective footprint. */}
       <HandDrawnMark
-        id={`cat-${category.id}`}
-        kind={mark.kind}
-        color={mark.color}
-        delay={120 + index * 60}
-        className="ce-mark -right-3 -top-3 z-[5] h-16 w-20 rotate-6"
+        id={`cat-${category.id}-hover`}
+        kind="circle-loop"
+        color={hoverColor}
+        duration={500}
+        visible={hovered}
+        className="ce-mark left-1/2 top-1/2 z-[6] h-[160%] w-[160%] -translate-x-1/2 -translate-y-1/2 rotate-90"
       />
     </div>
   );
@@ -240,25 +265,40 @@ function ProductsStep({
       </div>
       {products.length > 0 ? (
         <div className="grid grid-cols-2 gap-5 desktop:grid-cols-4">
-          {products.map((p, i) => {
-            const mark = pickMark(`explorer-prod-${p.id}`);
-            return (
-              <div key={p.id} className="ce-card relative" style={{ animationDelay: `${i * 60}ms` }}>
-                <HandDrawnMark
-                  id={`prod-${p.id}`}
-                  kind={mark.kind}
-                  color={mark.color}
-                  delay={100 + i * 70}
-                  className="ce-mark -right-2 -top-2 z-[7] h-14 w-16 rotate-6"
-                />
-                <ProductCard product={p} />
-              </div>
-            );
-          })}
+          {products.map((p, i) => (
+            <ProductTile key={p.id} product={p} index={i} />
+          ))}
         </div>
       ) : (
         <p className="text-muted">No products in this category yet.</p>
       )}
+    </div>
+  );
+}
+
+function ProductTile({ product, index }: { product: ProductDisplay; index: number }) {
+  const hoverColor = pickMark(`explorer-hover-prod-${product.id}`).color;
+  const [hovered, setHovered] = useState(false);
+  return (
+    <div
+      className="ce-card relative"
+      style={{ animationDelay: `${index * 60}ms` }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      onFocus={() => setHovered(true)}
+      onBlur={() => setHovered(false)}
+    >
+      {/* Hover/focus-only "circle this" mark, and nothing else — see the matching comment on
+          CategoryCard for why this rotates 90° instead of stretching to the card's aspect. */}
+      <HandDrawnMark
+        id={`prod-${product.id}-hover`}
+        kind="circle-loop"
+        color={hoverColor}
+        duration={500}
+        visible={hovered}
+        className="ce-mark left-1/2 top-1/2 z-[8] h-[160%] w-[160%] -translate-x-1/2 -translate-y-1/2 rotate-90"
+      />
+      <ProductCard product={product} />
     </div>
   );
 }

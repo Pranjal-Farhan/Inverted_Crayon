@@ -2,8 +2,19 @@
 
 import { useState, useTransition } from "react";
 import { updateProfile } from "@/actions/customer-profile";
+import { Avatar } from "@/components/ui/Avatar";
 
-export function ProfileForm({ name, phone, email }: { name: string; phone: string; email: string }) {
+export function ProfileForm({
+  name,
+  phone,
+  email,
+  avatarUrl,
+}: {
+  name: string;
+  phone: string;
+  email: string;
+  avatarUrl: string | null;
+}) {
   const [n, setN] = useState(name);
   const [p, setP] = useState(phone);
   const [pending, startTransition] = useTransition();
@@ -11,7 +22,10 @@ export function ProfileForm({ name, phone, email }: { name: string; phone: strin
 
   return (
     <div className="border border-line bg-panel p-4.5">
-      <h3 className="font-impact mb-3.5 text-lg uppercase">Profile</h3>
+      <div className="mb-3.5 flex items-center gap-3">
+        <Avatar src={avatarUrl} name={name} email={email} size={56} />
+        <h3 className="font-impact text-lg uppercase">Profile</h3>
+      </div>
       <div className="grid grid-cols-1 gap-2.5 desktop:grid-cols-2">
         <div>
           <label className="font-label mb-1 block text-[12px] tracking-[1px] text-muted">Name</label>

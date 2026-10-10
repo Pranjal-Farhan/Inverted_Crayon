@@ -8,6 +8,7 @@ import { invalidateContent } from "@/lib/invalidate";
 import type { HeroData } from "@/lib/hero-defaults";
 import type { GenderHeroData } from "@/lib/gender-hero-defaults";
 import type { GenderCardsData } from "@/lib/gender-cards-defaults";
+import { MARQUEE_MIN_LINES, MARQUEE_MAX_LINES, type MarqueeData } from "@/lib/marquee-defaults";
 
 async function requireAdmin() {
   const session = await getAdminSession();
@@ -91,6 +92,25 @@ export async function uploadGenderHeroImage(gender: "MEN" | "WOMEN", formData: F
   revalidatePath(`/${gender.toLowerCase()}`);
   revalidatePath("/admin/content");
   return { ok: true, url };
+}
+
+export type SaveMarqueeResult = { ok: true } | { ok: false; error: string };
+
+export async function saveMarquee(data: MarqueeData): Promise<SaveMarqueeResult> {
+  await requireAdmin();
+  const lines = data.lines.map((l) => l.trim()).filter(Boolean);
+  if (lines.length < MARQUEE_MIN_LINES || lines.length > MARQUEE_MAX_LINES) {
+    return { ok: false, error: `Enter between ${MARQUEE_MIN_LINES} and ${MARQUEE_MAX_LINES} headlines.` };
+  }
+  await db.contentBlock.upsert({
+    where: { key: "home_marquee" },
+    update: { data: { lines } },
+    create: { key: "home_marquee", data: { lines } },
+  });
+  revalidatePath("/");
+  revalidatePath("/admin/content");
+  invalidateContent();
+  return { ok: true };
 }
 
 export async function saveGenderCards(data: GenderCardsData) {

@@ -5,6 +5,7 @@ import { formatTaka, toNumber } from "@/lib/money";
 import { Panel } from "@/components/admin/Panel";
 import { OrderTimeline } from "@/components/storefront/OrderTimeline";
 import { OrderActions } from "@/components/admin/OrderActions";
+import { Avatar } from "@/components/ui/Avatar";
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -31,7 +32,15 @@ export default async function AdminOrderDetailPage({ params }: Props) {
         </Link>
       </div>
       <div className="grid grid-cols-1 gap-4.5 desktop:grid-cols-[1.6fr_1fr]">
-        <Panel title={`Order #${order.number}`}>
+        <Panel>
+          <div className="mb-3.5 flex items-center gap-2.5">
+            <h3 className="font-impact text-[17px] uppercase tracking-[0.5px]">Order #{order.number}</h3>
+            {order.isPreorder && (
+              <span className="font-label inline-block bg-yellow px-2.5 py-0.5 text-[11px] tracking-[0.8px] text-ink">
+                PREORDER ITEM
+              </span>
+            )}
+          </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
             <thead>
@@ -69,26 +78,12 @@ export default async function AdminOrderDetailPage({ params }: Props) {
               <span className="font-impact">Order total</span>
               <span className="font-impact">{formatTaka(toNumber(order.total))}</span>
             </div>
-            {order.isPreorder ? (
-              <>
-                <div className="mt-1 flex justify-between text-sm text-muted">
-                  <span>Paid now (advance, {order.paymentMethod})</span>
-                  <span>{formatTaka(toNumber(order.advanceAmount))}</span>
-                </div>
-                {toNumber(order.balanceDue) > 0 && (
-                  <div className="flex justify-between text-sm text-muted">
-                    <span>Due on delivery (cash){order.balanceCollected ? " — collected" : ""}</span>
-                    <span className={order.balanceCollected ? "text-lime" : "text-yellow"}>
-                      {formatTaka(toNumber(order.balanceDue))}
-                    </span>
-                  </div>
-                )}
-              </>
-            ) : (
-              <div className="mt-1 flex justify-between text-sm text-muted">
-                <span>Payment method</span>
-                <span>{order.paymentMethod}</span>
-              </div>
+            <div className="mt-1 flex justify-between text-sm text-muted">
+              <span>Payment method</span>
+              <span>{order.paymentMethod}</span>
+            </div>
+            {order.isPreorder && (
+              <p className="mt-2 text-[13px] text-yellow">Preorder Now and Our Sales Agent Will Reach Out.</p>
             )}
           </div>
           <div className="mt-4">
@@ -113,11 +108,16 @@ export default async function AdminOrderDetailPage({ params }: Props) {
                 GUEST ORDER — NO ACCOUNT
               </span>
             )}
-            <p className="text-sm text-muted">
-              {order.shippingFullName} · {order.email} · {order.phone}
-              <br />
-              {order.shippingLine1}, {order.shippingArea}, {order.shippingDistrict} {order.shippingPostcode}
-            </p>
+            <div className="flex items-center gap-3">
+              {order.customer && (
+                <Avatar src={order.customer.avatarUrl} name={order.shippingFullName} email={order.email} size={40} />
+              )}
+              <p className="text-sm text-muted">
+                {order.shippingFullName} · {order.email} · {order.phone}
+                <br />
+                {order.shippingLine1}, {order.shippingArea}, {order.shippingDistrict} {order.shippingPostcode}
+              </p>
+            </div>
             {order.customer && (
               <Link href={`/admin/customers/${order.customer.id}`} className="text-cyan mt-2 inline-block text-sm">
                 View customer →

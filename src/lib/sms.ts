@@ -45,9 +45,9 @@ function summarizeItems(items: OrderItem[]): string {
 }
 
 /**
- * Preorder takes priority over payment method — even a preorder whose admin-set advance is ৳0
- * (paymentMethod ends up COD, since there's nothing to pay online) still gets the reservation
- * framing, not a plain COD message, since the wait/delivery expectations genuinely differ.
+ * Preorder takes priority over payment method — it always gets the reservation framing, not a
+ * plain COD message, since no advance/balance split is charged or quoted any more: a preorder
+ * order just confirms, and a sales agent follows up on the rest directly.
  */
 export function classifyOrderSmsType(order: Order): $Enums.SmsType {
   if (order.isPreorder) return "ORDER_CONFIRMED_PARTIAL";
@@ -73,13 +73,9 @@ export function composeOrderConfirmationSms(
   }
 
   if (type === "ORDER_CONFIRMED_PARTIAL") {
-    const advance = toNumber(order.advanceAmount);
-    const balance = toNumber(order.balanceDue);
-    const paidPart = advance > 0 ? `Paid ${formatTaka(advance)} advance` : "Nothing to pay now — reserved";
-    const balancePart = balance > 0 ? `${formatTaka(balance)} due cash on delivery` : "fully paid";
     return {
       type,
-      body: `${storeName}: Order #${order.number} confirmed (${items}, preorder). ${paidPart} — ${balancePart}. Shipping to ${location}. Help: ${storePhone}`,
+      body: `${storeName}: Order #${order.number} confirmed (${items}, preorder). Preorder now and our sales agent will reach out. Shipping to ${location}. Help: ${storePhone}`,
     };
   }
 

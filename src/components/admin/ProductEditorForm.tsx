@@ -17,6 +17,7 @@ import { SizeGuideTable } from "@/components/admin/SizeGuideTable";
 import { DEFAULT_SIZE_GUIDE_COLUMNS, type SizeGuideRow, type SizeGuideTemplateOption } from "@/lib/size-guide";
 import { slugify } from "@/lib/slugify";
 import { detectSizingMode, sizesForMode, type SizingMode } from "@/lib/sizes";
+import { formatTaka } from "@/lib/money";
 
 type StagedImage = { file: File; previewUrl: string };
 type Branch = "MEN" | "WOMEN" | "UNISEX";
@@ -185,8 +186,16 @@ export function ProductEditorForm({
     initial?.categoryId ?? categories.find((c) => c.gender === "UNISEX")?.id ?? "",
   );
   const [basePrice, setBasePrice] = useState(initial?.basePrice ?? 1000);
+  const [discountType, setDiscountType] = useState<"PERCENT" | "AMOUNT" | null>(initial?.discountType ?? null);
+  const [discountValue, setDiscountValue] = useState<number | "">(initial?.discountValue ?? "");
   const [status, setStatus] = useState<"DRAFT" | "ACTIVE">(initial?.status ?? "DRAFT");
   const [freeDelivery, setFreeDelivery] = useState<"NONE" | "INSIDE_DHAKA" | "NATIONWIDE">(initial?.freeDelivery ?? "NONE");
+  const [deliveryChargeInsideDhaka, setDeliveryChargeInsideDhaka] = useState<number | "">(
+    initial?.deliveryChargeInsideDhaka ?? "",
+  );
+  const [deliveryChargeOutsideDhaka, setDeliveryChargeOutsideDhaka] = useState<number | "">(
+    initial?.deliveryChargeOutsideDhaka ?? "",
+  );
   const [tagNew, setTagNew] = useState(initial?.tagNew ?? false);
   const [tagPreorder, setTagPreorder] = useState(initial?.tagPreorder ?? false);
   const [preorderShipDate, setPreorderShipDate] = useState(initial?.preorderShipDate ?? "");
@@ -401,8 +410,12 @@ export function ProductEditorForm({
           description,
           categoryId,
           basePrice,
+          discountType,
+          discountValue: discountType && discountValue !== "" ? discountValue : null,
           status,
           freeDelivery,
+          deliveryChargeInsideDhaka: deliveryChargeInsideDhaka === "" ? null : deliveryChargeInsideDhaka,
+          deliveryChargeOutsideDhaka: deliveryChargeOutsideDhaka === "" ? null : deliveryChargeOutsideDhaka,
           tagNew,
           tagPreorder,
           preorderShipDate,
@@ -516,8 +529,10 @@ export function ProductEditorForm({
             <a href="/admin/inventory" className="text-cyan hover:underline">
               Inventory
             </a>
-            . <strong className="text-paper">Preorder ৳</strong> is the advance charged online once this size sells
-            out (blank = just sold out, no preorder offered; 0 = free to reserve, everything due on delivery).
+            . <strong className="text-paper">Preorder ৳</strong> turns on preorder for this size once it sells out
+            (blank = just sold out, no preorder offered; any value, including 0, enables it). The amount itself
+            isn&apos;t shown or charged to the customer — they just see &quot;Preorder Now and Our Sales Agent Will
+            Reach Out&quot; and our sales agent follows up directly.
           </p>
 
           {variants.length === 0 && (
@@ -620,7 +635,7 @@ export function ProductEditorForm({
                               min={0}
                               value={v.preorderAdvanceAmount ?? ""}
                               placeholder="off"
-                              title="Advance due online once this size sells out — blank disables preorder for it, 0 means free to reserve."
+                              title="Enables preorder once this size sells out — blank disables it. Not shown or charged to the customer."
                               onChange={(e) =>
                                 updateVariant(key, { preorderAdvanceAmount: e.target.value ? Number(e.target.value) : null })
                               }
@@ -724,12 +739,74 @@ export function ProductEditorForm({
           <Field label="Base price ৳">
             <input type="number" value={basePrice} onChange={(e) => setBasePrice(Number(e.target.value))} className={inputClass} />
           </Field>
+          <Field label="Discount">
+            <div className="flex gap-2">
+              <select
+                value={discountType ?? ""}
+                onChange={(e) => {
+                  const next = e.target.value === "" ? null : (e.target.value as "PERCENT" | "AMOUNT");
+                  setDiscountType(next);
+                  if (!next) setDiscountValue("");
+                }}
+                className={`${inputClass} max-w-[150px]`}
+              >
+                <option value="">No discount</option>
+                <option value="PERCENT">Percent off</option>
+                <option value="AMOUNT">Amount off ৳</option>
+              </select>
+              {discountType && (
+                <input
+                  type="number"
+                  min={0}
+                  max={discountType === "PERCENT" ? 100 : undefined}
+                  value={discountValue}
+                  onChange={(e) => setDiscountValue(e.target.value === "" ? "" : Number(e.target.value))}
+                  placeholder={discountType === "PERCENT" ? "e.g. 20" : "e.g. 300"}
+                  className={inputClass}
+                />
+              )}
+            </div>
+            {discountType && discountValue !== "" && discountValue > 0 && (
+              <p className="mt-1.5 text-[13px] text-muted">
+                {formatTaka(basePrice)} →{" "}
+                <span className="text-lime">
+                  {formatTaka(
+                    Math.max(
+                      discountType === "PERCENT" ? basePrice * (1 - discountValue / 100) : basePrice - discountValue,
+                      0,
+                    ),
+                  )}
+                </span>{" "}
+                everywhere this product shows, until removed.
+              </p>
+            )}
+          </Field>
           <Field label="Free delivery">
             <select value={freeDelivery} onChange={(e) => setFreeDelivery(e.target.value as typeof freeDelivery)} className={inputClass}>
               <option value="NONE">None</option>
               <option value="INSIDE_DHAKA">Free delivery — Inside Dhaka</option>
               <option value="NATIONWIDE">Free delivery — Nationwide</option>
             </select>
+          </Field>
+          <Field label="Delivery charge ৳ (overrides the store default — leave blank to use it)">
+            <div className="flex gap-2">
+              <input
+                type="number"
+                min={0}
+                value={deliveryChargeInsideDhaka}
+                onChange={(e) => setDeliveryChargeInsideDhaka(e.target.value === "" ? "" : Number(e.target.value))}
+                placeholder="Inside Dhaka — store default"
+                className={inputClass}
+              />
+              <input
+                type="number"
+                min={0}
+                value={deliveryChargeOutsideDhaka}
+                onChange={(e) => setDeliveryChargeOutsideDhaka(e.target.value === "" ? "" : Number(e.target.value))}
+                placeholder="Outside Dhaka — store default"
+                className={inputClass}
+              />
+            </div>
           </Field>
         </Panel>
 
