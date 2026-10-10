@@ -23,7 +23,7 @@ export function googleAuthUrl(params: { redirectUri: string; state: string }): s
 export async function googleExchangeCode(params: {
   code: string;
   redirectUri: string;
-}): Promise<{ id: string; email: string; name: string | null }> {
+}): Promise<{ id: string; email: string; name: string | null; picture: string | null }> {
   const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -47,5 +47,5 @@ export async function googleExchangeCode(params: {
   if (!userRes.ok || !user.sub || !user.email) {
     throw new Error(`Google userinfo failed: ${JSON.stringify(user)}`);
   }
-  return { id: user.sub, email: user.email, name: user.name ?? null };
+  return { id: user.sub, email: user.email, name: user.name ?? null, picture: user.picture ?? null };
 }

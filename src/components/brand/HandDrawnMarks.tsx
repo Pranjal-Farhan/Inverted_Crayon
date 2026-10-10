@@ -22,7 +22,10 @@ export type MarkKind =
   | "circle-loop"
   | "checkmark"
   | "underline"
-  | "bracket";
+  | "bracket"
+  // Not in MARK_KINDS below on purpose — a single strike-through line, used only by
+  // DiscountPriceTag.tsx to cross out an original price, never picked by pickMark's random choice.
+  | "strike";
 
 export const MARK_KINDS: MarkKind[] = [
   "arrow-straight",
@@ -97,6 +100,11 @@ const SHAPES: Record<MarkKind, { viewBox: string; paths: string[]; strokeWidth: 
     paths: ["M34,6 L12,6 L12,64 L34,64"],
     strokeWidth: 6,
   },
+  strike: {
+    viewBox: "0 0 100 40",
+    paths: ["M4,33 Q50,20 96,7"],
+    strokeWidth: 5,
+  },
 };
 
 export function HandDrawnMark({
@@ -106,6 +114,7 @@ export function HandDrawnMark({
   duration = 700,
   delay = 0,
   className,
+  stretch = false,
 }: {
   id: string;
   kind: MarkKind;
@@ -113,6 +122,10 @@ export function HandDrawnMark({
   duration?: number;
   delay?: number;
   className?: string;
+  /** Stretch to fill the container's own aspect ratio instead of preserving the mark's native
+   * one — for a straight line (e.g. "strike") meant to span an arbitrary-width element, where
+   * non-uniform scaling doesn't read as distorted the way it would for a rounder shape. */
+  stretch?: boolean;
 }) {
   // Reduced-motion starts already "drawn" (lazy initializer, not an effect setState) — see
   // ProductCard's tilt effect for the same convention. Everyone else starts undrawn and the
@@ -137,7 +150,7 @@ export function HandDrawnMark({
   const filterId = `hdm-tex-${id}`;
 
   return (
-    <svg viewBox={shape.viewBox} className={className} aria-hidden="true">
+    <svg viewBox={shape.viewBox} preserveAspectRatio={stretch ? "none" : undefined} className={className} aria-hidden="true">
       <defs>
         <filter id={filterId} x="-25%" y="-25%" width="150%" height="150%">
           <feTurbulence

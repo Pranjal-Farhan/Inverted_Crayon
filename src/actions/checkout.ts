@@ -8,7 +8,7 @@ import { generateOrderNumber } from "@/lib/order-number";
 import { validateDiscountCode } from "@/lib/discount";
 import { getShippingRates } from "@/lib/store-settings";
 import { getCustomerSession } from "@/lib/session";
-import { findActiveCampaign } from "@/lib/product-view";
+import { bestSalePrice } from "@/lib/product-view";
 import { sendMail } from "@/lib/mail";
 import { sendOrderConfirmationSms } from "@/lib/sms";
 import { getSiteOrigin } from "@/lib/site-url";
@@ -104,14 +104,8 @@ export async function placeOrder(input: CheckoutInput): Promise<CheckoutResult> 
       return { ok: false, error: `Not enough stock for ${product.title} (${variant.size}/${variant.color}).` };
     }
 
-    const campaign = findActiveCampaign(product, campaigns, now);
     const base = variant.priceOverride != null ? toNumber(variant.priceOverride) : toNumber(product.basePrice);
-    const unitPrice =
-      campaign && (campaign.fixedSalePrice != null || campaign.percentOff != null)
-        ? campaign.fixedSalePrice != null
-          ? toNumber(campaign.fixedSalePrice)
-          : Math.round(base * (1 - toNumber(campaign.percentOff!) / 100) * 100) / 100
-        : base;
+    const unitPrice = bestSalePrice(product, base, campaigns, now) ?? base;
 
     const lineTotal = Math.round(unitPrice * line.qty * 100) / 100;
     subtotal += lineTotal;

@@ -5,6 +5,7 @@ import { formatTaka, toNumber } from "@/lib/money";
 import { Panel } from "@/components/admin/Panel";
 import { OrderTimeline } from "@/components/storefront/OrderTimeline";
 import { OrderActions } from "@/components/admin/OrderActions";
+import { Avatar } from "@/components/ui/Avatar";
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -113,11 +114,16 @@ export default async function AdminOrderDetailPage({ params }: Props) {
                 GUEST ORDER — NO ACCOUNT
               </span>
             )}
-            <p className="text-sm text-muted">
-              {order.shippingFullName} · {order.email} · {order.phone}
-              <br />
-              {order.shippingLine1}, {order.shippingArea}, {order.shippingDistrict} {order.shippingPostcode}
-            </p>
+            <div className="flex items-center gap-3">
+              {order.customer && (
+                <Avatar src={order.customer.avatarUrl} name={order.shippingFullName} email={order.email} size={40} />
+              )}
+              <p className="text-sm text-muted">
+                {order.shippingFullName} · {order.email} · {order.phone}
+                <br />
+                {order.shippingLine1}, {order.shippingArea}, {order.shippingDistrict} {order.shippingPostcode}
+              </p>
+            </div>
             {order.customer && (
               <Link href={`/admin/customers/${order.customer.id}`} className="text-cyan mt-2 inline-block text-sm">
                 View customer →

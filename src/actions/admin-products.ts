@@ -112,6 +112,11 @@ const productSchema = z.object({
   description: z.string().trim().min(1, "Description is required."),
   categoryId: z.string().min(1, "Select a category."),
   basePrice: z.number().positive(),
+  // A standing markdown set directly on the product — null discountType means no discount (the
+  // "off" state); when set, discountValue must be present too (enforced below, since zod can't
+  // express "both or neither" with plain field types).
+  discountType: z.enum(["PERCENT", "AMOUNT"]).nullable().default(null),
+  discountValue: z.number().positive().nullable().default(null),
   status: z.enum(["DRAFT", "ACTIVE"]),
   seoTitle: z.string().optional(),
   seoDescription: z.string().optional(),
@@ -130,6 +135,15 @@ const productSchema = z.object({
     .nullable()
     .default(null),
 }).superRefine((data, ctx) => {
+  if (data.discountType && data.discountValue == null) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["discountValue"], message: "Enter a discount amount or percent." });
+  }
+  if (data.discountType === "PERCENT" && data.discountValue != null && data.discountValue > 100) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["discountValue"], message: "Percent off can't exceed 100." });
+  }
+  if (data.discountType === "AMOUNT" && data.discountValue != null && data.discountValue >= data.basePrice) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["discountValue"], message: "Amount off must be less than the base price." });
+  }
   // Every color must carry exactly the sizes its own mode calls for — no fewer (an incomplete
   // block), no more (a duplicate), and never a mix of apparel sizes and "One Size" under one
   // color. The admin editor can't actually produce anything else (addColor()/backfillColorGroups()
@@ -234,6 +248,8 @@ export async function saveProduct(input: ProductFormInput): Promise<ProductSaveR
           gender: category.gender,
           categoryId: data.categoryId,
           basePrice: data.basePrice,
+          discountType: data.discountType,
+          discountValue: data.discountValue,
           status: data.status,
           seoTitle: data.seoTitle,
           seoDescription: data.seoDescription,
@@ -251,6 +267,8 @@ export async function saveProduct(input: ProductFormInput): Promise<ProductSaveR
           gender: category.gender,
           categoryId: data.categoryId,
           basePrice: data.basePrice,
+          discountType: data.discountType,
+          discountValue: data.discountValue,
           status: data.status,
           seoTitle: data.seoTitle,
           seoDescription: data.seoDescription,

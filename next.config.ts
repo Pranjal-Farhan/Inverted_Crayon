@@ -4,6 +4,9 @@ const nextConfig: NextConfig = {
   images: {
     remotePatterns: [
       { protocol: "https", hostname: "i.ibb.co" },
+      // Google account profile pictures (googleExchangeCode in src/lib/oauth/google.ts) — served
+      // from various lh*.googleusercontent.com hosts, hence the wildcard rather than one hostname.
+      { protocol: "https", hostname: "*.googleusercontent.com" },
     ],
   },
   experimental: {

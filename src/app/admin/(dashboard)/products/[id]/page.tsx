@@ -39,6 +39,8 @@ export default async function EditProductPage({ params }: Props) {
         description: product.description,
         categoryId: product.categoryId,
         basePrice: toNumber(product.basePrice),
+        discountType: product.discountType,
+        discountValue: product.discountValue != null ? toNumber(product.discountValue) : null,
         status: product.status,
         freeDelivery: product.freeDelivery,
         seoTitle: product.seoTitle ?? undefined,

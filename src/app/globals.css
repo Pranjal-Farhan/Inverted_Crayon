@@ -441,3 +441,18 @@ button {
   pointer-events: none;
   z-index: 4;
 }
+
+/* Discount price tag (DiscountPriceTag.tsx) — the new-price badge "stamps" itself on, scaling up
+   to its final -45° tilt rather than just appearing. The rotation is baked into both keyframes
+   (not left to a separate Tailwind rotate class) because a plain CSS animation's `transform`
+   fully replaces the element's transform for its duration — it doesn't compose with another
+   transform source the way Tailwind's own translate/rotate/scale utilities compose with each
+   other. Reduced-motion is covered by this file's blanket neutralization above. */
+@keyframes discount-tag-in {
+  from { opacity: 0; transform: rotate(-45deg) scale(0.5); }
+  to { opacity: 1; transform: rotate(-45deg) scale(1); }
+}
+.discount-tag-badge {
+  transform-origin: center;
+  animation: discount-tag-in 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) 0.3s both;
+}

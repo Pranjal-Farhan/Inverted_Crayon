@@ -74,6 +74,14 @@ enum DiscountType {
   FREE_SHIPPING
 }
 
+// Separate from the coupon-code DiscountType above (which also has FIXED/FREE_SHIPPING, meant
+// for the cart-level Discount model) — this one is just the two shapes a per-product markdown
+// can take: a straight percent off, or a flat amount off.
+enum ProductDiscountType {
+  PERCENT
+  AMOUNT
+}
+
 enum ReviewStatus {
   PENDING
   APPROVED
@@ -95,16 +103,22 @@ enum ReturnStatus {
 // ---------- catalog ----------
 
 model Product {
-  id             String            @id @default(cuid())
-  slug           String            @unique
+  id             String               @id @default(cuid())
+  slug           String               @unique
   title          String
   description    String
   gender         Gender
-  basePrice      Decimal           @db.Decimal(10, 2)
-  status         ProductStatus     @default(DRAFT)
+  basePrice      Decimal              @db.Decimal(10, 2)
+  // A standing markdown set directly on the product (no start/end date — on until an admin
+  // removes it), separate from the category/date-driven Campaign system. Null discountType means
+  // no discount is active; deriveProductDisplay (src/lib/product-view.ts) combines this with any
+  // active Campaign and shows whichever produces the lower price.
+  discountType   ProductDiscountType?
+  discountValue  Decimal?             @db.Decimal(10, 2)
+  status         ProductStatus        @default(DRAFT)
   seoTitle       String?
   seoDescription String?
-  freeDelivery   FreeDeliveryScope @default(NONE)
+  freeDelivery   FreeDeliveryScope    @default(NONE)
   // { columns: string[]; rows: { size: string; values: string[] }[] } — see src/lib/size-guide.ts.
   // Null = this product has no measurements entered yet; the PDP falls back to a generic chart.
   sizeGuide      Json?
@@ -216,6 +230,9 @@ model Customer {
   passwordHash     String?
   name             String?
   phone            String?
+  // Google's OAuth userinfo response already includes this (scope "profile"); set at sign-in for
+  // Google accounts, left null otherwise — the UI falls back to an initial-letter avatar then.
+  avatarUrl        String?
   notes            String?
   segmentTags      String[]  @default([])
   failedLoginCount Int       @default(0)
