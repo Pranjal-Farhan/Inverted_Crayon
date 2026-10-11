@@ -8,6 +8,7 @@ import {
   deleteProduct,
   uploadProductImages,
   deleteProductImage,
+  reorderProductImages,
   type ProductFormInput,
   type ProductImageRow,
 } from "@/actions/admin-products";
@@ -365,6 +366,37 @@ export function ProductEditorForm({
     });
   }
 
+  // The first image (index 0) is the product's cover photo everywhere it's shown as a single
+  // image (ProductCard.tsx, etc.) — reordering is how an admin controls that, not just cosmetic.
+  // `staged` (not-yet-uploaded files, only non-empty before the product's first save) only needs
+  // a client-side swap: array order becomes upload order becomes `position`, in submit() below.
+  // `images` (already-saved rows, real `position` in the DB) also persists the new order
+  // immediately so it isn't lost if the admin navigates away without hitting Save.
+  function moveStaged(index: number, direction: -1 | 1) {
+    setStaged((prev) => {
+      const target = index + direction;
+      if (target < 0 || target >= prev.length) return prev;
+      const copy = [...prev];
+      [copy[index], copy[target]] = [copy[target], copy[index]];
+      return copy;
+    });
+  }
+
+  function moveImage(index: number, direction: -1 | 1) {
+    const target = index + direction;
+    if (target < 0 || target >= images.length) return;
+    const reordered = [...images];
+    [reordered[index], reordered[target]] = [reordered[target], reordered[index]];
+    setImages(reordered);
+    if (initial?.id) {
+      const productId = initial.id;
+      startTransition(async () => {
+        const res = await reorderProductImages(productId, reordered.map((img) => img.id));
+        if (!res.ok) setUploadError(res.error);
+      });
+    }
+  }
+
   function submit() {
     setError(null);
 
@@ -490,9 +522,14 @@ export function ProductEditorForm({
           </div>
           {(images.length > 0 || staged.length > 0) && (
             <div className="mt-3 grid grid-cols-4 gap-2">
-              {images.map((img) => (
+              {images.map((img, i) => (
                 <div key={img.id} className="group relative aspect-square overflow-hidden border border-line">
                   <Image src={img.url} alt={img.alt ?? ""} fill sizes="25vw" quality={90} className="object-cover" />
+                  {i === 0 && (
+                    <span className="absolute left-1 top-1 bg-lime px-1.5 py-0.5 font-label text-[9px] tracking-[1px] text-ink">
+                      COVER
+                    </span>
+                  )}
                   <button
                     type="button"
                     onClick={() => removeImage(img.id)}
@@ -501,11 +538,36 @@ export function ProductEditorForm({
                   >
                     ✕
                   </button>
+                  <div className="absolute inset-x-1 bottom-1 hidden items-center justify-between group-hover:flex">
+                    <button
+                      type="button"
+                      onClick={() => moveImage(i, -1)}
+                      disabled={i === 0}
+                      aria-label="Move earlier"
+                      className="grid h-5 w-5 place-items-center rounded-full bg-ink/80 text-xs text-paper disabled:opacity-30"
+                    >
+                      ‹
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => moveImage(i, 1)}
+                      disabled={i === images.length - 1}
+                      aria-label="Move later"
+                      className="grid h-5 w-5 place-items-center rounded-full bg-ink/80 text-xs text-paper disabled:opacity-30"
+                    >
+                      ›
+                    </button>
+                  </div>
                 </div>
               ))}
               {staged.map((s, i) => (
                 <div key={s.previewUrl} className="group relative aspect-square overflow-hidden border border-dashed border-yellow">
                   <Image src={s.previewUrl} alt="" fill unoptimized sizes="25vw" className="object-cover" />
+                  {images.length === 0 && i === 0 && (
+                    <span className="absolute left-1 top-1 bg-lime px-1.5 py-0.5 font-label text-[9px] tracking-[1px] text-ink">
+                      COVER
+                    </span>
+                  )}
                   <button
                     type="button"
                     onClick={() => removeStaged(i)}
@@ -514,6 +576,26 @@ export function ProductEditorForm({
                   >
                     ✕
                   </button>
+                  <div className="absolute inset-x-1 bottom-1 hidden items-center justify-between group-hover:flex">
+                    <button
+                      type="button"
+                      onClick={() => moveStaged(i, -1)}
+                      disabled={i === 0}
+                      aria-label="Move earlier"
+                      className="grid h-5 w-5 place-items-center rounded-full bg-ink/80 text-xs text-paper disabled:opacity-30"
+                    >
+                      ‹
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => moveStaged(i, 1)}
+                      disabled={i === staged.length - 1}
+                      aria-label="Move later"
+                      className="grid h-5 w-5 place-items-center rounded-full bg-ink/80 text-xs text-paper disabled:opacity-30"
+                    >
+                      ›
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>

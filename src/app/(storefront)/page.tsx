@@ -1,4 +1,5 @@
 import Image from "next/image";
+import Link from "next/link";
 import {
   getActiveCampaigns,
   getCachedProductById,
@@ -144,7 +145,7 @@ export default async function HomePage() {
             <CrayonScribble id="featured-h" color="var(--color-ic-yellow)" className="h-6 w-10 rotate-2 opacity-80" />
           </div>
           <div className="grid grid-cols-1 gap-8 desktop:grid-cols-[1fr_1.2fr] items-center border border-line bg-panel p-6">
-            <div className="relative aspect-square">
+            <Link href={`/product/${featuredProduct.slug}`} className="relative block aspect-square">
               {featuredImage ? (
                 <Image
                   src={featuredImage}
@@ -162,9 +163,11 @@ export default async function HomePage() {
                   className="h-full w-full"
                 />
               )}
-            </div>
+            </Link>
             <div className="min-w-0">
-              <h3 className="font-impact text-3xl uppercase">{featuredProduct.title}</h3>
+              <Link href={`/product/${featuredProduct.slug}`} className="inline-block hover:text-lime">
+                <h3 className="font-impact text-3xl uppercase">{featuredProduct.title}</h3>
+              </Link>
               <AddToCartForm
                 productId={featuredProduct.id}
                 slug={featuredProduct.slug}

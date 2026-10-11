@@ -473,6 +473,35 @@ export async function uploadProductImages(productId: string, formData: FormData)
   return { ok: true, images: created };
 }
 
+/** Persists a drag/arrow-button reorder from the product editor's image grid — `orderedIds` is
+ * the full set of this product's image IDs in their new display order, which becomes the new
+ * `position` (0, 1, 2, …) for each row. The first image (position 0) is what ProductCard.tsx and
+ * every other "primary image" lookup treats as the product's cover photo, so this is also how an
+ * admin changes which photo that is. Rejects a stale/mismatched ID list rather than silently
+ * reordering a subset, since that could leave `position` with gaps or duplicates. */
+export async function reorderProductImages(
+  productId: string,
+  orderedIds: string[],
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  await requireAdmin();
+
+  const product = await db.product.findUnique({ where: { id: productId }, select: { id: true, slug: true } });
+  if (!product) return { ok: false, error: "Product not found." };
+
+  const existing = await db.productImage.findMany({ where: { productId }, select: { id: true } });
+  const existingIds = new Set(existing.map((img) => img.id));
+  if (orderedIds.length !== existing.length || !orderedIds.every((id) => existingIds.has(id))) {
+    return { ok: false, error: "Image list is out of date — refresh and try again." };
+  }
+
+  await db.$transaction(orderedIds.map((id, position) => db.productImage.update({ where: { id }, data: { position } })));
+
+  revalidatePath(`/admin/products/${productId}`);
+  revalidatePath("/admin/products");
+  invalidateProduct({ id: productId, slug: product.slug });
+  return { ok: true };
+}
+
 export async function deleteProductImage(id: string): Promise<{ ok: true } | { ok: false; error: string }> {
   await requireAdmin();
   const image = await db.productImage.findUnique({ where: { id } });
