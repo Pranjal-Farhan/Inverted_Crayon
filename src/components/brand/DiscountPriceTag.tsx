@@ -4,11 +4,8 @@ import { formatTaka } from "@/lib/money";
 /**
  * A discounted price, wherever a product's price renders (ProductCard, PDP, ...) — the original
  * amount gets a single thin red crayon strike through it (HandDrawnMark's "strike" kind, drawn on
- * on mount like every other mark in this family), and the new price sits in plain/normal text on
- * its own small rough crayon patch, tucked over the old price's top-right corner, tilted -45°
- * and sitting slightly above it, roughly the same footprint as the new price text itself (the
- * patch is sized off its own content via absolute inset, not a fixed box, so it fits "৳850" and
- * "৳1,200" equally snugly).
+ * on mount like every other mark in this family), sitting in a row with the new price right next
+ * to it on its own small rough crayon patch — both fully legible side by side, upright (no tilt).
  */
 export function DiscountPriceTag({
   id,
@@ -23,10 +20,10 @@ export function DiscountPriceTag({
   size?: "sm" | "md" | "lg";
 }) {
   const oldSizeClass = size === "lg" ? "text-xl" : size === "sm" ? "text-[13px]" : "text-[15px]";
-  const newSizeClass = size === "lg" ? "text-sm" : "text-[11px]";
+  const newSizeClass = size === "lg" ? "text-xl" : size === "sm" ? "text-[13px]" : "text-[15px]";
 
   return (
-    <span className="discount-tag relative inline-flex">
+    <span className="discount-tag relative inline-flex items-center gap-2.5">
       <span className={`relative inline-block text-muted-2 ${oldSizeClass}`}>
         {formatTaka(basePrice)}
         <HandDrawnMark
@@ -39,7 +36,7 @@ export function DiscountPriceTag({
         />
       </span>
       <span
-        className={`discount-tag-badge absolute -right-2.5 -top-3.5 z-[3] whitespace-nowrap font-sans font-bold text-ink ${newSizeClass}`}
+        className={`discount-tag-badge relative inline-flex items-center whitespace-nowrap font-sans font-bold text-ink ${newSizeClass}`}
       >
         <CrayonPatch id={`${id}-patch`} className="absolute -inset-x-1.5 -inset-y-1 -z-10" />
         <span className="relative px-0.5">{formatTaka(salePrice)}</span>
