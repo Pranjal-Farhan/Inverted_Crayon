@@ -150,6 +150,7 @@ function GenderCard({
               alt=""
               fill
               sizes="(min-width: 1024px) 50vw, 100vw"
+              quality={90}
               className="absolute inset-0 z-[1] h-full w-full object-cover transition duration-300 ease-out group-hover:scale-[1.04]"
             />
             <div className="absolute inset-x-0 bottom-0 z-[2] h-1/2 bg-gradient-to-t from-ink/85 to-transparent" />
@@ -214,6 +215,7 @@ function CategoryCard({ category, index, onClick }: { category: ExplorerCategory
               alt=""
               fill
               sizes="(min-width: 1024px) 25vw, 50vw"
+              quality={90}
               className="absolute inset-0 z-[1] h-full w-full object-cover transition duration-300 ease-out group-hover:scale-[1.05]"
             />
             <div className="absolute inset-x-0 bottom-0 z-[2] h-1/2 bg-gradient-to-t from-ink/80 to-transparent" />

@@ -492,7 +492,7 @@ export function ProductEditorForm({
             <div className="mt-3 grid grid-cols-4 gap-2">
               {images.map((img) => (
                 <div key={img.id} className="group relative aspect-square overflow-hidden border border-line">
-                  <Image src={img.url} alt={img.alt ?? ""} fill sizes="25vw" className="object-cover" />
+                  <Image src={img.url} alt={img.alt ?? ""} fill sizes="25vw" quality={90} className="object-cover" />
                   <button
                     type="button"
                     onClick={() => removeImage(img.id)}

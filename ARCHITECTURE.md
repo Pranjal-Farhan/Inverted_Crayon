@@ -583,6 +583,13 @@ No uploaded file ever touches this app's own disk, so — unlike the local-disk 
 
 Two earlier storage strategies are now purely historical, kept only so old rows already in the database keep rendering: product/site images were briefly written to local disk under `public/uploads/...`, and before that stored as inline Base64 `data:` URLs directly in the `url` column. `deleteProductImage()` still attempts an `fs.unlink` for any remaining `/uploads/...`-prefixed row; `GET /api/products/by-ids` (the recently-viewed/related-product endpoint) strips any `data:`-prefixed URL to an empty string via raw SQL so a giant inline image is never re-shipped to the client. Every new upload goes through ImgBB — there's nothing left to swap for a serverless deploy.
 
+### 12.1 Sharpness — quality and the PDP zoom's `sizes`
+
+Uploads up to 2000x2500px are fully supported end to end: the per-file cap is 8MB (`MAX_IMAGE_BYTES`/`MAX_SITE_IMAGE_BYTES`/`MAX_CATEGORY_IMAGE_BYTES`, well above a typical photo at that resolution) and `next.config.ts`'s default `deviceSizes` (up to 3840) comfortably covers it — neither ever needed changing. Two display-layer bugs did, both since fixed:
+
+- **Quality.** Every `next/image` call site now passes `quality={90}` explicitly (Next's unset default is `75`, a visibly soft re-encode on photographic detail). Next 16 requires any quality value to appear in `next.config.ts`'s `images.qualities` allowlist or it's silently coerced to the closest allowed entry — this app sets `qualities: [75, 90]`.
+- **The PDP gallery's zoom.** `ProductGallery.tsx`'s click-to-zoom applies a `scale-[2.2]` CSS transform to the same `<Image>` that negotiates its fetched resolution via `sizes`. A `sizes` value scoped only to the un-zoomed box (the old `"(min-width: 1024px) 50vw, 100vw"`) has no way to know the image will later be stretched 2.2x, so the browser picked a srcset candidate sized for the small box and that bitmap got visibly upscaled on zoom — exactly the moment a shopper most wants to see fabric/print detail. Scaling the `sizes` value by the same factor (`"(min-width: 1024px) 110vw, 220vw"`) makes the browser request enough real pixels up front for the zoomed view too, capped automatically at the source image's own resolution (`/_next/image` never upscales past the original).
+
 ---
 
 ## 13. Email system

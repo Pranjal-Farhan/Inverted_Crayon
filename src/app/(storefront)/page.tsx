@@ -151,6 +151,7 @@ export default async function HomePage() {
                   alt={featuredProduct.title}
                   fill
                   sizes="(min-width: 1024px) 45vw, 100vw"
+                  quality={90}
                   className="object-cover"
                 />
               ) : (
