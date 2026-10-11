@@ -22,7 +22,6 @@ const STATIC_PATHS = [
   "/contact",
   "/privacy",
   "/terms",
-  "/shipping-returns",
   "/size-guide",
 ];
 

@@ -89,6 +89,12 @@ Both P1 (launch-critical) and P2 (fast-follow) from the spec's §13 checklist ar
 
 `/admin/content` → **Brand identity**, **Marquee ticker**, and **Homepage hero** panels control, without a code deploy: the logo image (falls back to the drawn monogram + wordmark when unset), brand name, motto (shown in the footer), the scrolling strip's 3–5 headlines (any length), the hero eyebrow/headline/sub-copy/badge text, a hero background color override, and a hero image carousel (falls back to a styled placeholder when empty). All of it renders live site-wide (the marquee shows on every page, not just `/`) immediately after publishing.
 
+`/admin/footer` → controls the footer's social icons (Facebook, Instagram, WhatsApp only — leave a URL blank to hide that icon) and the text content of the **Journal**, **FAQ**, **Contact**, **Privacy**, and **Terms** pages (headings, intro copy, and — for FAQ/Privacy/Terms — the full question/section list), each published independently. There is no separate Shipping & Returns page any more; its returns policy now lives inside Terms.
+
+## Homepage "New In" — 20 at a time, load more
+
+The homepage's "New In" grid loads 20 products on first render and a **Load more** button fetches 20 more from `/api/products/new` each time it's pressed, repeating until every active product has been shown (the button then disappears).
+
 ## Preorders — "Preorder Now and Our Sales Agent Will Reach Out"
 
 Any size/color becomes a preorder **the moment it sells out**, if you've turned preorder on for it in that product's editor (the **Preorder ৳** field, per row in the variant table) — blank means it just stays "sold out", any value set (including `0`) means it keeps selling. This covers two cases with one mechanism: a genuinely pre-launch product (every size starts at 0 stock, tag it **Preorder** in the Tags panel too for the ship-date banner) and an ordinary product where one size just ran out (no tag needed — it flashes a "Preorder it and our sales agent will reach out" banner and stays purchasable automatically).

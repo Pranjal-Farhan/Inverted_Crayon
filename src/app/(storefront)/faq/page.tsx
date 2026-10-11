@@ -1,27 +1,26 @@
 import type { Metadata } from "next";
+import { getContentBlock } from "@/lib/public-cache";
+import { DEFAULT_FAQ_PAGE, type FaqPageData } from "@/lib/footer-defaults";
 
 export const metadata: Metadata = { title: "FAQ" };
+export const revalidate = 3600;
 
-const FAQS: [string, string][] = [
-  ["When will my order ship?", "Within 24–48h from Dhaka. Delivery 2–5 days domestic."],
-  ["How do preorders work?", "Preorder now and our sales agent will reach out to confirm the details — no advance payment needed online. Ships on the date shown on the product page."],
-  //["What's your return policy?", "14 days on unworn items with tags. Start a return from your account."],
-  ["Which payments do you accept?", "bKash, cards via SSLCommerz, and cash on delivery."],
-];
+export default async function FAQPage() {
+  const faqBlock = await getContentBlock("faq_page");
+  const faq: FaqPageData = { ...DEFAULT_FAQ_PAGE, ...(faqBlock?.data as Partial<FaqPageData> | undefined) };
 
-export default function FAQPage() {
   return (
     <section className="pg pb-16">
       <div className="pt-8 pb-1.5">
         <h1 className="font-impact text-[clamp(40px,6vw,72px)] uppercase leading-[0.85] tracking-[1px]">
-          Help / <span className="text-lime">FAQ</span>
+          {faq.heading}
         </h1>
       </div>
       <div className="doc max-w-[760px] py-4">
-        {FAQS.map(([q, a]) => (
-          <div key={q} className="border-b border-line py-3.5">
-            <h4 className="font-label text-lg tracking-[1px]">{q}</h4>
-            <p className="mt-1 text-sm text-muted">{a}</p>
+        {faq.items.map((item) => (
+          <div key={item.q} className="border-b border-line py-3.5">
+            <h4 className="font-label text-lg tracking-[1px]">{item.q}</h4>
+            <p className="mt-1 text-sm text-muted">{item.a}</p>
           </div>
         ))}
       </div>

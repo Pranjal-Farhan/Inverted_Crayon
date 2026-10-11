@@ -8,7 +8,6 @@ import {
 } from "@/lib/public-cache";
 import { deriveProductDisplay } from "@/lib/product-view";
 import { PlaceholderFrame } from "@/components/ui/PlaceholderFrame";
-import { ProductCard } from "@/components/ui/ProductCard";
 import { Button } from "@/components/ui/Button";
 import { Crown } from "@/components/brand/Crown";
 import { pickAccent } from "@/lib/accent-color";
@@ -18,6 +17,7 @@ import { HeroCarousel } from "@/components/storefront/HeroCarousel";
 import { ScrambleHeadline } from "@/components/storefront/ScrambleHeadline";
 import { CrayonScribble } from "@/components/brand/CrayonScribble";
 import { CategoryExplorer } from "@/components/storefront/CategoryExplorer";
+import { NewInGrid } from "@/components/storefront/NewInGrid";
 import { DEFAULT_HERO, type HeroData } from "@/lib/hero-defaults";
 import { DEFAULT_GENDER_CARDS, type GenderCardsData } from "@/lib/gender-cards-defaults";
 
@@ -52,7 +52,8 @@ export default async function HomePage() {
   const featuredId = (featuredBlock?.data as { productId?: string } | undefined)?.productId;
   const featuredProduct = featuredId ? await getCachedProductById(featuredId) : newProductsRaw[0];
 
-  const newProducts = newProductsRaw.map((p) => deriveProductDisplay(p, campaigns, now));
+  const newInHasMore = newProductsRaw.length > 20;
+  const newProducts = newProductsRaw.slice(0, 20).map((p) => deriveProductDisplay(p, campaigns, now));
   const featuredDisplay = featuredProduct ? deriveProductDisplay(featuredProduct, campaigns, now) : null;
   const featuredAccent = featuredProduct ? pickAccent(featuredProduct.id) : null;
   const featuredImage = featuredProduct?.images.find((img) => img.url)?.url;
@@ -200,11 +201,7 @@ export default async function HomePage() {
         New In <Crown className="h-6 w-[34px] text-pink" />
         <CrayonScribble id="newin-h" color="var(--color-ic-pink)" className="h-6 w-10 -rotate-2 opacity-80" />
       </div>
-      <div className="grid grid-cols-2 desktop:grid-cols-4 gap-5">
-        {newProducts.map((p) => (
-          <ProductCard key={p.id} product={p} />
-        ))}
-      </div>
+      <NewInGrid initialProducts={newProducts} initialHasMore={newInHasMore} />
 
       {/* TRACK YOUR ORDER */}
       <div className="sh my-8 flex items-center gap-3 font-scrawl text-[30px]">

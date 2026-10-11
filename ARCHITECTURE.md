@@ -280,7 +280,9 @@ Optional, per-account, email/password-login only — OAuth admin sign-in (§7.3)
 
 ### 8.1 Homepage (`page.tsx`)
 
-Reads the `home_hero` `ContentBlock` (falls back to `DEFAULT_HERO` in `src/lib/hero-defaults.ts` when nothing's been published yet), the `home_featured_drop` block, and the first 3 `Category` rows under `gender: "MEN"` (ordered by `position`). Renders, in order: hero (headline/eyebrow/sub-copy, optional uploaded hero-image carousel via `HeroCarousel.tsx` or a placeholder, optional background-color override), a 3-tile "Shop by category" spotlight (real categories from the taxonomy above, each tile's `imageUrl` if set — §5.1 — or a deterministic placeholder shape otherwise; Men is just a stable branch to draw from, not a hard rule — nothing stops a future change picking differently), a featured-product panel, and an 8-product "New In" grid (`deriveProductDisplay` again, §2.3). Every piece of this except the product grid is admin-editable — see §11.
+Reads the `home_hero` `ContentBlock` (falls back to `DEFAULT_HERO` in `src/lib/hero-defaults.ts` when nothing's been published yet), the `home_featured_drop` block, and the first 3 `Category` rows under `gender: "MEN"` (ordered by `position`). Renders, in order: hero (headline/eyebrow/sub-copy, optional uploaded hero-image carousel via `HeroCarousel.tsx` or a placeholder, optional background-color override), a 3-tile "Shop by category" spotlight (real categories from the taxonomy above, each tile's `imageUrl` if set — §5.1 — or a deterministic placeholder shape otherwise; Men is just a stable branch to draw from, not a hard rule — nothing stops a future change picking differently), a featured-product panel, and a paginated "New In" grid (`deriveProductDisplay` again, §2.3). Every piece of this except the product grid is admin-editable — see §11.
+
+**"New In" pagination.** The page itself server-renders the first `NEW_IN_PAGE_SIZE` (20) products (`getHomeNewProducts()` in `public-cache.ts` fetches `take: 21` — one extra row, cheaply turned into a `hasMore` boolean without a separate `COUNT` query); `NewInGrid.tsx` (`"use client"`) owns everything past that. Its "Load more" button calls `GET /api/products/new?skip=<n>`, a plain Route Handler (not `unstable_cache`-wrapped, same reasoning as `/api/products/by-ids` — each `skip` value is a distinct, rarely-repeated query) that runs the same `take: 21`-over-fetch trick starting from `skip`, derives display data with `deriveProductDisplay()`, and returns `{ products, hasMore }` straight through `NextResponse.json()`. The button appends the new page to local state and disappears once `hasMore` comes back `false` — repeatable for as many pages as exist.
 
 ### 8.2 PLP (product listing) — `GenderHub`, `PLPView`, `/men/[category]`, `/women/[category]`, `/new`, `/sale`, `/search`
 
@@ -320,7 +322,9 @@ The blog. Public list/detail pages read `Post` rows with `status: "PUBLISHED"`; 
 
 ### 8.10 Static/legal pages
 
-`/faq`, `/contact` (`ContactForm.tsx` → `sendContactMessage`, writes a `ContactMessage` row + triggers a `CONTACT_RECEIVED` email), `/privacy`, `/terms`, `/shipping-returns`, `/size-guide`, `/lookbook`. Mostly static copy with a handful of dynamic bits (payment methods list, preorder policy text) kept in sync with actual behavior.
+`/faq`, `/contact` (`ContactForm.tsx` → `sendContactMessage`, writes a `ContactMessage` row + triggers a `CONTACT_RECEIVED` email), `/privacy`, `/terms`, `/size-guide`, `/lookbook`. Mostly static copy with a handful of dynamic bits (payment methods list, preorder policy text) kept in sync with actual behavior. (A dedicated `/shipping-returns` page existed earlier in this project's history and has since been removed entirely — its "Returns & refunds" content was folded into `/terms` instead.)
+
+`/journal`'s eyebrow/heading, `/faq`'s heading + question/answer list, `/contact`'s heading/intro/extra-note, and `/privacy`'s and `/terms`' heading/"last updated" line/section list are all admin-editable — see §10.9a.
 
 ### 8.11 Chat bubble (every storefront page)
 
@@ -518,6 +522,18 @@ List with search; detail page shows the customer's order history, segment tags, 
 ### 10.9 Content CMS (`/admin/content`)
 
 `ContentCmsView.tsx` — see §11, its own section given how much it covers.
+
+### 10.9a Footer (`/admin/footer`)
+
+`FooterCmsView.tsx` (backed by `src/actions/admin-footer.ts`, defaults/types in `src/lib/footer-defaults.ts`) — six independently-publishable panels, each its own `ContentBlock` row:
+
+- **Social links panel**: Facebook/Instagram/WhatsApp URL fields only — writes `footer_social` (`FooterSocialData = { facebookUrl, instagramUrl, whatsappUrl }`). A blank field hides that icon in the footer entirely rather than rendering a dead link; there is no TikTok/X option any more (both were dropped from the footer in favor of Facebook and WhatsApp).
+- **Journal page panel**: the eyebrow + heading shown above the post list at `/journal` (post content itself is still full CRUD at §10.11, untouched) — writes `journal_page`.
+- **FAQ page panel**: heading + a dynamic list of question/answer rows (add/remove, same `TwoFieldRows` row-editor convention as the marquee/size-guide editors) — writes `faq_page`. Requires at least one item; `saveFaqPage()` returns `{ ok: false, error }` rather than throwing if the list would publish empty, same pattern as `saveProduct()`'s validation.
+- **Contact page panel**: heading + intro line + the extra note shown under phone/address — writes `contact_page`. The actual email/phone/address still come from Settings → Store info (§10.13); this panel only covers the surrounding copy.
+- **Privacy policy panel** and **Terms of service panel**: heading + "last updated" line + a dynamic list of `{ title, body }` sections (same `TwoFieldRows` editor, reused since both pages share one `LegalPageData` shape) — write `privacy_page`/`terms_page` respectively. Each also requires at least one section before publishing.
+
+All six share `saveBlock()`'s `revalidatePath(path) + revalidatePath("/admin/footer") + invalidateContent()` pattern (§11's note on why `invalidateContent()`'s tag-based `revalidateTag("content")` — not the path-specific revalidate — is what actually makes a footer edit visible on every already-cached storefront page immediately, since the footer renders in `(storefront)/layout.tsx`, not any one page).
 
 ### 10.10 Analytics (`/admin/analytics`)
 
