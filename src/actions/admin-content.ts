@@ -35,7 +35,9 @@ export async function saveFeaturedDrop(productId: string | null) {
   invalidateContent();
 }
 
-const MAX_SITE_IMAGE_BYTES = 8 * 1024 * 1024;
+// Same reasoning as admin-products.ts's MAX_IMAGE_BYTES — 20MB leaves headroom under ImgBB's own
+// ~32MB free-tier cap while covering a high-resolution upload the old 8MB cap used to reject.
+const MAX_SITE_IMAGE_BYTES = 20 * 1024 * 1024;
 const MAX_HERO_IMAGES = 8;
 const REJECTED_IMAGE_TYPES = new Set(["image/svg+xml"]);
 
@@ -49,7 +51,7 @@ export async function uploadLogoImage(formData: FormData): Promise<UploadSiteIma
   await requireAdmin();
   const file = formData.get("file");
   if (!(file instanceof File) || file.size === 0) return { ok: false, error: "No file received." };
-  if (file.size > MAX_SITE_IMAGE_BYTES) return { ok: false, error: "Image must be under 8MB." };
+  if (file.size > MAX_SITE_IMAGE_BYTES) return { ok: false, error: `Image must be under ${MAX_SITE_IMAGE_BYTES / (1024 * 1024)}MB.` };
   if (!file.type.startsWith("image/") || REJECTED_IMAGE_TYPES.has(file.type)) {
     return { ok: false, error: "Only JPG, PNG, WEBP, GIF or AVIF images are accepted." };
   }
@@ -79,7 +81,7 @@ export async function uploadGenderHeroImage(gender: "MEN" | "WOMEN", formData: F
   await requireAdmin();
   const file = formData.get("file");
   if (!(file instanceof File) || file.size === 0) return { ok: false, error: "No file received." };
-  if (file.size > MAX_SITE_IMAGE_BYTES) return { ok: false, error: "Image must be under 8MB." };
+  if (file.size > MAX_SITE_IMAGE_BYTES) return { ok: false, error: `Image must be under ${MAX_SITE_IMAGE_BYTES / (1024 * 1024)}MB.` };
   if (!file.type.startsWith("image/") || REJECTED_IMAGE_TYPES.has(file.type)) {
     return { ok: false, error: "Only JPG, PNG, WEBP, GIF or AVIF images are accepted." };
   }
@@ -129,7 +131,7 @@ export async function uploadGenderCardImage(which: "male" | "female", formData: 
   await requireAdmin();
   const file = formData.get("file");
   if (!(file instanceof File) || file.size === 0) return { ok: false, error: "No file received." };
-  if (file.size > MAX_SITE_IMAGE_BYTES) return { ok: false, error: "Image must be under 8MB." };
+  if (file.size > MAX_SITE_IMAGE_BYTES) return { ok: false, error: `Image must be under ${MAX_SITE_IMAGE_BYTES / (1024 * 1024)}MB.` };
   if (!file.type.startsWith("image/") || REJECTED_IMAGE_TYPES.has(file.type)) {
     return { ok: false, error: "Only JPG, PNG, WEBP, GIF or AVIF images are accepted." };
   }
@@ -144,23 +146,44 @@ export async function uploadGenderCardImage(which: "male" | "female", formData: 
   return { ok: true, url };
 }
 
-export async function uploadHeroImages(formData: FormData): Promise<{ ok: true; urls: string[] } | { ok: false; error: string }> {
+export type UploadHeroImagesResult =
+  | { ok: true; urls: string[]; failed: { name: string; error: string }[] }
+  | { ok: false; error: string };
+
+/** Each file uploads independently, same reasoning as uploadProductImages() — one bad or
+ * oversized file in the batch no longer discards every other file alongside it. */
+export async function uploadHeroImages(formData: FormData): Promise<UploadHeroImagesResult> {
   await requireAdmin();
   const files = formData.getAll("files").filter((f): f is File => f instanceof File && f.size > 0);
   if (files.length === 0) return { ok: false, error: "No files received." };
   if (files.length > MAX_HERO_IMAGES) return { ok: false, error: `Upload at most ${MAX_HERO_IMAGES} images at a time.` };
-  if (files.some((f) => f.size > MAX_SITE_IMAGE_BYTES)) return { ok: false, error: "Each image must be under 8MB." };
 
-  const imageFiles = files.filter((f) => f.type.startsWith("image/") && !REJECTED_IMAGE_TYPES.has(f.type));
-  if (imageFiles.length === 0) return { ok: false, error: "Only JPG, PNG, WEBP, GIF or AVIF images are accepted." };
+  const failed: { name: string; error: string }[] = [];
+  const acceptedFiles: File[] = [];
+  for (const file of files) {
+    if (!file.type.startsWith("image/") || REJECTED_IMAGE_TYPES.has(file.type)) {
+      failed.push({ name: file.name, error: "Only JPG, PNG, WEBP, GIF or AVIF images are accepted." });
+    } else if (file.size > MAX_SITE_IMAGE_BYTES) {
+      failed.push({ name: file.name, error: `Over the ${MAX_SITE_IMAGE_BYTES / (1024 * 1024)}MB per-image limit.` });
+    } else {
+      acceptedFiles.push(file);
+    }
+  }
+  if (acceptedFiles.length === 0) {
+    return { ok: false, error: failed.map((f) => `"${f.name}": ${f.error}`).join(" ") };
+  }
 
-  let urls: string[];
-  try {
-    urls = await Promise.all(imageFiles.map((f) => saveSiteImage(f)));
-  } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : "Image upload failed." };
+  const results = await Promise.allSettled(acceptedFiles.map((f) => saveSiteImage(f)));
+  const urls: string[] = [];
+  results.forEach((result, index) => {
+    if (result.status === "fulfilled") urls.push(result.value);
+    else failed.push({ name: acceptedFiles[index].name, error: result.reason instanceof Error ? result.reason.message : "Upload failed." });
+  });
+
+  if (urls.length === 0) {
+    return { ok: false, error: failed.map((f) => `"${f.name}": ${f.error}`).join(" ") };
   }
   revalidatePath("/");
   revalidatePath("/admin/content");
-  return { ok: true, urls };
+  return { ok: true, urls, failed };
 }

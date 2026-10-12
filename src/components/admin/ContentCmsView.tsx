@@ -170,6 +170,7 @@ export function ContentCmsView({
       return;
     }
     await persist({ ...data, heroImages: [...data.heroImages, ...res.urls] });
+    setUploadError(res.failed.length > 0 ? res.failed.map((f) => `"${f.name}": ${f.error}`).join(" ") : null);
   }
 
   function removeHeroImage(url: string) {

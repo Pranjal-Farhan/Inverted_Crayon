@@ -347,6 +347,12 @@ export function ProductEditorForm({
         return;
       }
       setImages((prev) => [...prev, ...res.images]);
+      // Partial failure — some files in the batch uploaded fine (already added above) and some
+      // didn't, each for its own reason (too big, wrong type, a real upload error). Naming them
+      // means the admin only has to retry the ones that actually failed, not the whole batch.
+      setUploadError(
+        res.failed.length > 0 ? res.failed.map((f) => `"${f.name}": ${f.error}`).join(" ") : null,
+      );
     } else {
       setStaged((prev) => [...prev, ...files.map((file) => ({ file, previewUrl: URL.createObjectURL(file) }))]);
     }
@@ -469,6 +475,13 @@ export function ProductEditorForm({
             // real product instead of creating a duplicate; this just flags the image upload
             // specifically needs retrying from that page.
             setError(`Product saved, but image upload failed: ${uploadRes.error}`);
+          } else if (uploadRes.failed.length > 0) {
+            // Some staged images made it, some didn't — the ones that failed would otherwise
+            // vanish silently (the product still saves and redirects below), so name them.
+            setError(
+              `Product saved. ${uploadRes.failed.length} of ${staged.length} images didn't upload — retry from this page: ` +
+                uploadRes.failed.map((f) => `"${f.name}": ${f.error}`).join(" "),
+            );
           }
         }
         router.push(`/admin/products/${res.id}`);
