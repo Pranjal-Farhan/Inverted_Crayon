@@ -119,6 +119,7 @@ export function HandDrawnMark({
   loop = false,
   loopHoldMs = 1800,
   loopGapMs = 450,
+  strokeWidth,
 }: {
   id: string;
   kind: MarkKind;
@@ -126,6 +127,9 @@ export function HandDrawnMark({
   duration?: number;
   delay?: number;
   className?: string;
+  /** Overrides the shape's own default stroke width (see SHAPES above) — for a mark that needs to
+   * read bolder/thinner than its kind's usual weight at a given size. */
+  strokeWidth?: number;
   /** Controlled mode — when set, this (not the auto-play-on-mount effect below) drives the
    * stroke-dashoffset, so the same draw transition runs in reverse ("undraws") whenever it flips
    * back to false. Hover-triggered marks pass their own hover boolean here. Reduced-motion still
@@ -218,7 +222,7 @@ export function HandDrawnMark({
         filter={`url(#${filterId})`}
         fill="none"
         stroke={color}
-        strokeWidth={shape.strokeWidth}
+        strokeWidth={strokeWidth ?? shape.strokeWidth}
         strokeLinecap="round"
         strokeLinejoin="round"
       >

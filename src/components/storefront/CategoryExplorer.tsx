@@ -166,10 +166,13 @@ function GenderCard({
         id={`gender-${label}-a`}
         kind="arrow-curve"
         color={accentA}
-        duration={800}
-        delay={160}
+        duration={450}
+        delay={90}
+        strokeWidth={9}
         loop
-        className="ce-mark -left-4 -top-4 z-[5] h-20 w-28 -rotate-6"
+        loopHoldMs={900}
+        loopGapMs={250}
+        className="ce-mark -left-6 -top-6 z-[5] h-28 w-40 -rotate-6"
       />
       {/* Hover/focus-only "circle this" mark — roughly covers the whole card, draws on when this
           card gains the pointer/focus and undraws (same transition, reversed) when it loses it. */}
