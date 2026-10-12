@@ -547,11 +547,11 @@ export function ProductEditorForm({
                     type="button"
                     onClick={() => removeImage(img.id)}
                     aria-label="Remove image"
-                    className="absolute right-1 top-1 hidden h-5 w-5 items-center justify-center rounded-full bg-ink/80 text-xs text-paper group-hover:flex"
+                    className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-ink/80 text-xs text-paper"
                   >
                     ✕
                   </button>
-                  <div className="absolute inset-x-1 bottom-1 hidden items-center justify-between group-hover:flex">
+                  <div className="absolute inset-x-1 bottom-1 flex items-center justify-between">
                     <button
                       type="button"
                       onClick={() => moveImage(i, -1)}
@@ -585,11 +585,11 @@ export function ProductEditorForm({
                     type="button"
                     onClick={() => removeStaged(i)}
                     aria-label="Remove image"
-                    className="absolute right-1 top-1 hidden h-5 w-5 items-center justify-center rounded-full bg-ink/80 text-xs text-paper group-hover:flex"
+                    className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-ink/80 text-xs text-paper"
                   >
                     ✕
                   </button>
-                  <div className="absolute inset-x-1 bottom-1 hidden items-center justify-between group-hover:flex">
+                  <div className="absolute inset-x-1 bottom-1 flex items-center justify-between">
                     <button
                       type="button"
                       onClick={() => moveStaged(i, -1)}

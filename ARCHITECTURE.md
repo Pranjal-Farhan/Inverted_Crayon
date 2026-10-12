@@ -604,7 +604,7 @@ Verified against a local mock ImgBB server standing in for the real API (no `IMG
 
 ### 12.3 Reordering
 
-Each thumbnail in the product editor's image grid (§10.3) gets ‹/› buttons — hover-revealed, same convention as the existing ✕ remove button — to swap it with its neighbor, disabled at the first/last position. The first image carries a "COVER" badge, since it's what `ProductCard.tsx` and every other single-image product lookup treats as the product's photo, so this is also how an admin changes which photo that is.
+Each thumbnail in the product editor's image grid (§10.3) gets ‹/› buttons, plus the existing ✕ remove button, to swap it with its neighbor, disabled at the first/last position. All three are always visible, not hover-revealed — an earlier version gated them behind `group-hover:flex` (matching the ✕ button's own original convention), which meant they rendered but were invisible without hovering precisely over a thumbnail first: no persistent affordance that reordering was even possible, and unreachable at all on a touchscreen with no hover state. Fixed by dropping the `hidden`/`group-hover:flex` pair entirely. The first image carries a "COVER" badge, since it's what `ProductCard.tsx` and every other single-image product lookup treats as the product's photo, so this is also how an admin changes which photo that is.
 
 Two different mechanisms back it, depending on whether the images are already-uploaded rows or not:
 
