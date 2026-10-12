@@ -1,11 +1,10 @@
 import Image from "next/image";
-import Link from "next/link";
 import { getActiveCampaigns, getContentBlock, getGenderCategories, getGenderHubProducts } from "@/lib/public-cache";
 import { deriveProductDisplay } from "@/lib/product-view";
 import { PlaceholderFrame } from "@/components/ui/PlaceholderFrame";
 import { ProductCard } from "@/components/ui/ProductCard";
 import { Button } from "@/components/ui/Button";
-import { pickAccent } from "@/lib/accent-color";
+import { GenderCategoryTile } from "@/components/storefront/GenderCategoryTile";
 import { CrayonScribble } from "@/components/brand/CrayonScribble";
 import { DEFAULT_GENDER_HERO, type GenderHeroData } from "@/lib/gender-hero-defaults";
 
@@ -51,27 +50,15 @@ export async function GenderHub({ gender }: { gender: "MEN" | "WOMEN" }) {
 
       {categories.length > 0 ? (
         <div className="grid grid-cols-2 items-start desktop:grid-cols-4 gap-3.5">
-          {categories.map((c) => {
-            const accent = pickAccent(`${path}-${c.slug}`);
-            return (
-              <Link
-                key={c.slug}
-                href={`/${path}/${c.slug}`}
-                prefetch={false}
-                className="relative flex aspect-[1/1.2] items-end overflow-hidden border border-line bg-ink"
-              >
-                {c.imageUrl ? (
-                  <>
-                    <Image src={c.imageUrl} alt="" fill sizes="(min-width: 1024px) 25vw, 50vw" quality={90} className="absolute inset-0 h-full w-full object-cover" />
-                    <div className="absolute inset-x-0 bottom-0 z-[2] h-1/2 bg-gradient-to-t from-ink/80 to-transparent" />
-                  </>
-                ) : (
-                  <PlaceholderFrame accentColor={accent.color} shape={accent.shape} stamp={false} className="absolute inset-0 h-full w-full opacity-70" />
-                )}
-                <span className="relative z-[3] p-3 font-label text-lg tracking-[1.4px]">{c.name}</span>
-              </Link>
-            );
-          })}
+          {categories.map((c) => (
+            <GenderCategoryTile
+              key={c.slug}
+              href={`/${path}/${c.slug}`}
+              name={c.name}
+              imageUrl={c.imageUrl}
+              accentSeed={`${path}-${c.slug}`}
+            />
+          ))}
         </div>
       ) : (
         <p className="text-muted">No categories yet — add some from the admin panel.</p>

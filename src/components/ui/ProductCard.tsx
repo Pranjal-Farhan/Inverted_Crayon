@@ -8,16 +8,21 @@ import { TagPill } from "@/components/ui/TagPill";
 import { formatTaka } from "@/lib/money";
 import { pickAccent } from "@/lib/accent-color";
 import { DiscountPriceTag } from "@/components/brand/DiscountPriceTag";
+import { HandDrawnMark, pickMark, useMarkHover } from "@/components/brand/HandDrawnMarks";
 import type { ProductDisplay } from "@/lib/product-view";
 
 /** Product card — one component, every surface (§05). */
 export function ProductCard({ product }: { product: ProductDisplay }) {
   const accent = pickAccent(product.id);
+  const hoverColor = pickMark(product.id, accent.color).color;
   const href = `/product/${product.slug}`;
   const primaryImage = product.images.find((img) => img.url)?.url;
 
   const cardRef = useRef<HTMLAnchorElement>(null);
   const frameRef = useRef<HTMLDivElement>(null);
+  // Mouse/focus for desktop, touch for phones — same hover-driven circle mark either way
+  // (see useMarkHover's doc comment in HandDrawnMarks.tsx).
+  const { hovered, handlers } = useMarkHover<HTMLAnchorElement>();
   // Visible by default — matches the server-rendered markup and keeps the card usable with
   // no JS. The effect below only hides it, briefly, if it's below the fold at mount time.
   const [revealed, setRevealed] = useState(true);
@@ -74,58 +79,82 @@ export function ProductCard({ product }: { product: ProductDisplay }) {
               : null;
 
   return (
-    <Link ref={cardRef} href={href} className={`card group block reveal-card ${revealed ? "in" : ""}`}>
-      <div
-        ref={frameRef}
-        onPointerMove={onFrameMove}
-        onPointerLeave={onFrameLeave}
-        style={{ transformStyle: "preserve-3d", transition: "transform .15s ease-out" }}
-        className="relative mb-2.5 aspect-[1/1.16] overflow-hidden"
-      >
-        {primaryImage ? (
-          <>
-            <Image
-              src={primaryImage}
-              alt={product.title}
-              fill
-              sizes="(min-width: 1024px) 25vw, 50vw"
-              quality={90}
-              className={`absolute inset-0 h-full w-full object-cover transition duration-300 ease-out ${!product.soldOut
+    <Link
+      ref={cardRef}
+      href={href}
+      className={`card group block reveal-card ${revealed ? "in" : ""}`}
+      {...handlers}
+    >
+      {/* This outer wrapper (not the frame below) carries the aspect ratio and has no
+          overflow-hidden, so the hover/touch circle mark — a sibling of the frame, not a child —
+          can bleed slightly past the photo's edge instead of being clipped by the frame's own
+          overflow-hidden (needed for the image crop + hover zoom). Keeping the mark scoped to
+          this wrapper, rather than the whole card (image + caption text below), is what keeps it
+          centered on the photo instead of sitting low over the caption too. */}
+      <div className="relative mb-2.5 aspect-[1/1.16]">
+        <div
+          ref={frameRef}
+          onPointerMove={onFrameMove}
+          onPointerLeave={onFrameLeave}
+          style={{ transformStyle: "preserve-3d", transition: "transform .15s ease-out" }}
+          className="relative h-full w-full overflow-hidden"
+        >
+          {primaryImage ? (
+            <>
+              <Image
+                src={primaryImage}
+                alt={product.title}
+                fill
+                sizes="(min-width: 1024px) 25vw, 50vw"
+                quality={90}
+                className={`absolute inset-0 h-full w-full object-cover transition duration-300 ease-out ${!product.soldOut
+                    ? "group-hover:scale-[1.05] group-hover:outline group-hover:outline-2 group-hover:outline-offset-[-2px] group-hover:outline-lime"
+                    : ""
+                  }`}
+              />
+              {product.soldOut && (
+                <div className="absolute inset-0 z-[5] grid place-items-center bg-[rgba(8,8,9,.55)]">
+                  <span className="font-impact text-[22px] tracking-[2px] text-paper">
+                    {soldOutButPreorderable ? "PREORDER" : "SOLD OUT"}
+                  </span>
+                </div>
+              )}
+            </>
+          ) : (
+            <PlaceholderFrame
+              accentColor={accent.color}
+              shape={accent.shape}
+              label={product.title.toUpperCase()}
+              soldOut={product.soldOut}
+              soldOutLabel={soldOutButPreorderable ? "PREORDER" : "SOLD OUT"}
+              className={`absolute inset-0 h-full w-full transition duration-300 ease-out ${!product.soldOut
                   ? "group-hover:scale-[1.05] group-hover:outline group-hover:outline-2 group-hover:outline-offset-[-2px] group-hover:outline-lime"
                   : ""
                 }`}
             />
-            {product.soldOut && (
-              <div className="absolute inset-0 z-[5] grid place-items-center bg-[rgba(8,8,9,.55)]">
-                <span className="font-impact text-[22px] tracking-[2px] text-paper">
-                  {soldOutButPreorderable ? "PREORDER" : "SOLD OUT"}
-                </span>
-              </div>
-            )}
-          </>
-        ) : (
-          <PlaceholderFrame
-            accentColor={accent.color}
-            shape={accent.shape}
-            label={product.title.toUpperCase()}
-            soldOut={product.soldOut}
-            soldOutLabel={soldOutButPreorderable ? "PREORDER" : "SOLD OUT"}
-            className={`absolute inset-0 h-full w-full transition duration-300 ease-out ${!product.soldOut
-                ? "group-hover:scale-[1.05] group-hover:outline group-hover:outline-2 group-hover:outline-offset-[-2px] group-hover:outline-lime"
-                : ""
-              }`}
-          />
-        )}
-        {primaryTag && (
-          <span className="absolute left-2 top-2 z-[4] -rotate-2">
-            <TagPill kind={primaryTag} />
-          </span>
-        )}
-        {product.soldOut && (
-          <span className="absolute inset-x-0 bottom-3 z-[6] hidden text-center font-label text-xs tracking-[1px] text-paper group-hover:block">
-            {soldOutButPreorderable ? "Preorder →" : "Notify me →"}
-          </span>
-        )}
+          )}
+          {primaryTag && (
+            <span className="absolute left-2 top-2 z-[4] -rotate-2">
+              <TagPill kind={primaryTag} />
+            </span>
+          )}
+          {product.soldOut && (
+            <span className="absolute inset-x-0 bottom-3 z-[6] hidden text-center font-label text-xs tracking-[1px] text-paper group-hover:block">
+              {soldOutButPreorderable ? "Preorder →" : "Notify me →"}
+            </span>
+          )}
+        </div>
+        {/* Hover/focus/touch "circle this" mark — rotated 90° so the mark's native landscape oval
+            reorients to the frame's own aspect instead of being non-uniformly stretched into it
+            (same convention as CategoryExplorer's CategoryCard/ProductTile marks). */}
+        <HandDrawnMark
+          id={`prodcard-${product.id}-hover`}
+          kind="circle-loop"
+          color={hoverColor}
+          duration={500}
+          visible={hovered}
+          className="pointer-events-none absolute left-1/2 top-1/2 z-[7] h-[160%] w-[160%] -translate-x-1/2 -translate-y-1/2 rotate-90"
+        />
       </div>
       <div className="font-label text-[11px] tracking-[1px] text-muted">{product.categoryName}</div>
       <h4 className="text-[14px] font-medium">{product.title}</h4>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type TouchEvent } from "react";
 
 /**
  * Hand-drawn crayon/chalk annotation marks — arrows, circles, checkmarks, brackets — styled after
@@ -116,6 +116,9 @@ export function HandDrawnMark({
   className,
   visible,
   stretch = false,
+  loop = false,
+  loopHoldMs = 1800,
+  loopGapMs = 450,
 }: {
   id: string;
   kind: MarkKind;
@@ -134,6 +137,13 @@ export function HandDrawnMark({
    * line (e.g. "strike") meant to span an arbitrary-width element, where non-uniform scaling
    * doesn't read as distorted the way it would for a rounder shape. */
   stretch?: boolean;
+  /** Uncontrolled-mode only (ignored when `visible` is set): instead of drawing once on mount and
+   * staying drawn, keep drawing and undrawing forever — draw, hold for `loopHoldMs`, undraw, hold
+   * undrawn for `loopGapMs`, repeat. Reduced-motion still wins: the mark just sits fully drawn with
+   * no cycling, same as the non-loop case. */
+  loop?: boolean;
+  loopHoldMs?: number;
+  loopGapMs?: number;
 }) {
   // Reduced-motion starts already "drawn" (lazy initializer, not an effect setState) — see
   // ProductCard's tilt effect for the same convention. Everyone else starts undrawn and the
@@ -144,7 +154,9 @@ export function HandDrawnMark({
   );
 
   useEffect(() => {
-    if (visible !== undefined) return; // controlled — caller's `visible` drives this instead
+    if (visible !== undefined || loop) return; // controlled, or handled by the loop effect below
+    // Reduced-motion is already drawn via the lazy initializer above — nothing left to animate.
+    if (typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     if (autoPlaying) return;
     let raf2 = 0;
     const raf1 = requestAnimationFrame(() => {
@@ -154,7 +166,35 @@ export function HandDrawnMark({
       cancelAnimationFrame(raf1);
       cancelAnimationFrame(raf2);
     };
-  }, [visible, autoPlaying]);
+  }, [visible, autoPlaying, loop]);
+
+  useEffect(() => {
+    if (visible !== undefined || !loop) return; // controlled, or one-shot — handled above
+    if (typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    // Looping mode: draw, hold, undraw, hold, repeat — forever, until unmounted. The path's own
+    // opacity only snaps to 0 once its undraw transition actually finishes (it's delayed by
+    // `duration` so the stroke visibly retracts before the dot disappears, per the path-rendering
+    // comment below) — so the "undrawn" hold has to start counting only after that transition
+    // would have completed, or the next redraw interrupts it and the mark never visibly vanishes.
+    // Deliberately NOT depending on `autoPlaying`: this effect drives it over time through its own
+    // setTimeout chain, independent of re-renders — adding it as a dependency would tear this
+    // effect down and restart it (back to step one, "draw now") on every single tick.
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout>;
+    function schedule(next: boolean, afterMs: number) {
+      timer = setTimeout(() => {
+        if (cancelled) return;
+        setAutoPlaying(next);
+        schedule(!next, next ? loopHoldMs : loopGapMs + duration + delay + 200);
+      }, afterMs);
+    }
+    const raf = requestAnimationFrame(() => schedule(true, 0));
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(raf);
+      clearTimeout(timer);
+    };
+  }, [visible, loop, loopHoldMs, loopGapMs, duration, delay]);
 
   const playing = visible !== undefined ? visible : autoPlaying;
   const shape = SHAPES[kind];
@@ -209,4 +249,35 @@ export function HandDrawnMark({
       </g>
     </svg>
   );
+}
+
+/**
+ * Shared hover/focus/touch state for a "circle this" mark — mouse hover and keyboard focus for
+ * desktop, plus touch for phones (touchstart draws it, touchend/touchcancel undraws it, and
+ * touchmove undraws it the moment the finger slides outside the element it started on, since touch
+ * targets don't re-fire enter/leave the way a mouse pointer does). Spread `handlers` onto whichever
+ * element should count as "touching/hovering this card," and drive a sibling <HandDrawnMark>'s
+ * `visible` prop from `hovered`.
+ */
+export function useMarkHover<T extends HTMLElement = HTMLElement>() {
+  const [hovered, setHovered] = useState(false);
+  return {
+    hovered,
+    handlers: {
+      onMouseEnter: () => setHovered(true),
+      onMouseLeave: () => setHovered(false),
+      onFocus: () => setHovered(true),
+      onBlur: () => setHovered(false),
+      onTouchStart: () => setHovered(true),
+      onTouchEnd: () => setHovered(false),
+      onTouchCancel: () => setHovered(false),
+      onTouchMove: (e: TouchEvent<T>) => {
+        const touch = e.touches[0];
+        if (!touch) return;
+        const r = e.currentTarget.getBoundingClientRect();
+        const inside = touch.clientX >= r.left && touch.clientX <= r.right && touch.clientY >= r.top && touch.clientY <= r.bottom;
+        if (!inside) setHovered(false);
+      },
+    },
+  };
 }
