@@ -17,10 +17,14 @@ type CommonProps = {
   arrow?: boolean;
   loading?: boolean;
   className?: string;
+  // Declared explicitly (and omitted below from the inherited button attributes) so it types
+  // against both the <button> and the href branch's <Link> (an <a>) — the two target types
+  // ButtonHTMLAttributes' own onClick wouldn't accept together.
+  onClick?: (e: React.MouseEvent<HTMLButtonElement | HTMLAnchorElement>) => void;
   children: ReactNode;
 };
 
-type ButtonProps = CommonProps & Omit<ButtonHTMLAttributes<HTMLButtonElement>, "className" | "children">;
+type ButtonProps = CommonProps & Omit<ButtonHTMLAttributes<HTMLButtonElement>, "className" | "children" | "onClick">;
 
 const base =
   "inline-flex items-center justify-center gap-3 font-impact tracking-[0.6px] transition disabled:opacity-40 disabled:pointer-events-none";
@@ -91,6 +95,7 @@ export function Button({
   arrow = variant !== "text",
   loading = false,
   className = "",
+  onClick,
   children,
   ...rest
 }: ButtonProps) {
@@ -130,6 +135,7 @@ export function Button({
         href={href}
         prefetch={prefetch}
         className={classes}
+        onClick={onClick}
         onPointerMove={magnetic ? onPointerMove : undefined}
         onPointerLeave={magnetic ? onPointerLeave : undefined}
       >
@@ -144,6 +150,7 @@ export function Button({
       ref={ref as React.Ref<HTMLButtonElement>}
       className={classes}
       disabled={loading || rest.disabled}
+      onClick={onClick}
       onPointerMove={magnetic ? onPointerMove : undefined}
       onPointerLeave={magnetic ? onPointerLeave : undefined}
       {...rest}

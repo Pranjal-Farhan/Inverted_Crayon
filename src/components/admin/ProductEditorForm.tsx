@@ -8,6 +8,7 @@ import {
   deleteProduct,
   uploadProductImages,
   deleteProductImage,
+  reorderProductImages,
   type ProductFormInput,
   type ProductImageRow,
 } from "@/actions/admin-products";
@@ -17,6 +18,7 @@ import { SizeGuideTable } from "@/components/admin/SizeGuideTable";
 import { DEFAULT_SIZE_GUIDE_COLUMNS, type SizeGuideRow, type SizeGuideTemplateOption } from "@/lib/size-guide";
 import { slugify } from "@/lib/slugify";
 import { detectSizingMode, sizesForMode, type SizingMode } from "@/lib/sizes";
+import { formatTaka } from "@/lib/money";
 
 type StagedImage = { file: File; previewUrl: string };
 type Branch = "MEN" | "WOMEN" | "UNISEX";
@@ -185,8 +187,16 @@ export function ProductEditorForm({
     initial?.categoryId ?? categories.find((c) => c.gender === "UNISEX")?.id ?? "",
   );
   const [basePrice, setBasePrice] = useState(initial?.basePrice ?? 1000);
+  const [discountType, setDiscountType] = useState<"PERCENT" | "AMOUNT" | null>(initial?.discountType ?? null);
+  const [discountValue, setDiscountValue] = useState<number | "">(initial?.discountValue ?? "");
   const [status, setStatus] = useState<"DRAFT" | "ACTIVE">(initial?.status ?? "DRAFT");
   const [freeDelivery, setFreeDelivery] = useState<"NONE" | "INSIDE_DHAKA" | "NATIONWIDE">(initial?.freeDelivery ?? "NONE");
+  const [deliveryChargeInsideDhaka, setDeliveryChargeInsideDhaka] = useState<number | "">(
+    initial?.deliveryChargeInsideDhaka ?? "",
+  );
+  const [deliveryChargeOutsideDhaka, setDeliveryChargeOutsideDhaka] = useState<number | "">(
+    initial?.deliveryChargeOutsideDhaka ?? "",
+  );
   const [tagNew, setTagNew] = useState(initial?.tagNew ?? false);
   const [tagPreorder, setTagPreorder] = useState(initial?.tagPreorder ?? false);
   const [preorderShipDate, setPreorderShipDate] = useState(initial?.preorderShipDate ?? "");
@@ -337,6 +347,12 @@ export function ProductEditorForm({
         return;
       }
       setImages((prev) => [...prev, ...res.images]);
+      // Partial failure — some files in the batch uploaded fine (already added above) and some
+      // didn't, each for its own reason (too big, wrong type, a real upload error). Naming them
+      // means the admin only has to retry the ones that actually failed, not the whole batch.
+      setUploadError(
+        res.failed.length > 0 ? res.failed.map((f) => `"${f.name}": ${f.error}`).join(" ") : null,
+      );
     } else {
       setStaged((prev) => [...prev, ...files.map((file) => ({ file, previewUrl: URL.createObjectURL(file) }))]);
     }
@@ -354,6 +370,37 @@ export function ProductEditorForm({
       if (removed) URL.revokeObjectURL(removed.previewUrl);
       return copy;
     });
+  }
+
+  // The first image (index 0) is the product's cover photo everywhere it's shown as a single
+  // image (ProductCard.tsx, etc.) — reordering is how an admin controls that, not just cosmetic.
+  // `staged` (not-yet-uploaded files, only non-empty before the product's first save) only needs
+  // a client-side swap: array order becomes upload order becomes `position`, in submit() below.
+  // `images` (already-saved rows, real `position` in the DB) also persists the new order
+  // immediately so it isn't lost if the admin navigates away without hitting Save.
+  function moveStaged(index: number, direction: -1 | 1) {
+    setStaged((prev) => {
+      const target = index + direction;
+      if (target < 0 || target >= prev.length) return prev;
+      const copy = [...prev];
+      [copy[index], copy[target]] = [copy[target], copy[index]];
+      return copy;
+    });
+  }
+
+  function moveImage(index: number, direction: -1 | 1) {
+    const target = index + direction;
+    if (target < 0 || target >= images.length) return;
+    const reordered = [...images];
+    [reordered[index], reordered[target]] = [reordered[target], reordered[index]];
+    setImages(reordered);
+    if (initial?.id) {
+      const productId = initial.id;
+      startTransition(async () => {
+        const res = await reorderProductImages(productId, reordered.map((img) => img.id));
+        if (!res.ok) setUploadError(res.error);
+      });
+    }
   }
 
   function submit() {
@@ -401,8 +448,12 @@ export function ProductEditorForm({
           description,
           categoryId,
           basePrice,
+          discountType,
+          discountValue: discountType && discountValue !== "" ? discountValue : null,
           status,
           freeDelivery,
+          deliveryChargeInsideDhaka: deliveryChargeInsideDhaka === "" ? null : deliveryChargeInsideDhaka,
+          deliveryChargeOutsideDhaka: deliveryChargeOutsideDhaka === "" ? null : deliveryChargeOutsideDhaka,
           tagNew,
           tagPreorder,
           preorderShipDate,
@@ -424,6 +475,13 @@ export function ProductEditorForm({
             // real product instead of creating a duplicate; this just flags the image upload
             // specifically needs retrying from that page.
             setError(`Product saved, but image upload failed: ${uploadRes.error}`);
+          } else if (uploadRes.failed.length > 0) {
+            // Some staged images made it, some didn't — the ones that failed would otherwise
+            // vanish silently (the product still saves and redirects below), so name them.
+            setError(
+              `Product saved. ${uploadRes.failed.length} of ${staged.length} images didn't upload — retry from this page: ` +
+                uploadRes.failed.map((f) => `"${f.name}": ${f.error}`).join(" "),
+            );
           }
         }
         router.push(`/admin/products/${res.id}`);
@@ -477,30 +535,80 @@ export function ProductEditorForm({
           </div>
           {(images.length > 0 || staged.length > 0) && (
             <div className="mt-3 grid grid-cols-4 gap-2">
-              {images.map((img) => (
+              {images.map((img, i) => (
                 <div key={img.id} className="group relative aspect-square overflow-hidden border border-line">
-                  <Image src={img.url} alt={img.alt ?? ""} fill sizes="25vw" className="object-cover" />
+                  <Image src={img.url} alt={img.alt ?? ""} fill sizes="25vw" quality={90} className="object-cover" />
+                  {i === 0 && (
+                    <span className="absolute left-1 top-1 bg-lime px-1.5 py-0.5 font-label text-[9px] tracking-[1px] text-ink">
+                      COVER
+                    </span>
+                  )}
                   <button
                     type="button"
                     onClick={() => removeImage(img.id)}
                     aria-label="Remove image"
-                    className="absolute right-1 top-1 hidden h-5 w-5 items-center justify-center rounded-full bg-ink/80 text-xs text-paper group-hover:flex"
+                    className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-ink/80 text-xs text-paper"
                   >
                     ✕
                   </button>
+                  <div className="absolute inset-x-1 bottom-1 flex items-center justify-between">
+                    <button
+                      type="button"
+                      onClick={() => moveImage(i, -1)}
+                      disabled={i === 0}
+                      aria-label="Move earlier"
+                      className="grid h-5 w-5 place-items-center rounded-full bg-ink/80 text-xs text-paper disabled:opacity-30"
+                    >
+                      ‹
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => moveImage(i, 1)}
+                      disabled={i === images.length - 1}
+                      aria-label="Move later"
+                      className="grid h-5 w-5 place-items-center rounded-full bg-ink/80 text-xs text-paper disabled:opacity-30"
+                    >
+                      ›
+                    </button>
+                  </div>
                 </div>
               ))}
               {staged.map((s, i) => (
                 <div key={s.previewUrl} className="group relative aspect-square overflow-hidden border border-dashed border-yellow">
                   <Image src={s.previewUrl} alt="" fill unoptimized sizes="25vw" className="object-cover" />
+                  {images.length === 0 && i === 0 && (
+                    <span className="absolute left-1 top-1 bg-lime px-1.5 py-0.5 font-label text-[9px] tracking-[1px] text-ink">
+                      COVER
+                    </span>
+                  )}
                   <button
                     type="button"
                     onClick={() => removeStaged(i)}
                     aria-label="Remove image"
-                    className="absolute right-1 top-1 hidden h-5 w-5 items-center justify-center rounded-full bg-ink/80 text-xs text-paper group-hover:flex"
+                    className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-ink/80 text-xs text-paper"
                   >
                     ✕
                   </button>
+                  <div className="absolute inset-x-1 bottom-1 flex items-center justify-between">
+                    <button
+                      type="button"
+                      onClick={() => moveStaged(i, -1)}
+                      disabled={i === 0}
+                      aria-label="Move earlier"
+                      className="grid h-5 w-5 place-items-center rounded-full bg-ink/80 text-xs text-paper disabled:opacity-30"
+                    >
+                      ‹
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => moveStaged(i, 1)}
+                      disabled={i === staged.length - 1}
+                      aria-label="Move later"
+                      className="grid h-5 w-5 place-items-center rounded-full bg-ink/80 text-xs text-paper disabled:opacity-30"
+                    >
+                      ›
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -516,8 +624,10 @@ export function ProductEditorForm({
             <a href="/admin/inventory" className="text-cyan hover:underline">
               Inventory
             </a>
-            . <strong className="text-paper">Preorder ৳</strong> is the advance charged online once this size sells
-            out (blank = just sold out, no preorder offered; 0 = free to reserve, everything due on delivery).
+            . <strong className="text-paper">Preorder ৳</strong> turns on preorder for this size once it sells out
+            (blank = just sold out, no preorder offered; any value, including 0, enables it). The amount itself
+            isn&apos;t shown or charged to the customer — they just see &quot;Preorder Now and Our Sales Agent Will
+            Reach Out&quot; and our sales agent follows up directly.
           </p>
 
           {variants.length === 0 && (
@@ -620,7 +730,7 @@ export function ProductEditorForm({
                               min={0}
                               value={v.preorderAdvanceAmount ?? ""}
                               placeholder="off"
-                              title="Advance due online once this size sells out — blank disables preorder for it, 0 means free to reserve."
+                              title="Enables preorder once this size sells out — blank disables it. Not shown or charged to the customer."
                               onChange={(e) =>
                                 updateVariant(key, { preorderAdvanceAmount: e.target.value ? Number(e.target.value) : null })
                               }
@@ -724,12 +834,74 @@ export function ProductEditorForm({
           <Field label="Base price ৳">
             <input type="number" value={basePrice} onChange={(e) => setBasePrice(Number(e.target.value))} className={inputClass} />
           </Field>
+          <Field label="Discount">
+            <div className="flex gap-2">
+              <select
+                value={discountType ?? ""}
+                onChange={(e) => {
+                  const next = e.target.value === "" ? null : (e.target.value as "PERCENT" | "AMOUNT");
+                  setDiscountType(next);
+                  if (!next) setDiscountValue("");
+                }}
+                className={`${inputClass} max-w-[150px]`}
+              >
+                <option value="">No discount</option>
+                <option value="PERCENT">Percent off</option>
+                <option value="AMOUNT">Amount off ৳</option>
+              </select>
+              {discountType && (
+                <input
+                  type="number"
+                  min={0}
+                  max={discountType === "PERCENT" ? 100 : undefined}
+                  value={discountValue}
+                  onChange={(e) => setDiscountValue(e.target.value === "" ? "" : Number(e.target.value))}
+                  placeholder={discountType === "PERCENT" ? "e.g. 20" : "e.g. 300"}
+                  className={inputClass}
+                />
+              )}
+            </div>
+            {discountType && discountValue !== "" && discountValue > 0 && (
+              <p className="mt-1.5 text-[13px] text-muted">
+                {formatTaka(basePrice)} →{" "}
+                <span className="text-lime">
+                  {formatTaka(
+                    Math.max(
+                      discountType === "PERCENT" ? basePrice * (1 - discountValue / 100) : basePrice - discountValue,
+                      0,
+                    ),
+                  )}
+                </span>{" "}
+                everywhere this product shows, until removed.
+              </p>
+            )}
+          </Field>
           <Field label="Free delivery">
             <select value={freeDelivery} onChange={(e) => setFreeDelivery(e.target.value as typeof freeDelivery)} className={inputClass}>
               <option value="NONE">None</option>
               <option value="INSIDE_DHAKA">Free delivery — Inside Dhaka</option>
               <option value="NATIONWIDE">Free delivery — Nationwide</option>
             </select>
+          </Field>
+          <Field label="Delivery charge ৳ (overrides the store default — leave blank to use it)">
+            <div className="flex gap-2">
+              <input
+                type="number"
+                min={0}
+                value={deliveryChargeInsideDhaka}
+                onChange={(e) => setDeliveryChargeInsideDhaka(e.target.value === "" ? "" : Number(e.target.value))}
+                placeholder="Inside Dhaka — store default"
+                className={inputClass}
+              />
+              <input
+                type="number"
+                min={0}
+                value={deliveryChargeOutsideDhaka}
+                onChange={(e) => setDeliveryChargeOutsideDhaka(e.target.value === "" ? "" : Number(e.target.value))}
+                placeholder="Outside Dhaka — store default"
+                className={inputClass}
+              />
+            </div>
           </Field>
         </Panel>
 

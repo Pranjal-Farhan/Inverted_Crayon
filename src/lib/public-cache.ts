@@ -34,7 +34,7 @@ import { getChatWidgetSettings, getStoreInfo } from "@/lib/store-settings";
  * cosmetic (checkout and admin always read fresh regardless — ground rules 3/4).
  */
 
-const PRODUCT_CARD_INCLUDE = {
+export const PRODUCT_CARD_INCLUDE = {
   variants: true,
   images: true,
   tags: { include: { tag: true } },
@@ -163,13 +163,20 @@ export function getCategoryByGenderSlug(gender: "MEN" | "WOMEN", slug: string) {
 
 // These four carry display-level sale pricing (ProductCard reads onSale/salePrice, derived from
 // campaigns), so they get the revalidate: 300 treatment too — see the module doc.
+// Fetches one page beyond the first screenful (NEW_IN_PAGE_SIZE) so the homepage can tell
+// whether to show the "Load more" button on first render without a separate count query —
+// NewInGrid.tsx's own "load more" pages come from /api/products/new instead (not cached here,
+// same pattern as /api/products/by-ids), since those are paginated on demand, not once per ISR
+// regeneration.
+export const NEW_IN_PAGE_SIZE = 20;
+
 export const getHomeNewProducts = unstable_cache(
   async () =>
     db.product.findMany({
       where: { status: "ACTIVE" },
       include: PRODUCT_CARD_INCLUDE,
       orderBy: { publishedAt: "desc" },
-      take: 8,
+      take: NEW_IN_PAGE_SIZE + 1,
     }),
   ["public-home-new-products"],
   { tags: ["products"], revalidate: 300 },

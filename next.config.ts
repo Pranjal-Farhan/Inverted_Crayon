@@ -4,7 +4,17 @@ const nextConfig: NextConfig = {
   images: {
     remotePatterns: [
       { protocol: "https", hostname: "i.ibb.co" },
+      // Google account profile pictures (googleExchangeCode in src/lib/oauth/google.ts) — served
+      // from various lh*.googleusercontent.com hosts, hence the wildcard rather than one hostname.
+      { protocol: "https", hostname: "*.googleusercontent.com" },
     ],
+    // Next 16 requires this allowlist — any quality prop not in it is silently coerced to the
+    // closest allowed value (see next/image's `quality` docs). Every <Image> in this app passes
+    // quality={90} (product photography needs the detail; 75 was visibly softening uploads up to
+    // 2000x2500px, especially once the PDP gallery's zoom scales the image up 2.2x — see
+    // ProductGallery.tsx). 75 stays allowed too in case a future call site wants the lighter
+    // weight (e.g. a tiny admin preview).
+    qualities: [75, 90],
   },
   experimental: {
     serverActions: {

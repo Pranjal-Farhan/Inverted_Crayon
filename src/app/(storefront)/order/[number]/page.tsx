@@ -38,20 +38,15 @@ export default async function OrderConfirmationPage({ params }: Props) {
         </div>
       ))}
       <div className="mt-2 flex justify-between border-t border-line pt-3">
-        <span className="font-impact text-xl">{order.isPreorder ? "Paid now" : `Paid (${order.paymentMethod})`}</span>
-        <span className="price text-xl">{formatTaka(toNumber(order.advanceAmount))}</span>
+        <span className="font-impact text-xl">Total ({order.paymentMethod})</span>
+        <span className="price text-xl">{formatTaka(toNumber(order.total))}</span>
       </div>
-      {toNumber(order.balanceDue) > 0 && (
-        <div className="flex justify-between py-1 text-sm text-muted">
-          <span>Due on delivery (cash)</span>
-          <span>{formatTaka(toNumber(order.balanceDue))}</span>
-        </div>
-      )}
 
       <p className="mt-4 text-sm text-muted">Estimated delivery {zoneLabel}.</p>
       {order.isPreorder && (
         <p className="mt-1 text-sm text-yellow">
-          Includes a preorder item — {order.preorderShipMode === "split" ? "in-stock items ship first, preorder follows." : "your order ships together once the preorder lands."}
+          Includes a preorder item — Preorder Now and Our Sales Agent Will Reach Out.{" "}
+          {order.preorderShipMode === "split" ? "In-stock items ship first, the preorder follows." : "Your order ships together once the preorder lands."}
         </p>
       )}
 

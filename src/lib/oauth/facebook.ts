@@ -22,7 +22,7 @@ export function facebookAuthUrl(params: { redirectUri: string; state: string }):
 export async function facebookExchangeCode(params: {
   code: string;
   redirectUri: string;
-}): Promise<{ id: string; email: string; name: string | null }> {
+}): Promise<{ id: string; email: string; name: string | null; picture: string | null }> {
   const tokenUrl = new URL("https://graph.facebook.com/v19.0/oauth/access_token");
   tokenUrl.searchParams.set("client_id", process.env.FACEBOOK_CLIENT_ID!);
   tokenUrl.searchParams.set("client_secret", process.env.FACEBOOK_CLIENT_SECRET!);
@@ -45,5 +45,9 @@ export async function facebookExchangeCode(params: {
   if (!user.email) {
     throw new Error("Facebook account has no email on file — can't sign in with it.");
   }
-  return { id: user.id, email: user.email, name: user.name ?? null };
+  // Facebook avatars aren't requested here (would need `fields=id,name,email,picture` plus
+  // extracting `picture.data.url`) — out of scope per the brief ("if signed in using google auth
+  // then fetch... otherwise set a common profile picture"), so this is always null and a
+  // Facebook sign-in falls back to the initial-letter avatar, same as email/password accounts.
+  return { id: user.id, email: user.email, name: user.name ?? null, picture: null };
 }

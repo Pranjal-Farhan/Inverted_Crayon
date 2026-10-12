@@ -1,18 +1,20 @@
 import type { Metadata } from "next";
-import { getCachedStoreInfo } from "@/lib/public-cache";
+import { getCachedStoreInfo, getContentBlock } from "@/lib/public-cache";
 import { ContactForm } from "@/components/storefront/ContactForm";
+import { DEFAULT_CONTACT_PAGE, type ContactPageData } from "@/lib/footer-defaults";
 
 export const metadata: Metadata = { title: "Contact" };
 export const revalidate = 3600;
 
 export default async function ContactPage() {
-  const info = await getCachedStoreInfo();
+  const [info, contactBlock] = await Promise.all([getCachedStoreInfo(), getContentBlock("contact_page")]);
+  const contact: ContactPageData = { ...DEFAULT_CONTACT_PAGE, ...(contactBlock?.data as Partial<ContactPageData> | undefined) };
 
   return (
     <section className="pg pb-16">
       <div className="pt-8 pb-1.5">
-        <h1 className="font-impact text-[clamp(40px,6vw,72px)] uppercase leading-[0.85] tracking-[1px]">Contact</h1>
-        <p className="mt-3 max-w-[52ch] text-muted">Questions, wholesale, press — reach us.</p>
+        <h1 className="font-impact text-[clamp(40px,6vw,72px)] uppercase leading-[0.85] tracking-[1px]">{contact.heading}</h1>
+        <p className="mt-3 max-w-[52ch] text-muted">{contact.intro}</p>
       </div>
       <div className="two grid grid-cols-1 gap-6 py-6 desktop:grid-cols-2">
         <div className="border border-line bg-panel p-4.5">
@@ -25,7 +27,7 @@ export default async function ContactPage() {
           <p className="crumb mt-1.5">
             {info.phone} · {info.address}
           </p>
-          <p className="crumb mt-1.5">IG · TikTok · @invertedcrayon</p>
+          <p className="crumb mt-1.5">{contact.extraNote}</p>
         </div>
       </div>
     </section>

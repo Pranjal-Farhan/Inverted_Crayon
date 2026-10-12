@@ -14,7 +14,7 @@ async function requireCustomer() {
 export async function updateProfile(name: string, phone: string) {
   const session = await requireCustomer();
   const customer = await db.customer.update({ where: { id: session.customerId }, data: { name, phone } });
-  await setCustomerSession({ customerId: customer.id, email: customer.email, name: customer.name });
+  await setCustomerSession({ customerId: customer.id, email: customer.email, name: customer.name, avatarUrl: customer.avatarUrl });
   revalidatePath("/account");
 }
 

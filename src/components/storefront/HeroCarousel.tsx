@@ -21,6 +21,7 @@ export function HeroCarousel({ images }: { images: string[] }) {
           alt=""
           fill
           sizes="100vw"
+          quality={90}
           className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-700 ease-out ${i === active ? "opacity-100" : "opacity-0"
             }`}
         />

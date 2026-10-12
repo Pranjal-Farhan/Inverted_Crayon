@@ -64,6 +64,39 @@ function campaignSalePrice(basePrice: number, campaign: Campaign): number {
   return basePrice;
 }
 
+/** A standing markdown set directly on the product (admin-products.ts's Discount field) —
+ * independent of Campaign, no start/end date, on until an admin removes it. */
+function directDiscountPrice(
+  product: Pick<Product, "discountType" | "discountValue">,
+  basePrice: number,
+): number | null {
+  if (!product.discountType || product.discountValue == null) return null;
+  const value = toNumber(product.discountValue);
+  if (product.discountType === "PERCENT") return Math.round(basePrice * (1 - value / 100) * 100) / 100;
+  return Math.max(basePrice - value, 0);
+}
+
+/**
+ * The one place both sale mechanisms (Campaign and the product's own direct discount) combine —
+ * used by deriveProductDisplay below AND checkout.ts's authoritative per-line pricing, so a
+ * directly-discounted product is never shown marked down but charged full price (or vice versa).
+ * `basePrice` is whatever this specific price should discount from — the product's own basePrice
+ * for display, or a line's priceOverride-or-basePrice at checkout, same convention Campaign
+ * pricing already used before this existed. Returns null when neither mechanism applies.
+ */
+export function bestSalePrice(
+  product: Pick<Product, "id" | "categoryId" | "discountType" | "discountValue">,
+  basePrice: number,
+  campaigns: Campaign[],
+  now: Date = new Date(),
+): number | null {
+  const campaign = findActiveCampaign(product, campaigns, now);
+  const campaignPrice = campaign ? campaignSalePrice(basePrice, campaign) : null;
+  const discountPrice = directDiscountPrice(product, basePrice);
+  const candidates = [campaignPrice, discountPrice].filter((p): p is number => p != null);
+  return candidates.length > 0 ? Math.min(...candidates) : null;
+}
+
 export function deriveProductDisplay(
   product: ProductWithRelations,
   campaigns: Campaign[],
@@ -73,9 +106,9 @@ export function deriveProductDisplay(
   const totalStock = product.variants.reduce((sum, v) => sum + v.stockQty, 0);
   const soldOut = product.variants.length > 0 && totalStock === 0;
 
-  const campaign = findActiveCampaign(product, campaigns, now);
-  const onSale = Boolean(campaign) && !soldOut;
-  const salePrice = campaign ? campaignSalePrice(basePrice, campaign) : null;
+  const bestPrice = bestSalePrice(product, basePrice, campaigns, now);
+  const onSale = bestPrice != null && bestPrice < basePrice && !soldOut;
+  const salePrice = onSale ? bestPrice : null;
 
   const preorderTag = product.tags.find((t) => t.tag.type === "PREORDER");
   const limitedTag = product.tags.find((t) => t.tag.type === "LIMITED");

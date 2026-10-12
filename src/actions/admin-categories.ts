@@ -103,7 +103,9 @@ export async function createCategory(input: z.infer<typeof createSchema>): Promi
   return { ok: true };
 }
 
-const MAX_CATEGORY_IMAGE_BYTES = 8 * 1024 * 1024;
+// Same reasoning as admin-products.ts's MAX_IMAGE_BYTES — well under ImgBB's own ~32MB free-tier
+// cap, comfortably over a high-resolution category photo.
+const MAX_CATEGORY_IMAGE_BYTES = 20 * 1024 * 1024;
 const REJECTED_CATEGORY_IMAGE_TYPES = new Set(["image/svg+xml"]);
 
 export type SetCategoryImageResult = { ok: true; url: string } | { ok: false; error: string };
@@ -117,7 +119,7 @@ export async function setCategoryImage(categoryId: string, formData: FormData): 
   await requireAdmin();
   const file = formData.get("file");
   if (!(file instanceof File) || file.size === 0) return { ok: false, error: "No file received." };
-  if (file.size > MAX_CATEGORY_IMAGE_BYTES) return { ok: false, error: "Image must be under 8MB." };
+  if (file.size > MAX_CATEGORY_IMAGE_BYTES) return { ok: false, error: `Image must be under ${MAX_CATEGORY_IMAGE_BYTES / (1024 * 1024)}MB.` };
   if (!file.type.startsWith("image/") || REJECTED_CATEGORY_IMAGE_TYPES.has(file.type)) {
     return { ok: false, error: "Only JPG, PNG, WEBP, GIF or AVIF images are accepted." };
   }

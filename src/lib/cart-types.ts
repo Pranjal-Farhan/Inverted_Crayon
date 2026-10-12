@@ -1,5 +1,3 @@
-import { formatTaka } from "@/lib/money";
-
 export type CartLine = {
   variantId: string;
   productId: string;
@@ -15,6 +13,9 @@ export type CartLine = {
   preorderShipDate: string | null;
   /** Per-unit advance due now when isPreorder — 0 means "reserve free, all due on delivery". Null when not a preorder line. */
   preorderAdvanceAmount: number | null;
+  /** Product-level shipping override, snapshotted when this line was added — null means "use the store's default rate for that zone". See resolveShippingCost() in src/lib/shipping.ts. */
+  deliveryChargeInsideDhaka: number | null;
+  deliveryChargeOutsideDhaka: number | null;
   maxQty: number;
 };
 
@@ -41,11 +42,7 @@ export function cartHasInStock(cart: Cart): boolean {
   return cart.lines.some((l) => !l.isPreorder);
 }
 
-/** Short cart/drawer note for a preorder line: ship-date when the product carries one, else the standard window — plus the pay-now/on-delivery split. */
-export function preorderLineNote(line: CartLine): string {
-  const shipPart = line.preorderShipDate ? `ships ${line.preorderShipDate}` : "ships in 7–15 days";
-  const advance = line.preorderAdvanceAmount ?? line.unitPrice;
-  const payPart =
-    advance > 0 ? `${formatTaka(advance)} now, ${formatTaka(line.unitPrice - advance)} on delivery` : "free to reserve, pay on delivery";
-  return `Preorder — ${shipPart} · ${payPart}`;
+/** Short cart/drawer note for a preorder line — no payment breakdown shown or implied; a sales agent follows up on the specifics. */
+export function preorderLineNote(): string {
+  return "Preorder Now and Our Sales Agent Will Reach Out";
 }

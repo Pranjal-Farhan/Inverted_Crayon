@@ -22,7 +22,10 @@ export type MarkKind =
   | "circle-loop"
   | "checkmark"
   | "underline"
-  | "bracket";
+  | "bracket"
+  // Not in MARK_KINDS below on purpose — a single strike-through line, used only by
+  // DiscountPriceTag.tsx to cross out an original price, never picked by pickMark's random choice.
+  | "strike";
 
 export const MARK_KINDS: MarkKind[] = [
   "arrow-straight",
@@ -97,6 +100,11 @@ const SHAPES: Record<MarkKind, { viewBox: string; paths: string[]; strokeWidth: 
     paths: ["M34,6 L12,6 L12,64 L34,64"],
     strokeWidth: 6,
   },
+  strike: {
+    viewBox: "0 0 100 40",
+    paths: ["M4,33 Q50,20 96,7"],
+    strokeWidth: 5,
+  },
 };
 
 export function HandDrawnMark({
@@ -106,6 +114,8 @@ export function HandDrawnMark({
   duration = 700,
   delay = 0,
   className,
+  visible,
+  stretch = false,
 }: {
   id: string;
   kind: MarkKind;
@@ -113,31 +123,45 @@ export function HandDrawnMark({
   duration?: number;
   delay?: number;
   className?: string;
+  /** Controlled mode — when set, this (not the auto-play-on-mount effect below) drives the
+   * stroke-dashoffset, so the same draw transition runs in reverse ("undraws") whenever it flips
+   * back to false. Hover-triggered marks pass their own hover boolean here. Reduced-motion still
+   * works with no extra guard: globals.css's blanket `transition-duration: 0.001ms !important`
+   * neutralizes the inline transitionDuration below exactly as it does in uncontrolled mode. */
+  visible?: boolean;
+  /** Stretch to fill the container's own aspect ratio instead of preserving the mark's native one
+   * — for a mark meant to roughly cover a card regardless of that card's shape, or for a straight
+   * line (e.g. "strike") meant to span an arbitrary-width element, where non-uniform scaling
+   * doesn't read as distorted the way it would for a rounder shape. */
+  stretch?: boolean;
 }) {
   // Reduced-motion starts already "drawn" (lazy initializer, not an effect setState) — see
   // ProductCard's tilt effect for the same convention. Everyone else starts undrawn and the
   // effect below flips it true a frame later, which is what makes the stroke transition run.
-  const [playing, setPlaying] = useState(
+  // Only relevant in uncontrolled (auto-play-on-mount) mode — see the early return below.
+  const [autoPlaying, setAutoPlaying] = useState(
     () => typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches,
   );
 
   useEffect(() => {
-    if (playing) return;
+    if (visible !== undefined) return; // controlled — caller's `visible` drives this instead
+    if (autoPlaying) return;
     let raf2 = 0;
     const raf1 = requestAnimationFrame(() => {
-      raf2 = requestAnimationFrame(() => setPlaying(true));
+      raf2 = requestAnimationFrame(() => setAutoPlaying(true));
     });
     return () => {
       cancelAnimationFrame(raf1);
       cancelAnimationFrame(raf2);
     };
-  }, [playing]);
+  }, [visible, autoPlaying]);
 
+  const playing = visible !== undefined ? visible : autoPlaying;
   const shape = SHAPES[kind];
   const filterId = `hdm-tex-${id}`;
 
   return (
-    <svg viewBox={shape.viewBox} className={className} aria-hidden="true">
+    <svg viewBox={shape.viewBox} preserveAspectRatio={stretch ? "none" : undefined} className={className} aria-hidden="true">
       <defs>
         <filter id={filterId} x="-25%" y="-25%" width="150%" height="150%">
           <feTurbulence
@@ -158,20 +182,30 @@ export function HandDrawnMark({
         strokeLinecap="round"
         strokeLinejoin="round"
       >
-        {shape.paths.map((d, i) => (
-          <path
-            key={i}
-            d={d}
-            pathLength={1}
-            className="hdm-path"
-            style={{
-              strokeDasharray: 1,
-              strokeDashoffset: playing ? 0 : 1,
-              transitionDuration: `${duration}ms`,
-              transitionDelay: `${delay + i * 140}ms`,
-            }}
-          />
-        ))}
+        {shape.paths.map((d, i) => {
+          // Round line caps leave a visible dot at a fully zero-length dash — opacity rides along
+          // as a second, near-instant transition so that dot only shows up mid-stroke (while
+          // dashoffset is animating) and never sits there as a static artifact at rest: it snaps
+          // in immediately when a draw starts, and snaps out only once the undraw has visibly
+          // finished retracting (delayed by the full duration).
+          const pathDelay = delay + i * 140;
+          return (
+            <path
+              key={i}
+              d={d}
+              pathLength={1}
+              className="hdm-path"
+              style={{
+                strokeDasharray: 1,
+                strokeDashoffset: playing ? 0 : 1,
+                opacity: playing ? 1 : 0,
+                transitionProperty: "stroke-dashoffset, opacity",
+                transitionDuration: `${duration}ms, 1ms`,
+                transitionDelay: playing ? `${pathDelay}ms, ${pathDelay}ms` : `${pathDelay}ms, ${pathDelay + duration}ms`,
+              }}
+            />
+          );
+        })}
       </g>
     </svg>
   );

@@ -19,12 +19,6 @@ export default async function CheckoutPage() {
 
   return (
     <section className="pg pb-16">
-      <div className="pagehead pb-1.5">
-        <div className="font-label text-sm tracking-[1.4px] text-muted">
-          {customer ? `Returning customer · ${customer.name ?? customer.email}` : "Guest checkout · no account needed"}
-        </div>
-        <h1 className="font-impact text-[clamp(40px,6vw,72px)] uppercase leading-[0.85] tracking-[1px]">Checkout</h1>
-      </div>
       <CheckoutView
         rates={rates}
         gateways={gateways}

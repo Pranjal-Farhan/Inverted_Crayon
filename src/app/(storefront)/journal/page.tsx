@@ -1,20 +1,22 @@
 import Link from "next/link";
 import type { Metadata } from "next";
-import { getPublishedPosts } from "@/lib/public-cache";
+import { getContentBlock, getPublishedPosts } from "@/lib/public-cache";
 import { PlaceholderFrame } from "@/components/ui/PlaceholderFrame";
 import { pickAccent } from "@/lib/accent-color";
+import { DEFAULT_JOURNAL_PAGE, type JournalPageData } from "@/lib/footer-defaults";
 
 export const metadata: Metadata = { title: "Journal" };
 export const revalidate = 3600;
 
 export default async function JournalPage() {
-  const posts = await getPublishedPosts();
+  const [posts, journalBlock] = await Promise.all([getPublishedPosts(), getContentBlock("journal_page")]);
+  const journal: JournalPageData = { ...DEFAULT_JOURNAL_PAGE, ...(journalBlock?.data as Partial<JournalPageData> | undefined) };
 
   return (
     <section className="pg pb-16">
       <div className="pt-8 pb-1.5">
-        <span className="font-scrawl text-[15px] text-pink">Dispatches</span>
-        <h1 className="font-impact text-[clamp(40px,6vw,72px)] uppercase leading-[0.85] tracking-[1px]">Journal</h1>
+        <span className="font-scrawl text-[15px] text-pink">{journal.eyebrow}</span>
+        <h1 className="font-impact text-[clamp(40px,6vw,72px)] uppercase leading-[0.85] tracking-[1px]">{journal.heading}</h1>
       </div>
 
       <div className="mt-5 grid grid-cols-1 gap-6 desktop:grid-cols-3">

@@ -18,10 +18,15 @@ import { invalidateProduct } from "@/lib/invalidate";
 
 const VALID_SIZES = [...APPAREL_SIZES, ONE_SIZE] as [string, ...string[]];
 
-const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
+// ImgBB's own free-tier cap is ~32MB/image — 20MB leaves headroom under that while still
+// comfortably covering a high-resolution (up to 2000x2500px) product photo, PNG included (a
+// photographic PNG at that resolution can land well past the old 8MB cap that was rejecting them).
+const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
 const MAX_FILES_PER_UPLOAD = 12;
 const MAX_IMAGES_PER_PRODUCT = 20;
-const MAX_TOTAL_UPLOAD_BYTES = 40 * 1024 * 1024;
+// Comfortably under next.config.ts's `experimental.serverActions.bodySizeLimit` ("60mb") — the
+// request itself would otherwise be rejected before this code ever runs.
+const MAX_TOTAL_UPLOAD_BYTES = 50 * 1024 * 1024;
 // SVG is deliberately excluded even though it's an "image/*" type because it can embed scripts.
 const REJECTED_IMAGE_TYPES = new Set(["image/svg+xml"]);
 
@@ -112,10 +117,18 @@ const productSchema = z.object({
   description: z.string().trim().min(1, "Description is required."),
   categoryId: z.string().min(1, "Select a category."),
   basePrice: z.number().positive(),
+  // A standing markdown set directly on the product — null discountType means no discount (the
+  // "off" state); when set, discountValue must be present too (enforced below, since zod can't
+  // express "both or neither" with plain field types).
+  discountType: z.enum(["PERCENT", "AMOUNT"]).nullable().default(null),
+  discountValue: z.number().positive().nullable().default(null),
   status: z.enum(["DRAFT", "ACTIVE"]),
   seoTitle: z.string().optional(),
   seoDescription: z.string().optional(),
   freeDelivery: z.enum(["NONE", "INSIDE_DHAKA", "NATIONWIDE"]).default("NONE"),
+  // Per-product shipping override — null keeps the store's default rate for that zone.
+  deliveryChargeInsideDhaka: z.number().min(0).nullable().default(null),
+  deliveryChargeOutsideDhaka: z.number().min(0).nullable().default(null),
   tagNew: z.boolean().default(false),
   tagPreorder: z.boolean().default(false),
   preorderShipDate: z.string().optional(),
@@ -130,6 +143,15 @@ const productSchema = z.object({
     .nullable()
     .default(null),
 }).superRefine((data, ctx) => {
+  if (data.discountType && data.discountValue == null) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["discountValue"], message: "Enter a discount amount or percent." });
+  }
+  if (data.discountType === "PERCENT" && data.discountValue != null && data.discountValue > 100) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["discountValue"], message: "Percent off can't exceed 100." });
+  }
+  if (data.discountType === "AMOUNT" && data.discountValue != null && data.discountValue >= data.basePrice) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["discountValue"], message: "Amount off must be less than the base price." });
+  }
   // Every color must carry exactly the sizes its own mode calls for — no fewer (an incomplete
   // block), no more (a duplicate), and never a mix of apparel sizes and "One Size" under one
   // color. The admin editor can't actually produce anything else (addColor()/backfillColorGroups()
@@ -234,10 +256,14 @@ export async function saveProduct(input: ProductFormInput): Promise<ProductSaveR
           gender: category.gender,
           categoryId: data.categoryId,
           basePrice: data.basePrice,
+          discountType: data.discountType,
+          discountValue: data.discountValue,
           status: data.status,
           seoTitle: data.seoTitle,
           seoDescription: data.seoDescription,
           freeDelivery: data.freeDelivery,
+          deliveryChargeInsideDhaka: data.deliveryChargeInsideDhaka,
+          deliveryChargeOutsideDhaka: data.deliveryChargeOutsideDhaka,
           sizeGuide: sizeGuideValue,
           // Only stamp publishedAt the first time a product goes live —
           // re-saving an already-active product must not re-trigger "New".
@@ -251,10 +277,14 @@ export async function saveProduct(input: ProductFormInput): Promise<ProductSaveR
           gender: category.gender,
           categoryId: data.categoryId,
           basePrice: data.basePrice,
+          discountType: data.discountType,
+          discountValue: data.discountValue,
           status: data.status,
           seoTitle: data.seoTitle,
           seoDescription: data.seoDescription,
           freeDelivery: data.freeDelivery,
+          deliveryChargeInsideDhaka: data.deliveryChargeInsideDhaka,
+          deliveryChargeOutsideDhaka: data.deliveryChargeOutsideDhaka,
           sizeGuide: sizeGuideValue,
           publishedAt: data.status === "ACTIVE" ? new Date() : null,
         },
@@ -397,8 +427,17 @@ export async function deleteProduct(id: string) {
 }
 
 export type ProductImageRow = { id: string; url: string; alt: string | null; position: number; accentColor: string | null };
-export type UploadImagesResult = { ok: true; images: ProductImageRow[] } | { ok: false; error: string };
+export type UploadImagesResult =
+  | { ok: true; images: ProductImageRow[]; failed: { name: string; error: string }[] }
+  | { ok: false; error: string };
 
+/** Each file is uploaded and validated independently — one bad or oversized file in a batch no
+ * longer discards every other file in it (the old `Promise.all`/upfront-reject-the-whole-batch
+ * behavior is exactly what made a mixed batch look like "some images aren't uploading": a single
+ * 25MB PNG next to four reasonable JPEGs used to fail all five). Only returns `ok: false` when
+ * literally nothing in the batch made it through; otherwise every file that failed — too big,
+ * wrong type, or a real ImgBB error (itself already retried a couple of times, see imgbb.ts) —
+ * comes back in `failed` for the admin to see and retry individually. */
 export async function uploadProductImages(productId: string, formData: FormData): Promise<UploadImagesResult> {
   await requireAdmin();
 
@@ -409,43 +448,92 @@ export async function uploadProductImages(productId: string, formData: FormData)
   if (files.length === 0) return { ok: false, error: "No files received." };
   if (files.length > MAX_FILES_PER_UPLOAD) return { ok: false, error: `Upload at most ${MAX_FILES_PER_UPLOAD} images at a time.` };
 
-  const oversized = files.some((f) => f.size > MAX_IMAGE_BYTES);
-  if (oversized) return { ok: false, error: "Each image must be under 8MB." };
-
   const totalBytes = files.reduce((sum, f) => sum + f.size, 0);
-  if (totalBytes > MAX_TOTAL_UPLOAD_BYTES) return { ok: false, error: "That's too much data in one upload — try fewer images." };
-
-  const imageFiles = files.filter((f) => f.type.startsWith("image/") && !REJECTED_IMAGE_TYPES.has(f.type));
-  if (imageFiles.length === 0) return { ok: false, error: "Only JPG, PNG, WEBP, GIF or AVIF images are accepted." };
-
-  const position = await db.productImage.count({ where: { productId } });
-  if (position + imageFiles.length > MAX_IMAGES_PER_PRODUCT) {
-    return { ok: false, error: `A product can have at most ${MAX_IMAGES_PER_PRODUCT} images (${position} already uploaded).` };
+  if (totalBytes > MAX_TOTAL_UPLOAD_BYTES) {
+    return {
+      ok: false,
+      error: `That's ${(totalBytes / (1024 * 1024)).toFixed(0)}MB in one upload — try fewer images (max ${MAX_TOTAL_UPLOAD_BYTES / (1024 * 1024)}MB total).`,
+    };
   }
 
-  let uploadedUrls: string[];
-  try {
-    uploadedUrls = await Promise.all(imageFiles.map((file) => uploadToImgBb(file)));
-  } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : "Image upload failed." };
+  const failed: { name: string; error: string }[] = [];
+  const acceptedFiles: File[] = [];
+  for (const file of files) {
+    if (!file.type.startsWith("image/") || REJECTED_IMAGE_TYPES.has(file.type)) {
+      failed.push({ name: file.name, error: "Only JPG, PNG, WEBP, GIF or AVIF images are accepted." });
+    } else if (file.size > MAX_IMAGE_BYTES) {
+      failed.push({ name: file.name, error: `Over the ${MAX_IMAGE_BYTES / (1024 * 1024)}MB per-image limit.` });
+    } else {
+      acceptedFiles.push(file);
+    }
   }
+  if (acceptedFiles.length === 0) {
+    return { ok: false, error: failed.map((f) => `"${f.name}": ${f.error}`).join(" ") };
+  }
+
+  const existingCount = await db.productImage.count({ where: { productId } });
+  if (existingCount + acceptedFiles.length > MAX_IMAGES_PER_PRODUCT) {
+    return { ok: false, error: `A product can have at most ${MAX_IMAGES_PER_PRODUCT} images (${existingCount} already uploaded).` };
+  }
+
+  const results = await Promise.allSettled(acceptedFiles.map((file) => uploadToImgBb(file)));
 
   const created: ProductImageRow[] = [];
-  for (const [index, url] of uploadedUrls.entries()) {
+  let position = existingCount;
+  for (const [index, result] of results.entries()) {
+    const file = acceptedFiles[index];
+    if (result.status === "rejected") {
+      failed.push({ name: file.name, error: result.reason instanceof Error ? result.reason.message : "Upload failed." });
+      continue;
+    }
     try {
       const row = await db.productImage.create({
-        data: { productId, url, alt: product.title, position: position + index },
+        data: { productId, url: result.value, alt: product.title, position },
       });
       created.push(row);
+      position += 1;
     } catch (error) {
-      return { ok: false, error: error instanceof Error ? error.message : "Image upload failed." };
+      failed.push({ name: file.name, error: error instanceof Error ? error.message : "Failed to save." });
     }
+  }
+
+  if (created.length === 0) {
+    return { ok: false, error: failed.map((f) => `"${f.name}": ${f.error}`).join(" ") };
   }
 
   revalidatePath(`/admin/products/${productId}`);
   revalidatePath("/admin/products");
   invalidateProduct({ id: productId, slug: product.slug });
-  return { ok: true, images: created };
+  return { ok: true, images: created, failed };
+}
+
+/** Persists a drag/arrow-button reorder from the product editor's image grid — `orderedIds` is
+ * the full set of this product's image IDs in their new display order, which becomes the new
+ * `position` (0, 1, 2, …) for each row. The first image (position 0) is what ProductCard.tsx and
+ * every other "primary image" lookup treats as the product's cover photo, so this is also how an
+ * admin changes which photo that is. Rejects a stale/mismatched ID list rather than silently
+ * reordering a subset, since that could leave `position` with gaps or duplicates. */
+export async function reorderProductImages(
+  productId: string,
+  orderedIds: string[],
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  await requireAdmin();
+
+  const product = await db.product.findUnique({ where: { id: productId }, select: { id: true, slug: true } });
+  if (!product) return { ok: false, error: "Product not found." };
+
+  const existing = await db.productImage.findMany({ where: { productId }, select: { id: true } });
+  const existingIds = new Set(existing.map((img) => img.id));
+  if (orderedIds.length !== existing.length || !orderedIds.every((id) => existingIds.has(id))) {
+    return { ok: false, error: "Image list is out of date — refresh and try again." };
+  }
+
+  await db.$transaction(orderedIds.map((id, position) => db.productImage.update({ where: { id }, data: { position } })));
+
+  revalidatePath(`/admin/products/${productId}`);
+  revalidatePath("/admin/products");
+  invalidateProduct({ id: productId, slug: product.slug });
+  return { ok: true };
 }
 
 export async function deleteProductImage(id: string): Promise<{ ok: true } | { ok: false; error: string }> {

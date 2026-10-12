@@ -18,7 +18,12 @@ export default async function AccountProfilePage() {
 
   return (
     <div>
-      <ProfileForm name={customer?.name ?? ""} phone={customer?.phone ?? ""} email={customer?.email ?? ""} />
+      <ProfileForm
+        name={customer?.name ?? ""}
+        phone={customer?.phone ?? ""}
+        email={customer?.email ?? ""}
+        avatarUrl={customer?.avatarUrl ?? null}
+      />
       <div className="mt-4.5 border border-line bg-panel p-4.5">
         <h3 className="font-impact mb-2 text-lg uppercase">Default address</h3>
         {defaultAddress ? (

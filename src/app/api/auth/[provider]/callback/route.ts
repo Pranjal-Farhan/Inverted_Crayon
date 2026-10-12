@@ -70,13 +70,20 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ prov
       if (existing) {
         customer =
           provider === "google"
-            ? await db.customer.update({ where: { id: existing.id }, data: { googleId: profile.id } })
+            ? await db.customer.update({
+                where: { id: existing.id },
+                // Picking up an avatar on a pre-existing (e.g. password) account the first time it
+                // links Google — but never overwriting one the customer already has (an avatarUrl
+                // they set some other way, or linked from Google previously).
+                data: { googleId: profile.id, avatarUrl: existing.avatarUrl ?? profile.picture ?? undefined },
+              })
             : await db.customer.update({ where: { id: existing.id }, data: { facebookId: profile.id } });
       } else {
         customer = await db.customer.create({
           data: {
             email,
             name: profile.name,
+            avatarUrl: provider === "google" ? profile.picture : null,
             googleId: provider === "google" ? profile.id : undefined,
             facebookId: provider === "facebook" ? profile.id : undefined,
           },
@@ -86,7 +93,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ prov
       }
     }
 
-    await setCustomerSession({ customerId: customer.id, email: customer.email, name: customer.name });
+    await setCustomerSession({ customerId: customer.id, email: customer.email, name: customer.name, avatarUrl: customer.avatarUrl });
     return NextResponse.redirect(`${origin}/account`);
   } catch (e) {
     console.error("OAuth callback failed", e);

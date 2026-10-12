@@ -54,7 +54,6 @@ const LEGAL_LINKS = [
   { href: "/journal", label: "Journal" },
   { href: "/faq", label: "FAQ" },
   { href: "/contact", label: "Contact" },
-  { href: "/shipping-returns", label: "Shipping & returns" },
   { href: "/privacy", label: "Privacy" },
   { href: "/terms", label: "Terms" },
 ];
@@ -63,10 +62,12 @@ export function Footer({
   brandName = "Inverted Crayon",
   motto = "Stay Inverted",
   logoImageUrl = null,
+  social = { facebookUrl: "", instagramUrl: "", whatsappUrl: "" },
 }: {
   brandName?: string;
   motto?: string;
   logoImageUrl?: string | null;
+  social?: { facebookUrl: string; instagramUrl: string; whatsappUrl: string };
 }) {
   const [mottoFirst, ...mottoRest] = motto.split(" ");
   const mottoRestText = mottoRest.join(" ");
@@ -115,9 +116,27 @@ export function Footer({
           <div className="flex flex-wrap items-center gap-4.5">
             <NewsletterForm />
             <div className="flex gap-3.5">
-              <SocialIcon path="M12 2c2.7 0 3 0 4.1.1 1 0 1.7.2 2.3.5.6.2 1.1.5 1.6 1s.8 1 1 1.6c.3.6.4 1.3.5 2.3.1 1.1.1 1.4.1 4.1s0 3-.1 4.1c0 1-.2 1.7-.5 2.3-.2.6-.5 1.1-1 1.6s-1 .8-1.6 1c-.6.3-1.3.4-2.3.5-1.1.1-1.4.1-4.1.1s-3 0-4.1-.1c-1 0-1.7-.2-2.3-.5-.6-.2-1.1-.5-1.6-1s-.8-1-1-1.6c-.3-.6-.4-1.3-.5-2.3C2 15 2 14.7 2 12s0-3 .1-4.1c0-1 .2-1.7.5-2.3.2-.6.5-1.1 1-1.6s1-.8 1.6-1c.6-.3 1.3-.4 2.3-.5C9 2 9.3 2 12 2zm0 5a5 5 0 100 10 5 5 0 000-10zm0 8a3 3 0 110-6 3 3 0 010 6zm5.3-8.9a1.2 1.2 0 100 2.4 1.2 1.2 0 000-2.4z" />
-              <SocialIcon path="M16 3c.3 2.3 1.7 4 4 4.2v3c-1.5 0-2.9-.4-4-1.1V16a6 6 0 11-6-6c.3 0 .7 0 1 .1v3.1a3 3 0 101 2.3V3z" />
-              <SocialIcon path="M17 3h3l-6.6 7.6L21 21h-5.5l-4.3-5.6L6 21H3l7-8L3 3h5.6l3.9 5.2z" />
+              {social.facebookUrl && (
+                <SocialIcon
+                  href={social.facebookUrl}
+                  label="Facebook"
+                  path="M13.5 21v-7.6h2.6l.4-3h-3V8.3c0-.9.3-1.5 1.6-1.5h1.5V4.1C15.9 4 14.9 4 13.8 4c-2.6 0-4.3 1.6-4.3 4.4v2h-2.6v3h2.6V21h3z"
+                />
+              )}
+              {social.instagramUrl && (
+                <SocialIcon
+                  href={social.instagramUrl}
+                  label="Instagram"
+                  path="M12 2c2.7 0 3 0 4.1.1 1 0 1.7.2 2.3.5.6.2 1.1.5 1.6 1s.8 1 1 1.6c.3.6.4 1.3.5 2.3.1 1.1.1 1.4.1 4.1s0 3-.1 4.1c0 1-.2 1.7-.5 2.3-.2.6-.5 1.1-1 1.6s-1 .8-1.6 1c-.6.3-1.3.4-2.3.5-1.1.1-1.4.1-4.1.1s-3 0-4.1-.1c-1 0-1.7-.2-2.3-.5-.6-.2-1.1-.5-1.6-1s-.8-1-1-1.6c-.3-.6-.4-1.3-.5-2.3C2 15 2 14.7 2 12s0-3 .1-4.1c0-1 .2-1.7.5-2.3.2-.6.5-1.1 1-1.6s1-.8 1.6-1c.6-.3 1.3-.4 2.3-.5C9 2 9.3 2 12 2zm0 5a5 5 0 100 10 5 5 0 000-10zm0 8a3 3 0 110-6 3 3 0 010 6zm5.3-8.9a1.2 1.2 0 100 2.4 1.2 1.2 0 000-2.4z"
+                />
+              )}
+              {social.whatsappUrl && (
+                <SocialIcon
+                  href={social.whatsappUrl}
+                  label="WhatsApp"
+                  path="M17.5 14.4c-.3-.1-1.6-.8-1.9-.9-.2-.1-.4-.1-.6.1-.2.2-.6.9-.8 1-.1.2-.3.2-.5.1-1.4-.6-2.3-1.2-3.2-2.7-.2-.3 0-.5.1-.6.2-.2.4-.5.6-.7.1-.2.1-.4 0-.5-.1-.1-.6-1.5-.8-2-.2-.5-.4-.4-.6-.4h-.5c-.2 0-.5.1-.7.4-.2.2-.9.9-.9 2.2 0 1.3.9 2.6 1 2.8.1.1 1.7 2.7 4.3 3.7 2.1.8 2.1.5 2.5.5.4 0 1.3-.5 1.5-1 .2-.5.2-.9.1-1 0-.1-.2-.2-.5-.3zM12 2a10 10 0 00-8.5 15.2L2 22l4.9-1.5A10 10 0 1012 2z"
+                />
+              )}
             </div>
           </div>
         </div>
@@ -137,10 +156,12 @@ export function Footer({
   );
 }
 
-function SocialIcon({ path }: { path: string }) {
+function SocialIcon({ path, href, label }: { path: string; href: string; label: string }) {
   return (
-    <svg viewBox="0 0 24 24" className="h-5 w-5 fill-paper">
-      <path d={path} />
-    </svg>
+    <a href={href} target="_blank" rel="noopener noreferrer" aria-label={label}>
+      <svg viewBox="0 0 24 24" className="h-5 w-5 fill-paper">
+        <path d={path} />
+      </svg>
+    </a>
   );
 }

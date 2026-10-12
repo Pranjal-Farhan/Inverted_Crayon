@@ -32,7 +32,7 @@ export async function customerLogin(
     await db.customer.update({ where: { id: customer.id }, data: { failedLoginCount: 0, lockedUntil: null } });
   }
 
-  await setCustomerSession({ customerId: customer.id, email: customer.email, name: customer.name });
+  await setCustomerSession({ customerId: customer.id, email: customer.email, name: customer.name, avatarUrl: customer.avatarUrl });
   redirect("/account");
 }
 
@@ -71,7 +71,7 @@ export async function customerRegister(
   // registering with an email used for guest orders claims those orders (§08)
   await db.order.updateMany({ where: { email, customerId: null }, data: { customerId: customer.id } });
 
-  await setCustomerSession({ customerId: customer.id, email: customer.email, name: customer.name });
+  await setCustomerSession({ customerId: customer.id, email: customer.email, name: customer.name, avatarUrl: customer.avatarUrl });
   redirect("/account");
 }
 

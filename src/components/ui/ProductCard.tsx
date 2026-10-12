@@ -7,6 +7,7 @@ import { PlaceholderFrame } from "@/components/ui/PlaceholderFrame";
 import { TagPill } from "@/components/ui/TagPill";
 import { formatTaka } from "@/lib/money";
 import { pickAccent } from "@/lib/accent-color";
+import { DiscountPriceTag } from "@/components/brand/DiscountPriceTag";
 import type { ProductDisplay } from "@/lib/product-view";
 
 /** Product card — one component, every surface (§05). */
@@ -88,6 +89,7 @@ export function ProductCard({ product }: { product: ProductDisplay }) {
               alt={product.title}
               fill
               sizes="(min-width: 1024px) 25vw, 50vw"
+              quality={90}
               className={`absolute inset-0 h-full w-full object-cover transition duration-300 ease-out ${!product.soldOut
                   ? "group-hover:scale-[1.05] group-hover:outline group-hover:outline-2 group-hover:outline-offset-[-2px] group-hover:outline-lime"
                   : ""
@@ -129,10 +131,7 @@ export function ProductCard({ product }: { product: ProductDisplay }) {
       <h4 className="text-[14px] font-medium">{product.title}</h4>
       <div className="price mt-[3px] text-[15px] text-lime">
         {product.onSale && product.salePrice != null ? (
-          <>
-            <span className="mr-1.5 text-[13px] text-muted-2 line-through">{formatTaka(product.basePrice)}</span>
-            <span className="text-yellow">{formatTaka(product.salePrice)}</span>
-          </>
+          <DiscountPriceTag id={product.id} basePrice={product.basePrice} salePrice={product.salePrice} size="sm" />
         ) : (
           formatTaka(product.basePrice)
         )}

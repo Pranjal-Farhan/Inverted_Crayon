@@ -38,7 +38,7 @@ export async function GenderHub({ gender }: { gender: "MEN" | "WOMEN" }) {
 
       <div className="relative my-4.5 aspect-[5/1.4]">
         {hero.imageUrl ? (
-          <Image src={hero.imageUrl} alt="" fill sizes="100vw" className="object-cover" />
+          <Image src={hero.imageUrl} alt="" fill sizes="100vw" quality={90} className="object-cover" />
         ) : (
           <PlaceholderFrame accentColor="#ff2d84" shape="x" label={`${label.toUpperCase()} · EDITORIAL HERO`} className="h-full w-full" />
         )}
@@ -62,7 +62,7 @@ export async function GenderHub({ gender }: { gender: "MEN" | "WOMEN" }) {
               >
                 {c.imageUrl ? (
                   <>
-                    <Image src={c.imageUrl} alt="" fill sizes="(min-width: 1024px) 25vw, 50vw" className="absolute inset-0 h-full w-full object-cover" />
+                    <Image src={c.imageUrl} alt="" fill sizes="(min-width: 1024px) 25vw, 50vw" quality={90} className="absolute inset-0 h-full w-full object-cover" />
                     <div className="absolute inset-x-0 bottom-0 z-[2] h-1/2 bg-gradient-to-t from-ink/80 to-transparent" />
                   </>
                 ) : (

@@ -1,4 +1,5 @@
 import Image from "next/image";
+import Link from "next/link";
 import {
   getActiveCampaigns,
   getCachedProductById,
@@ -8,7 +9,6 @@ import {
 } from "@/lib/public-cache";
 import { deriveProductDisplay } from "@/lib/product-view";
 import { PlaceholderFrame } from "@/components/ui/PlaceholderFrame";
-import { ProductCard } from "@/components/ui/ProductCard";
 import { Button } from "@/components/ui/Button";
 import { Crown } from "@/components/brand/Crown";
 import { pickAccent } from "@/lib/accent-color";
@@ -18,6 +18,7 @@ import { HeroCarousel } from "@/components/storefront/HeroCarousel";
 import { ScrambleHeadline } from "@/components/storefront/ScrambleHeadline";
 import { CrayonScribble } from "@/components/brand/CrayonScribble";
 import { CategoryExplorer } from "@/components/storefront/CategoryExplorer";
+import { NewInGrid } from "@/components/storefront/NewInGrid";
 import { DEFAULT_HERO, type HeroData } from "@/lib/hero-defaults";
 import { DEFAULT_GENDER_CARDS, type GenderCardsData } from "@/lib/gender-cards-defaults";
 
@@ -52,7 +53,8 @@ export default async function HomePage() {
   const featuredId = (featuredBlock?.data as { productId?: string } | undefined)?.productId;
   const featuredProduct = featuredId ? await getCachedProductById(featuredId) : newProductsRaw[0];
 
-  const newProducts = newProductsRaw.map((p) => deriveProductDisplay(p, campaigns, now));
+  const newInHasMore = newProductsRaw.length > 20;
+  const newProducts = newProductsRaw.slice(0, 20).map((p) => deriveProductDisplay(p, campaigns, now));
   const featuredDisplay = featuredProduct ? deriveProductDisplay(featuredProduct, campaigns, now) : null;
   const featuredAccent = featuredProduct ? pickAccent(featuredProduct.id) : null;
   const featuredImage = featuredProduct?.images.find((img) => img.url)?.url;
@@ -143,13 +145,14 @@ export default async function HomePage() {
             <CrayonScribble id="featured-h" color="var(--color-ic-yellow)" className="h-6 w-10 rotate-2 opacity-80" />
           </div>
           <div className="grid grid-cols-1 gap-8 desktop:grid-cols-[1fr_1.2fr] items-center border border-line bg-panel p-6">
-            <div className="relative aspect-square">
+            <Link href={`/product/${featuredProduct.slug}`} className="relative block aspect-square">
               {featuredImage ? (
                 <Image
                   src={featuredImage}
                   alt={featuredProduct.title}
                   fill
                   sizes="(min-width: 1024px) 45vw, 100vw"
+                  quality={90}
                   className="object-cover"
                 />
               ) : (
@@ -160,9 +163,11 @@ export default async function HomePage() {
                   className="h-full w-full"
                 />
               )}
-            </div>
+            </Link>
             <div className="min-w-0">
-              <h3 className="font-impact text-3xl uppercase">{featuredProduct.title}</h3>
+              <Link href={`/product/${featuredProduct.slug}`} className="inline-block hover:text-lime">
+                <h3 className="font-impact text-3xl uppercase">{featuredProduct.title}</h3>
+              </Link>
               <AddToCartForm
                 productId={featuredProduct.id}
                 slug={featuredProduct.slug}
@@ -179,6 +184,16 @@ export default async function HomePage() {
                 isPreorder={featuredDisplay.isPreorder}
                 preorderShipDate={featuredDisplay.preorderShipDate}
                 accentColor={featuredAccent.color}
+                deliveryChargeInsideDhaka={
+                  featuredProduct.deliveryChargeInsideDhaka != null
+                    ? toNumber(featuredProduct.deliveryChargeInsideDhaka)
+                    : null
+                }
+                deliveryChargeOutsideDhaka={
+                  featuredProduct.deliveryChargeOutsideDhaka != null
+                    ? toNumber(featuredProduct.deliveryChargeOutsideDhaka)
+                    : null
+                }
               />
             </div>
           </div>
@@ -190,11 +205,7 @@ export default async function HomePage() {
         New In <Crown className="h-6 w-[34px] text-pink" />
         <CrayonScribble id="newin-h" color="var(--color-ic-pink)" className="h-6 w-10 -rotate-2 opacity-80" />
       </div>
-      <div className="grid grid-cols-2 desktop:grid-cols-4 gap-5">
-        {newProducts.map((p) => (
-          <ProductCard key={p.id} product={p} />
-        ))}
-      </div>
+      <NewInGrid initialProducts={newProducts} initialHasMore={newInHasMore} />
 
       {/* TRACK YOUR ORDER */}
       <div className="sh my-8 flex items-center gap-3 font-scrawl text-[30px]">

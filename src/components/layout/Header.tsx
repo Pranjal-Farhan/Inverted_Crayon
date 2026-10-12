@@ -7,8 +7,10 @@ import { Monogram } from "@/components/brand/Monogram";
 import { RainbowWord } from "@/components/brand/RainbowWord";
 import { useCart } from "@/context/cart-context";
 import { useLoggedIn } from "@/lib/use-logged-in";
+import { useCustomerIdentity } from "@/lib/use-customer-identity";
 import { SearchOverlay } from "@/components/layout/SearchOverlay";
 import { ScribbleLink } from "@/components/ui/ScribbleLink";
+import { Avatar } from "@/components/ui/Avatar";
 
 const GENDERS = [
   { key: "men", label: "Men" },
@@ -35,6 +37,7 @@ export function Header({
   // Neutral (logged-out) on the server-rendered shell and first paint, same for every visitor;
   // flips after mount if the non-sensitive hint cookie is present — see src/lib/use-logged-in.ts.
   const loggedIn = useLoggedIn();
+  const identity = useCustomerIdentity();
   const [brandFirst, ...brandRest] = brandName.split(" ");
   const brandRestText = brandRest.join(" ");
 
@@ -112,7 +115,11 @@ export function Header({
               <SearchIcon />
             </button>
             <Link href={loggedIn ? "/account" : "/account/login"} aria-label="Account" prefetch={false}>
-              <AccountIcon />
+              {identity ? (
+                <Avatar src={identity.avatarUrl} name={identity.name} email={identity.email} size={26} />
+              ) : (
+                <AccountIcon />
+              )}
             </Link>
             <button onClick={openDrawer} aria-label="Cart" className="relative">
               <CartIcon />
@@ -194,8 +201,9 @@ export function Header({
             href={loggedIn ? "/account" : "/account/login"}
             onClick={() => setMobileOpen(false)}
             prefetch={false}
-            className="block border-b border-line py-3 font-label text-lg tracking-[1.2px]"
+            className="flex items-center gap-2.5 border-b border-line py-3 font-label text-lg tracking-[1.2px]"
           >
+            {identity && <Avatar src={identity.avatarUrl} name={identity.name} email={identity.email} size={24} />}
             {loggedIn ? "ACCOUNT" : "LOGIN"}
           </Link>
           <button

@@ -63,7 +63,7 @@ export function ProductGallery({
               aria-label={`View image ${i + 1}`}
             >
               {img.url ? (
-                <Image src={img.url} alt={img.alt ?? ""} fill sizes="70px" className="object-cover" />
+                <Image src={img.url} alt={img.alt ?? ""} fill sizes="70px" quality={90} className="object-cover" />
               ) : (
                 <PlaceholderFrame accentColor={img.accentColor ?? accent.color} shape={accent.shape} stamp={false} className="h-full w-full" />
               )}
@@ -97,7 +97,15 @@ export function ProductGallery({
                 src={img.url}
                 alt={img.alt ?? ""}
                 fill
-                sizes="(min-width: 1024px) 50vw, 100vw"
+                // 110vw/220vw, not 50vw/100vw — the click-to-zoom below stretches this same
+                // <Image> 2.2x via a CSS transform, which `sizes` otherwise has no way to know
+                // about. Without the multiplier, the browser picks a srcset candidate sized for
+                // the un-zoomed box and that bitmap gets visibly upscaled on zoom. Scaling the
+                // `sizes` value by the same 2.2x makes the browser request enough real pixels
+                // up front (capped at the source image's own resolution — up to 2000x2500px —
+                // so this never asks for more than the upload actually has).
+                sizes="(min-width: 1024px) 110vw, 220vw"
+                quality={90}
                 className={`object-contain transition-transform duration-150 ease-out ${zoomed ? "scale-[2.2]" : ""}`}
                 style={zoomed ? { transformOrigin: `${zoomOrigin.x}% ${zoomOrigin.y}%` } : undefined}
               />
