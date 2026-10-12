@@ -44,7 +44,7 @@ export async function getProductForPDP(slug: string) {
     product.gender === "UNISEX" ? ["MEN", "WOMEN", "UNISEX"] : [product.gender, "UNISEX"];
   const relatedRaw = await db.product.findMany({
     where: { gender: { in: relatedGenders }, id: { not: product.id }, status: "ACTIVE" },
-    include: { variants: true, images: true, tags: { include: { tag: true } }, category: true },
+    include: { variants: true, images: { orderBy: { position: "asc" } }, tags: { include: { tag: true } }, category: true },
     take: 4,
   });
   const related = relatedRaw.map((p) => deriveProductDisplay(p, campaigns, now));

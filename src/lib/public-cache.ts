@@ -36,7 +36,12 @@ import { getChatWidgetSettings, getStoreInfo } from "@/lib/store-settings";
 
 export const PRODUCT_CARD_INCLUDE = {
   variants: true,
-  images: true,
+  // Without an explicit orderBy, Postgres returns a product's images in whatever order its own
+  // storage happens to have them in — not necessarily `position` order, and that drifts further
+  // once admins reorder images (an UPDATE moves a row's tuple, not its scan order). ProductCard
+  // and the homepage featured-drop both take "the first image with a url" as the cover photo, so
+  // an unordered fetch could hand them any image in the gallery instead of the intended cover.
+  images: { orderBy: { position: "asc" } },
   tags: { include: { tag: true } },
   category: true,
 } as const;

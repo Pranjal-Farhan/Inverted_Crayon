@@ -52,7 +52,9 @@ function getCachedCatalogForScope(gender: PLPParams["gender"], categorySlug: str
           where,
           include: {
             variants: true,
-            images: true,
+            // See PRODUCT_CARD_INCLUDE in public-cache.ts: an unordered fetch can hand ProductCard
+            // any image in the gallery as the "cover" instead of the intended position-0 shot.
+            images: { orderBy: { position: "asc" } },
             tags: { include: { tag: true } },
             category: true,
           },

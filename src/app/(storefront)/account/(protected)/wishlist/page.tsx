@@ -13,7 +13,9 @@ export default async function AccountWishlistPage() {
     db.wishlistItem.findMany({
       where: { customerId: session.customerId },
       include: {
-        product: { include: { variants: true, images: true, tags: { include: { tag: true } }, category: true } },
+        product: {
+          include: { variants: true, images: { orderBy: { position: "asc" } }, tags: { include: { tag: true } }, category: true },
+        },
       },
       orderBy: { createdAt: "desc" },
     }),
