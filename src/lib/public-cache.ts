@@ -187,6 +187,8 @@ export const getHomeNewProducts = unstable_cache(
   { tags: ["products"], revalidate: 300 },
 );
 
+// No `take` cap — GenderHub.tsx renders every one of these under an "All Products {label}" heading
+// with no pagination, so capping this query silently hid products the heading promised to show.
 export function getGenderHubProducts(gender: "MEN" | "WOMEN") {
   return unstable_cache(
     () =>
@@ -194,7 +196,6 @@ export function getGenderHubProducts(gender: "MEN" | "WOMEN") {
         where: { gender: { in: [gender, "UNISEX"] }, status: "ACTIVE" },
         include: PRODUCT_CARD_INCLUDE,
         orderBy: { publishedAt: "desc" },
-        take: 8,
       }),
     ["public-gender-hub-products", gender],
     { tags: ["products"], revalidate: 300 },
