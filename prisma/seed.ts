@@ -445,20 +445,6 @@ async function main() {
     });
   }
 
-  // ---------- reviews ----------
-  for (const p of sampleProducts.slice(0, 4)) {
-    await db.review.create({
-      data: {
-        productId: p.id,
-        customerId: rex.id,
-        authorName: "Rex O.",
-        rating: 5,
-        body: "Heavyweight, fits true to size, print held up after washes. Made to stand out, for real.",
-        status: "APPROVED",
-      },
-    });
-  }
-
   // ---------- content blocks ----------
   await db.contentBlock.upsert({
     where: { key: "home_hero" },

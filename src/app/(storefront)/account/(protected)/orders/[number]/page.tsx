@@ -4,7 +4,6 @@ import { getCustomerSession } from "@/lib/session";
 import { db } from "@/lib/db";
 import { formatTaka, toNumber } from "@/lib/money";
 import { OrderTimeline } from "@/components/storefront/OrderTimeline";
-import { WriteReviewForm } from "@/components/storefront/WriteReviewForm";
 import { Button } from "@/components/ui/Button";
 import { parseVariantLabel } from "@/lib/order-status";
 
@@ -19,21 +18,6 @@ export default async function AccountOrderDetailPage({ params }: Props) {
     include: { items: { include: { product: { select: { slug: true } } } } },
   });
   if (!order) notFound();
-
-  const reviewedProductIds =
-    order.status === "DELIVERED"
-      ? new Set(
-          (
-            await db.review.findMany({
-              where: {
-                customerId: session.customerId,
-                productId: { in: order.items.map((i) => i.productId).filter((id): id is string => id != null) },
-              },
-              select: { productId: true },
-            })
-          ).map((r) => r.productId),
-        )
-      : new Set<string>();
 
   return (
     <div>
@@ -58,14 +42,6 @@ export default async function AccountOrderDetailPage({ params }: Props) {
                 </span>
                 <span>{formatTaka(toNumber(item.lineTotal))}</span>
               </div>
-              {order.status === "DELIVERED" && item.productId && !reviewedProductIds.has(item.productId) && (
-                <div className="mt-1.5">
-                  <WriteReviewForm productId={item.productId} orderNumber={order.number} productTitle={item.productTitleSnapshot} />
-                </div>
-              )}
-              {item.productId && reviewedProductIds.has(item.productId) && (
-                <p className="mt-1.5 text-[12px] text-muted">Reviewed — thanks!</p>
-              )}
             </div>
           );
         })}

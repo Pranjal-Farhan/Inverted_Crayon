@@ -11,7 +11,12 @@ export default async function EditProductPage({ params }: Props) {
   const [product, categories, sizeGuideTemplateRows] = await Promise.all([
     db.product.findUnique({
       where: { id },
-      include: { variants: true, tags: { include: { tag: true } }, images: { orderBy: { position: "asc" } } },
+      include: {
+        variants: true,
+        tags: { include: { tag: true } },
+        images: { orderBy: { position: "asc" } },
+        manufacturerLinks: { orderBy: { position: "asc" } },
+      },
     }),
     db.category.findMany({ orderBy: [{ gender: "asc" }, { position: "asc" }] }),
     db.sizeGuideTemplate.findMany({ orderBy: { name: "asc" } }),
@@ -66,6 +71,7 @@ export default async function EditProductPage({ params }: Props) {
           preorderAdvanceAmount: v.preorderAdvanceAmount != null ? toNumber(v.preorderAdvanceAmount) : null,
         })),
         images: product.images,
+        manufacturerLinks: product.manufacturerLinks,
         sizeGuide: parseSizeGuide(product.sizeGuide),
       }}
       categories={categories}

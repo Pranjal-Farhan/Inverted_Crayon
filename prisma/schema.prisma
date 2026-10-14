@@ -1,8 +1,9 @@
 // Inverted Crayon — data model
 // Faithful to Build Spec §10 (Product, Variant, Category, Collection, Tag,
-// Order, OrderItem, Customer, Discount, Campaign, Review), extended with the
+// Order, OrderItem, Customer, Discount, Campaign), extended with the
 // practical entities needed to actually run the store (admin users,
 // addresses, wishlist, back-in-stock subscriptions, CMS content blocks).
+// No customer-facing review system — admin-only product notes instead (ManufacturerLink).
 
 generator client {
   provider = "prisma-client"
@@ -82,12 +83,6 @@ enum ProductDiscountType {
   AMOUNT
 }
 
-enum ReviewStatus {
-  PENDING
-  APPROVED
-  REJECTED
-}
-
 enum AdminRole {
   ADMIN
   STAFF
@@ -103,22 +98,22 @@ enum ReturnStatus {
 // ---------- catalog ----------
 
 model Product {
-  id             String               @id @default(cuid())
-  slug           String               @unique
-  title          String
-  description    String
-  gender         Gender
-  basePrice      Decimal              @db.Decimal(10, 2)
+  id                         String               @id @default(cuid())
+  slug                       String               @unique
+  title                      String
+  description                String
+  gender                     Gender
+  basePrice                  Decimal              @db.Decimal(10, 2)
   // A standing markdown set directly on the product (no start/end date — on until an admin
   // removes it), separate from the category/date-driven Campaign system. Null discountType means
   // no discount is active; deriveProductDisplay (src/lib/product-view.ts) combines this with any
   // active Campaign and shows whichever produces the lower price.
-  discountType   ProductDiscountType?
-  discountValue  Decimal?             @db.Decimal(10, 2)
-  status         ProductStatus        @default(DRAFT)
-  seoTitle       String?
-  seoDescription String?
-  freeDelivery   FreeDeliveryScope    @default(NONE)
+  discountType               ProductDiscountType?
+  discountValue              Decimal?             @db.Decimal(10, 2)
+  status                     ProductStatus        @default(DRAFT)
+  seoTitle                   String?
+  seoDescription             String?
+  freeDelivery               FreeDeliveryScope    @default(NONE)
   // Per-product delivery-charge override — null means "use the store's default shipping rate for
   // this zone" (store-settings.ts). Delivery cost varies order to order by what's actually being
   // shipped, so the admin can set each product's own charge instead of one flat site-wide fee.
@@ -129,18 +124,18 @@ model Product {
   deliveryChargeOutsideDhaka Decimal?             @db.Decimal(10, 2)
   // { columns: string[]; rows: { size: string; values: string[] }[] } — see src/lib/size-guide.ts.
   // Null = this product has no measurements entered yet; the PDP falls back to a generic chart.
-  sizeGuide      Json?
+  sizeGuide                  Json?
 
   categoryId String
   category   Category @relation(fields: [categoryId], references: [id])
 
-  variants       Variant[]
-  images         ProductImage[]
-  tags           ProductTag[]
-  reviews        Review[]
-  orderItems     OrderItem[]
-  wishlistedBy   WishlistItem[]
-  stockPurchases StockPurchase[]
+  variants          Variant[]
+  images            ProductImage[]
+  tags              ProductTag[]
+  orderItems        OrderItem[]
+  wishlistedBy      WishlistItem[]
+  stockPurchases    StockPurchase[]
+  manufacturerLinks ManufacturerLink[]
 
   publishedAt DateTime?
   createdAt   DateTime  @default(now())
@@ -252,7 +247,6 @@ model Customer {
   orders          Order[]
   wishlist        WishlistItem[]
   backInStockSubs BackInStockSubscription[]
-  reviews         Review[]
   returns         ReturnRequest[]
 
   createdAt DateTime @default(now())
@@ -403,20 +397,22 @@ model Campaign {
   createdAt        DateTime @default(now())
 }
 
-model Review {
-  id         String       @id @default(cuid())
-  productId  String
-  product    Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
-  customerId String?
-  customer   Customer?    @relation(fields: [customerId], references: [id])
-  authorName String
-  rating     Int
-  body       String
-  status     ReviewStatus @default(PENDING)
-  reply      String?
-  createdAt  DateTime     @default(now())
+// Admin-only notes on a product, almost always a link to its manufacturer's page — never shown
+// to customers. One row per link; the admin adds/removes them freely and can tag exactly one as
+// the "current vendor" (isCurrentVendor) — see src/actions/admin-manufacturer-links.ts, which
+// enforces that exclusivity (unsetting any other row's flag in the same transaction) rather than
+// a DB constraint, since this is low-stakes/admin-only and a transaction is simpler than a
+// partial unique index.
+model ManufacturerLink {
+  id              String   @id @default(cuid())
+  productId       String
+  product         Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  url             String
+  position        Int      @default(0)
+  isCurrentVendor Boolean  @default(false)
+  createdAt       DateTime @default(now())
 
-  @@unique([productId, customerId])
+  @@index([productId, position])
 }
 
 model WishlistItem {

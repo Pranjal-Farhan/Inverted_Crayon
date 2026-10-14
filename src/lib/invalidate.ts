@@ -55,6 +55,3 @@ export function invalidateJournal(slug?: string | null) {
   if (slug) revalidateTag(`journal:${slug}`, NOW);
 }
 
-export function invalidateReviews() {
-  revalidateTag("reviews", NOW);
-}

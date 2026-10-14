@@ -15,8 +15,7 @@ import { getChatWidgetSettings, getStoreInfo } from "@/lib/store-settings";
  * src/lib/money.ts's toNumber(), which already handles strings as well as Decimal objects, so
  * that's a no-op change. Date fields (createdAt/updatedAt/publishedAt) come back as strings too;
  * nothing downstream of these specific functions calls a Date method on them directly (verified —
- * the only two places in the app that do, ReviewList.tsx and the account orders page, don't read
- * through this module).
+ * the one place in the app that does, the account orders page, doesn't read through this module).
  *
  * Invalidated from src/actions/* on the matching mutation — see the Fix 3 commit for the full
  * action-to-tag checklist.

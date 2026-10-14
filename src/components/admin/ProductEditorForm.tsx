@@ -15,6 +15,8 @@ import {
 import { Panel } from "@/components/admin/Panel";
 import { VariantStockStepper } from "@/components/admin/VariantStockStepper";
 import { SizeGuideTable } from "@/components/admin/SizeGuideTable";
+import { ManufacturerLinksPanel } from "@/components/admin/ManufacturerLinksPanel";
+import type { ManufacturerLinkRow } from "@/actions/admin-manufacturer-links";
 import { DEFAULT_SIZE_GUIDE_COLUMNS, type SizeGuideRow, type SizeGuideTemplateOption } from "@/lib/size-guide";
 import { slugify } from "@/lib/slugify";
 import { detectSizingMode, sizesForMode, type SizingMode } from "@/lib/sizes";
@@ -137,7 +139,13 @@ export function ProductEditorForm({
   categories,
   sizeGuideTemplates = [],
 }: {
-  initial: (ProductFormInput & { variants: IncomingVariantRow[]; images: ProductImageRow[] }) | null;
+  initial:
+    | (ProductFormInput & {
+        variants: IncomingVariantRow[];
+        images: ProductImageRow[];
+        manufacturerLinks: ManufacturerLinkRow[];
+      })
+    | null;
   categories: CategoryOption[];
   sizeGuideTemplates?: SizeGuideTemplateOption[];
 }) {
@@ -917,6 +925,10 @@ export function ProductEditorForm({
               <input value={preorderShipDate} onChange={(e) => setPreorderShipDate(e.target.value)} placeholder="15 Oct" className={inputClass} />
             </Field>
           )}
+        </Panel>
+
+        <Panel title="Manufacturer Information" className="mt-4.5">
+          <ManufacturerLinksPanel productId={initial?.id ?? null} initialLinks={initial?.manufacturerLinks ?? []} />
         </Panel>
 
         <Panel title="Status & SEO" className="mt-4.5">

@@ -6,8 +6,6 @@ import { TagPill } from "@/components/ui/TagPill";
 import { AddToCartForm } from "@/components/storefront/AddToCartForm";
 import { ProductCard } from "@/components/ui/ProductCard";
 import { ProductGallery } from "@/components/storefront/ProductGallery";
-import { ReviewList } from "@/components/storefront/ReviewList";
-import { ReviewPrompt } from "@/components/storefront/ReviewPrompt";
 import { TrackRecentlyViewed, RecentlyViewedRail } from "@/components/storefront/RecentlyViewed";
 import { formatTaka } from "@/lib/money";
 import { toNumber } from "@/lib/money";
@@ -44,9 +42,9 @@ export default async function ProductPage({ params }: Props) {
   if (!data) notFound();
   const { product, display, related, variantPrices } = data;
 
-  // Wishlist-saved state and login state are both read client-side (WishlistButton /
-  // ReviewPrompt) so this page itself never calls cookies()/getCustomerSession() and can stay
-  // static/ISR — see src/lib/use-logged-in.ts.
+  // Wishlist-saved state and login state are both read client-side (WishlistButton) so this
+  // page itself never calls cookies()/getCustomerSession() and can stay static/ISR — see
+  // src/lib/use-logged-in.ts.
   const accent = pickAccent(product.id);
   const genderLabel = product.gender === "MEN" ? "Men" : product.gender === "WOMEN" ? "Women" : "Unisex";
   const genderPath = product.gender === "WOMEN" ? "women" : "men";
@@ -60,11 +58,6 @@ export default async function ProductPage({ params }: Props) {
     price: variantPrices[v.id],
     preorderAdvanceAmount: v.preorderAdvanceAmount != null ? toNumber(v.preorderAdvanceAmount) : null,
   }));
-
-  const avgRating =
-    product.reviews.length > 0
-      ? product.reviews.reduce((s, r) => s + r.rating, 0) / product.reviews.length
-      : null;
 
   return (
     <section className="pg pb-16">
@@ -101,16 +94,6 @@ export default async function ProductPage({ params }: Props) {
           </div>
 
           <h1 className="font-impact text-[clamp(30px,4.4vw,46px)] uppercase leading-[0.9]">{product.title}</h1>
-
-          {avgRating != null && (
-            <div className="font-scrawl text-lg text-yellow">
-              {"★".repeat(Math.round(avgRating))}
-              {"☆".repeat(5 - Math.round(avgRating))}{" "}
-              <small className="font-body text-xs text-muted">
-                {avgRating.toFixed(1)} · {product.reviews.length} reviews
-              </small>
-            </div>
-          )}
 
           <div className="price my-1.5 text-[30px]">
             {display.onSale && display.salePrice != null ? (
@@ -185,14 +168,6 @@ export default async function ProductPage({ params }: Props) {
       )}
 
       <RecentlyViewedRail excludeProductId={product.id} />
-
-      <div className="sh my-8 flex items-center gap-3 font-scrawl text-[30px]">
-        Reviews <Crown className="h-6 w-[34px] text-yellow" />
-      </div>
-      <div className="max-w-[640px]">
-        <ReviewList reviews={product.reviews} />
-        <ReviewPrompt />
-      </div>
     </section>
   );
 }

@@ -27,7 +27,6 @@ const NAV: { group: string; items: { href: string; label: string; icon: string }
       { href: "/admin/footer", label: "Footer", icon: "▤" },
       { href: "/admin/journal", label: "Journal", icon: "✎" },
       { href: "/admin/analytics", label: "Analytics", icon: "◧" },
-      { href: "/admin/reviews", label: "Reviews", icon: "★" },
     ],
   },
   {
