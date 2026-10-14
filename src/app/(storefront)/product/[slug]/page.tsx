@@ -71,8 +71,8 @@ export default async function ProductPage({ params }: Props) {
           />
 
           <div className="mt-5 border-t border-line pt-3.5">
-            <h3 className="font-label text-base tracking-[1.4px]">DETAILS</h3>
-            <p className="mt-1.5 text-[13px] text-muted">oversized fit · ribbed collar</p>
+            <h3 className="font-label text-base tracking-[1.4px]">DESCRIPTION</h3>
+            <p className="mt-1.5 text-[13px] text-muted">{product.description}</p>
           </div>
         </div>
 
@@ -110,9 +110,7 @@ export default async function ProductPage({ params }: Props) {
             </div>
           )}
 
-          <p className="mb-5.5 max-w-[46ch] text-[#cfcfce]">{product.description}</p>
-
-          <div className="mb-3 flex flex-wrap gap-1.5">
+          <div className="mt-2 mb-3 flex flex-wrap gap-1.5">
             {display.isLimited && <TagPill kind="limited" />}
             {display.isBestseller && <TagPill kind="bestseller" />}
             {display.isNew && <TagPill kind="new" />}
