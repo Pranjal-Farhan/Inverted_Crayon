@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { PlaceholderFrame } from "@/components/ui/PlaceholderFrame";
 import { ProductCard } from "@/components/ui/ProductCard";
 import { HandDrawnMark, pickMark, useMarkHover } from "@/components/brand/HandDrawnMarks";
@@ -41,6 +41,8 @@ export function CategoryExplorer({
   const [step, setStep] = useState<Step>({ kind: "gender" });
   const [leaving, setLeaving] = useState(false);
   const [stepKey, setStepKey] = useState(0);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const isFirstRender = useRef(true);
 
   function go(next: Step) {
     setLeaving(true);
@@ -51,10 +53,24 @@ export function CategoryExplorer({
     }, EXIT_MS);
   }
 
+  // Each step swaps in content of a different height (two big gender cards -> a category grid ->
+  // a product grid) — on a short mobile viewport that shrink can leave the step you just opened
+  // sitting above the fold, with the scroll position still where it was for the old, taller
+  // content. Bring the explorer's own top back into view (respecting the sticky header's
+  // scroll-padding-top, same as every other in-page jump) whenever a step actually changes — but
+  // not on first mount, where there's nothing to re-center yet.
+  useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
+    rootRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [stepKey]);
+
   const genderPath = step.kind !== "gender" ? (step.gender === "MEN" ? "men" : "women") : null;
 
   return (
-    <div>
+    <div ref={rootRef}>
       {step.kind !== "gender" && (
         <button
           type="button"
@@ -183,7 +199,15 @@ function GenderCard({
         duration={500}
         visible={hovered}
         stretch
-        className="ce-mark absolute -inset-5 z-[6] -rotate-2"
+        // inset-0 + explicit h-full/w-full (not the old -inset-5) is what actually makes the SVG's
+        // own box exactly match the card — an absolutely-positioned *replaced* element (SVG, img)
+        // sized only via top/right/bottom/left falls back toward its intrinsic 140:90 aspect ratio
+        // instead of the inset-implied box, which preserveAspectRatio="none" doesn't fix (that only
+        // affects how the artwork scales *inside* the SVG, not the SVG element's own box). That was
+        // barely visible on the desktop card (close to 140:90 already) but very visible on the
+        // squarer mobile card (the mark rendered much shorter than the card). scale-110 restores
+        // the original "bleeds slightly past the card's edge" look on top of the now-exact fill.
+        className="ce-mark absolute inset-0 z-[6] h-full w-full scale-110 -rotate-2"
       />
     </div>
   );

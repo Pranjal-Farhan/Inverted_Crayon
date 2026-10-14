@@ -57,6 +57,7 @@
 html {
   scroll-behavior: smooth;
   scroll-padding-top: 90px; /* sticky header height + breathing room */
+  overflow-x: hidden;
 }
 
 body {
@@ -66,6 +67,12 @@ body {
   font-size: 15px;
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
+  /* .site-wall/.site-grain are deliberately oversized (position: fixed; inset: -10%) so their
+     drift animation never shows a hard edge — but a fixed element sized past the viewport still
+     grows the document's own scrollable width on mobile, letting you drag-scroll sideways into
+     empty space. Clipping it here doesn't affect how those layers render (they're fixed, not
+     scrolled), it just removes the phantom scroll range. */
+  overflow-x: hidden;
 }
 
 ::selection {

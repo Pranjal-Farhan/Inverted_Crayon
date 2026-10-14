@@ -6,6 +6,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { ProductCard } from "@/components/ui/ProductCard";
 import { StaticSortSelect } from "@/components/storefront/StaticSortSelect";
 import { FilterDrawer } from "@/components/storefront/FilterDrawer";
+import { EndOfProducts } from "@/components/brand/EndOfProducts";
 import { applyPLPFilters } from "@/lib/plp-filter";
 import { parsePLPParams } from "@/lib/parse-plp-params";
 import { listParam, toggleListParam, toggleParam, setParam } from "@/lib/plp-url";
@@ -213,6 +214,9 @@ export function StaticPLPClient({
             {results.total > results.pageSize && (
               <Pagination sp={sp} page={results.page} pageSize={results.pageSize} total={results.total} onNavigate={navigate} />
             )}
+            {/* Last page of a paginated catalog, or a catalog small enough that every result
+                already fits on one page — either way, this is genuinely everything there is. */}
+            {!results.hasMore && <EndOfProducts />}
           </>
         )}
       </div>

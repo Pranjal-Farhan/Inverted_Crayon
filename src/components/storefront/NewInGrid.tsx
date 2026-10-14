@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { ProductCard } from "@/components/ui/ProductCard";
 import { Button } from "@/components/ui/Button";
+import { EndOfProducts } from "@/components/brand/EndOfProducts";
 import type { ProductDisplay } from "@/lib/product-view";
 
 /** Homepage "New In" grid — starts with the server-rendered first page (20 cards, shipped with
@@ -43,13 +44,15 @@ export function NewInGrid({
           <ProductCard key={p.id} product={p} />
         ))}
       </div>
-      {hasMore && (
+      {hasMore ? (
         <div className="mt-7 flex flex-col items-center gap-2">
           <Button variant="ghost" onClick={loadMore} loading={pending}>
             Load more
           </Button>
           {error && <p className="text-[13px] text-error">{error}</p>}
         </div>
+      ) : (
+        <EndOfProducts />
       )}
     </div>
   );
