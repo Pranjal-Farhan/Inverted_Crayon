@@ -151,12 +151,6 @@ export default async function OrderReceiptPage({ params }: Props) {
           </div>
         </div>
 
-        {order.trackingCourier && (
-          <div className="mt-4 border-t border-ink/15 pt-4 text-[13px] text-ink/70">
-            Shipped via {order.trackingCourier} · ref {order.trackingRef}
-          </div>
-        )}
-
         {/* footer */}
         <div className="mt-8 border-t border-ink/15 pt-5 text-center">
           <p className="font-scrawl text-lg">Thanks for standing out.</p>

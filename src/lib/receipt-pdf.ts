@@ -299,7 +299,7 @@ export function buildReceiptPdf(order: ReceiptOrder, store: StoreInfo): Promise<
     ]);
   }
   totalsRows.push(["Shipping", formatTaka(toNumber(order.shippingCost)), false]);
-  const blockHeight = totalsRows.length * 17 + 34 + (order.isPreorder ? 34 : 0) + (order.trackingCourier ? 44 : 0) + 90;
+  const blockHeight = totalsRows.length * 17 + 34 + (order.isPreorder ? 34 : 0) + 90;
   if (y + blockHeight > bottomLimit) {
     doc.addPage();
     y = PAGE_MARGIN;
@@ -320,13 +320,6 @@ export function buildReceiptPdf(order: ReceiptOrder, store: StoreInfo): Promise<
     doc.moveTo(tLeft, y - 4).lineTo(right, y - 4).lineWidth(0.6).dash(2, { space: 2 }).strokeColor(LINE).stroke().undash();
     y = p.paragraph("Preorder Now and Our Sales Agent Will Reach Out.", tLeft, y + 2, 230, { size: 9.5, color: MUTED });
     y += 4;
-  }
-
-  if (order.trackingCourier) {
-    y += 10;
-    rule(y);
-    p.text(`Shipped via ${order.trackingCourier} · ref ${order.trackingRef ?? "—"}`, left, y + 12, { size: 9.5, color: MUTED });
-    y += 32;
   }
 
   // ---- footer
