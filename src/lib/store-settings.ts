@@ -11,23 +11,13 @@ export type ShippingRates = {
   OUTSIDE_DHAKA: ShippingZoneRate;
 };
 
+// The standard delivery rate per zone. There's no settings screen for it any more: each product
+// carries its own delivery charge (product editor -> Delivery charge), and these are what a
+// product with no charge of its own falls back to. A `shipping_rates` StoreSetting row, if one
+// already exists, still overrides these so a deploy never changes what customers are charged.
 export const DEFAULT_SHIPPING_RATES: ShippingRates = {
   INSIDE_DHAKA: { label: "Inside Dhaka", cost: 60, etaDays: "2–3 days" },
   OUTSIDE_DHAKA: { label: "Outside Dhaka", cost: 120, etaDays: "3–5 days" },
-};
-
-export type PaymentGatewaySettings = {
-  bkash: boolean;
-  sslcommerz: boolean;
-  cod: boolean;
-  codRule: "inside_dhaka_only" | "nationwide";
-};
-
-export const DEFAULT_PAYMENT_GATEWAYS: PaymentGatewaySettings = {
-  bkash: true,
-  sslcommerz: true,
-  cod: true,
-  codRule: "inside_dhaka_only",
 };
 
 export type StoreInfo = {
@@ -58,18 +48,6 @@ export const DEFAULT_CHAT_WIDGET_SETTINGS: ChatWidgetSettings = {
   messengerUsername: "",
 };
 
-export type TaxSettings = {
-  rate: number;
-  inclusive: boolean;
-  label: string;
-};
-
-export const DEFAULT_TAX_SETTINGS: TaxSettings = {
-  rate: 0,
-  inclusive: true,
-  label: "VAT (included in listed price)",
-};
-
 async function getSetting<T>(key: string, fallback: T): Promise<T> {
   const row = await db.storeSetting.findUnique({ where: { key } });
   if (!row) return fallback;
@@ -80,16 +58,8 @@ export async function getShippingRates(): Promise<ShippingRates> {
   return getSetting("shipping_rates", DEFAULT_SHIPPING_RATES);
 }
 
-export async function getPaymentGateways(): Promise<PaymentGatewaySettings> {
-  return getSetting("payment_gateways", DEFAULT_PAYMENT_GATEWAYS);
-}
-
 export async function getStoreInfo(): Promise<StoreInfo> {
   return getSetting("store_info", DEFAULT_STORE_INFO);
-}
-
-export async function getTaxSettings(): Promise<TaxSettings> {
-  return getSetting("tax_settings", DEFAULT_TAX_SETTINGS);
 }
 
 export async function getChatWidgetSettings(): Promise<ChatWidgetSettings> {

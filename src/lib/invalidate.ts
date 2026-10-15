@@ -37,21 +37,3 @@ export function invalidateSettings() {
 export function invalidateContent() {
   revalidateTag("content", NOW);
 }
-
-/**
- * Campaign sale pricing/badges aren't a separately-cached read — they're baked into every
- * product-carrying cache entry (the PDP's "products"/`product:<slug>` tags, the PLP catalog's
- * "products" tag) via deriveProductDisplay's onSale/salePrice computation. Invalidating only
- * "campaigns" would leave every already-cached product page showing stale sale pricing after an
- * admin creates, edits, activates, or deletes a campaign — "products" has to go with it.
- */
-export function invalidateCampaigns() {
-  revalidateTag("campaigns", NOW);
-  revalidateTag("products", NOW);
-}
-
-export function invalidateJournal(slug?: string | null) {
-  revalidateTag("journal", NOW);
-  if (slug) revalidateTag(`journal:${slug}`, NOW);
-}
-

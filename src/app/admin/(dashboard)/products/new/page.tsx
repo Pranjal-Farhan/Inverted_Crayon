@@ -2,12 +2,14 @@ import { db } from "@/lib/db";
 import { ProductEditorForm } from "@/components/admin/ProductEditorForm";
 import { parseSizeGuide, type SizeGuideTemplateOption } from "@/lib/size-guide";
 import { getProductLockedCouponOptions } from "@/lib/coupon-options";
+import { getShippingRates } from "@/lib/store-settings";
 
 export default async function NewProductPage() {
-  const [categories, sizeGuideTemplateRows, couponOptions] = await Promise.all([
+  const [categories, sizeGuideTemplateRows, couponOptions, rates] = await Promise.all([
     db.category.findMany({ orderBy: [{ gender: "asc" }, { position: "asc" }] }),
     db.sizeGuideTemplate.findMany({ orderBy: { name: "asc" } }),
     getProductLockedCouponOptions(),
+    getShippingRates(),
   ]);
   const sizeGuideTemplates: SizeGuideTemplateOption[] = sizeGuideTemplateRows.flatMap((row) => {
     const data = parseSizeGuide(row.data);
@@ -26,6 +28,7 @@ export default async function NewProductPage() {
       categories={categories}
       sizeGuideTemplates={sizeGuideTemplates}
       couponOptions={couponOptions}
+      standardDelivery={{ insideDhaka: rates.INSIDE_DHAKA.cost, outsideDhaka: rates.OUTSIDE_DHAKA.cost }}
     />
   );
 }

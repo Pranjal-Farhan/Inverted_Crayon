@@ -21,16 +21,15 @@ import { getChatWidgetSettings, getStoreInfo } from "@/lib/store-settings";
  * action-to-tag checklist.
  *
  * A handful of these (noted individually below) also carry a `revalidate: 300` option on top of
- * their tags. Tag invalidation alone only fires when an admin *action* runs — a campaign's own
- * startsAt/endsAt boundary passes with no action to trigger one, so a product's sale badge/price
- * derived from an unstable_cache entry with no time limit would stay wrong indefinitely once a
- * scheduled campaign starts or ends, not just for the page's own ISR window. Note that the page-
- * level `export const revalidate` (the ISR shell timer) does NOT substitute for this: it only
- * controls how often the page's rendered HTML regenerates, and a regeneration that calls back
- * into one of these functions still gets whatever this cache already has until this cache's own
- * timer or a tag invalidation says otherwise — this is Next's Data Cache, a separate layer from
- * the page's Full Route Cache. 300s caps that "nothing invalidated it, nothing will" window; it's
- * cosmetic (checkout and admin always read fresh regardless — ground rules 3/4).
+ * their tags, as a safety net: tag invalidation only fires when an admin *action* runs, so a
+ * price/badge derived from an unstable_cache entry with no time limit would stay wrong
+ * indefinitely if some change slipped past an action. Note that the page-level
+ * `export const revalidate` (the ISR shell timer) does NOT substitute for this: it only controls
+ * how often the page's rendered HTML regenerates, and a regeneration that calls back into one of
+ * these functions still gets whatever this cache already has until this cache's own timer or a
+ * tag invalidation says otherwise — this is Next's Data Cache, a separate layer from the page's
+ * Full Route Cache. 300s caps that window; it's cosmetic (checkout and admin always read fresh
+ * regardless — ground rules 3/4).
  */
 
 export const PRODUCT_CARD_INCLUDE = {
@@ -45,17 +44,15 @@ export const PRODUCT_CARD_INCLUDE = {
   category: true,
 } as const;
 
-// ---- campaigns ----
+// ---- sale ----
 
-export const getActiveCampaigns = unstable_cache(
-  async () => {
-    const now = new Date();
-    return db.campaign.findMany({ where: { active: true, startsAt: { lte: now }, endsAt: { gte: now } } });
-  },
-  ["public-active-campaigns"],
-  // revalidate: this is the literal "is a campaign active right now" query — its own result is
-  // the thing that goes stale across a scheduled startsAt/endsAt boundary. See the module doc.
-  { tags: ["campaigns"], revalidate: 300 },
+// Whether any live product currently carries a markdown — drives the pulsing dot beside "SALE" in
+// the header. Product discounts have no start/end date, so only a product save changes this and
+// the "products" tag (invalidated by every product mutation) is enough.
+export const getSaleActive = unstable_cache(
+  async () => (await db.product.count({ where: { status: "ACTIVE", discountType: { not: null }, discountValue: { not: null } } })) > 0,
+  ["public-sale-active"],
+  { tags: ["products"] },
 );
 
 // ---- content blocks ----
@@ -166,7 +163,7 @@ export function getCategoryByGenderSlug(gender: "MEN" | "WOMEN", slug: string) {
 // ---- products ----
 
 // These four carry display-level sale pricing (ProductCard reads onSale/salePrice, derived from
-// campaigns), so they get the revalidate: 300 treatment too — see the module doc.
+// the product's own discount), so they get the revalidate: 300 treatment too — see the module doc.
 // Fetches one page beyond the first screenful (NEW_IN_PAGE_SIZE) so the homepage can tell
 // whether to show the "Load more" button on first render without a separate count query —
 // NewInGrid.tsx's own "load more" pages come from /api/products/new instead (not cached here,
@@ -209,8 +206,7 @@ export function getCachedProductById(id: string) {
   )();
 }
 
-// No revalidate here: lookbook renders images/links only, no price or sale badge, so it has no
-// campaign-boundary staleness risk.
+// No revalidate here: lookbook renders images/links only, no price or sale badge.
 export const getLookbookProducts = unstable_cache(
   async () => db.product.findMany({ where: { status: "ACTIVE" }, orderBy: { publishedAt: "desc" }, take: 8 }),
   ["public-lookbook-products"],
@@ -228,36 +224,3 @@ export const getCartRecommendations = unstable_cache(
   ["public-cart-recommendations"],
   { tags: ["products"], revalidate: 300 },
 );
-
-// ---- journal ----
-// Journal pages call post.publishedAt.toLocaleDateString() directly, so publishedAt is
-// re-hydrated to a real Date below after the unstable_cache JSON round-trip turns it into a
-// string (see the module-level comment on serialization).
-
-const getPublishedPostsCached = unstable_cache(
-  async () => db.post.findMany({ where: { status: "PUBLISHED" }, orderBy: { publishedAt: "desc" } }),
-  ["public-published-posts"],
-  { tags: ["journal"] },
-);
-
-export async function getPublishedPosts() {
-  const posts = await getPublishedPostsCached();
-  return posts.map((p) => ({ ...p, publishedAt: p.publishedAt ? new Date(p.publishedAt) : null }));
-}
-
-export function getCachedPostBySlug(slug: string) {
-  return unstable_cache(
-    () => db.post.findUnique({ where: { slug, status: "PUBLISHED" } }),
-    ["public-post-by-slug", slug],
-    { tags: ["journal", `journal:${slug}`] },
-  )().then((post) => (post ? { ...post, publishedAt: post.publishedAt ? new Date(post.publishedAt) : null } : post));
-}
-
-export async function getAllPublishedPostSlugs(): Promise<string[]> {
-  try {
-    const posts = await db.post.findMany({ where: { status: "PUBLISHED" }, select: { slug: true } });
-    return posts.map((p) => p.slug);
-  } catch {
-    return [];
-  }
-}

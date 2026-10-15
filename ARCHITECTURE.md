@@ -59,7 +59,7 @@ These are mapped into Tailwind's theme via `@theme inline` (Tailwind v4's CSS-fi
 The single most important domain-logic decision in this codebase: **tags are split into "stored" and "derived," and the split is deliberate, not incidental.**
 
 - `NEW`, `PREORDER`, `LIMITED`, `BESTSELLER` are stored rows (`ProductTag`, admin-editable checkboxes on the product form).
-- `SALE` is **never stored** — it's computed from whether an active `Campaign` currently targets that product/category (`findActiveCampaign` in `src/lib/product-view.ts`).
+- `SALE` is **never stored** — it's computed from the product's own markdown (the Discount box in the product editor — `Product.discountType`/`discountValue`; `bestSalePrice` in `src/lib/product-view.ts`).
 - `SOLD_OUT` is **never stored** — it's computed from summed variant stock.
 - "New" is *also* auto-derived as a fallback: a product counts as new for 21 days after `publishedAt`, even with no explicit `NEW` tag (`NEW_WINDOW_DAYS` in `product-view.ts`).
 
@@ -87,7 +87,7 @@ The dependency list (`package.json`) is deliberately lean: 9 runtime dependencie
 ```
 prisma/
   schema.prisma              the entire data model — see §5
-  seed.ts                    demo dataset (catalog, orders, accounts, journal posts)
+  seed.ts                    demo dataset (catalog, orders, accounts)
   migrations/                one directory per schema change, applied in order
 
 src/
@@ -99,7 +99,6 @@ src/
       men/, women/              gender hubs + /men/[category], /women/[category]
       cart/, checkout/          cart page, checkout page
       account/                  customer auth (login/register) + (protected)/ route group
-      journal/                  blog list + post
       ...
     admin/
       (dashboard)/             everything under the sidebar+topbar admin chrome
@@ -192,7 +191,6 @@ Full schema: `prisma/schema.prisma`. Every model below, grouped the way the sche
 
 - **`Discount`** — a coupon. `type` is `PERCENT`/`FIXED` (an amount in ৳)/`FREE_SHIPPING`; `maxDiscountAmount` caps what a percentage coupon can take off one order (null = uncapped; meaningless for the other two). `usageLimit`/`usedCount` are the coupon's **global** budget across every customer — one customer can redeem the same code any number of times, only this shared counter runs out (null limit = unlimited). `startsAt`/`endsAt` both null means no time limit. `scope` is `GLOBAL` (valid on every product) or `PRODUCT` (valid only on the products attached through the implicit many-to-many `Discount.products` ↔ `Product.coupons`, managed from each product's editor — §10.3). `firstOrderOnly` + `minSpend` are extra gates. All of it is enforced server-side in `src/lib/coupon.ts`'s `evaluateCoupon()` — see §9.4a, and §9.3 for how the counter is protected from a race.
 - **`DiscountRedemption`** — the usage ledger: one row per order that used a coupon (`orderId` is `@unique`, which is what makes it one coupon per order). `amount` is the value of the benefit — the item discount for `PERCENT`/`FIXED`, or the delivery charge waived for `FREE_SHIPPING` (where `Order.discountAmount` stays 0, since the waiver is just a `shippingCost` of 0). The Discounts admin page reads uses, money deducted and the who/which-order list from here. The migration backfilled rows for orders that had already used a code before the ledger existed.
-- **`Campaign`** — automatic sales, no code needed. Targets either a category (`targetCategoryId`) or an explicit product-ID list (`targetProductIds`), with a mandatory time window (`startsAt`/`endsAt`, both non-nullable — a campaign can't run forever by accident). This is the *only* mechanism that sets `onSale`/`salePrice` on a product (§2.3).
 - **`WishlistItem`** — `notifiedAt` drives the back-in-stock-for-wishlisted-items email (§13.1); it's reset to `null` whenever the product goes fully out of stock again, so a later restock re-notifies.
 - **`BackInStockSubscription`** — the explicit "Notify me" click on a sold-out variant, unique per `(email, variantId)`.
 
@@ -201,8 +199,7 @@ Full schema: `prisma/schema.prisma`. Every model below, grouped the way the sche
 - **`AdminUser`** — `role` is `ADMIN` or `STAFF` (no finer-grained permissions today — see §10.13 for what STAFF can't do). Same OAuth-link fields as Customer, with one critical asymmetry: OAuth sign-in for this model **never creates a row** — see §7.3. `twoFactorSecret`/`twoFactorEnabled`/`twoFactorBackupCodes` back TOTP 2FA (§7.5) — a secret can exist while `twoFactorEnabled` is still `false` (mid-setup, QR shown but not yet confirmed); backup codes are stored bcrypt-hashed, each single-use.
 - **`StockOwner`** / **`StockPurchase`** — the inventory finance ledger (§10.4a). `StockOwner` is just who funds stock (name/contact/notes). `StockPurchase` follows the same denormalized snapshot pattern as `OrderItem` (§5.3): `productTitleSnapshot`/`variantLabelSnapshot` freeze the product's identity at purchase time, and `productId`/`variantId` are nullable (`onDelete: SetNull`) so a purchase record survives the product/variant later being deleted. `ownerId` is `onDelete: Restrict` — an owner with recorded purchases can't be deleted out from under its financial history. Recording a purchase increments `Variant.stockQty` in the same transaction, making this the accountable counterpart to `setVariantStock`'s manual correction (§10.4).
 - **`ContentBlock`** — a generic `key → JSON` slot store. Keys in use: `home_hero` (the full homepage CMS payload — brand identity, hero text, images, background), `home_featured_drop` (`{ productId }`), and `men_hero`/`women_hero` (`{ imageUrl }` — the gender-hub editorial banner, §8.2/§10.9). A new slot follows the same read-with-a-default pattern: `db.contentBlock.findUnique({ where: { key } })`, spread over a `DEFAULT_*` constant so a fresh database with nothing published yet still renders something sane.
-- **`StoreSetting`** — same `key → JSON` shape as `ContentBlock`, used for store-wide operational settings instead of content: `shipping_rates`, `payment_gateways`, `store_info`, `tax_settings`, `message_templates`, `chat_widget`. Typed accessors for every key live in `src/lib/store-settings.ts` (`getShippingRates()`, etc.), each with a hard-coded default so a fresh database with no seeded settings still renders something sane.
-- **`Post`** — the journal/blog, independently publishable (`PostStatus`, `publishedAt` stamped once on first publish, same pattern as `Product`).
+- **`StoreSetting`** — same `key → JSON` shape as `ContentBlock`, used for store-wide operational settings instead of content: `store_info`, `message_templates`, `chat_widget`, plus an optional `shipping_rates` (the standard per-zone delivery rate — no longer editable anywhere, see §9.6a; code defaults apply when the row is absent). Typed accessors for every key live in `src/lib/store-settings.ts` (`getShippingRates()`, etc.), each with a hard-coded default so a fresh database with no seeded settings still renders something sane.
 - **`ManufacturerLink`** — admin-only per-product notes, almost always a manufacturer page URL, never rendered to customers (§10.12). `isCurrentVendor` is exclusivity-enforced in `admin-manufacturer-links.ts` (unset every other row for that product, then set this one, in one transaction) rather than a DB constraint.
 
 ### 5.6 Email & SMS outboxes
@@ -227,7 +224,7 @@ The three exceptions — actual `route.ts` files under `src/app/api/` — exist 
 - **Payment gateway callbacks** (`api/payments/{bkash,sslcommerz}/...`) — same reason: bKash/SSLCommerz redirect or POST back to a URL they were given at session-creation time.
 - **`api/discount`, `api/products/by-ids`, `api/search/suggest`** — plain `fetch()`-based endpoints called from client-side hooks (`usePromoValidation`, the recently-viewed rail, `useSearchSuggestions`) that need to poll/debounce independent of a full page navigation.
 
-**Server vs. Client components**: the default is Server. A component only gets `"use client"` when it genuinely needs browser state or interactivity — forms with local input state, anything reading `localStorage` (cart, recently-viewed), anything with a hover/open/closed toggle (nav dropdowns, drawers, accordions), anything using a React Context. Every admin "manager" component (`ProductEditorForm`, `DiscountManager`, `CampaignManager`, etc.) is client-side because they're all stateful CRUD forms; the *pages* that load their initial data and pass it in as props are Server Components.
+**Server vs. Client components**: the default is Server. A component only gets `"use client"` when it genuinely needs browser state or interactivity — forms with local input state, anything reading `localStorage` (cart, recently-viewed), anything with a hover/open/closed toggle (nav dropdowns, drawers, accordions), anything using a React Context. Every admin "manager" component (`ProductEditorForm`, `DiscountManager`, etc.) is client-side because they're all stateful CRUD forms; the *pages* that load their initial data and pass it in as props are Server Components.
 
 ---
 
@@ -325,15 +322,15 @@ Guest orders are **claimed automatically** on registration or OAuth sign-up: bot
 
 Guest-accessible order lookup/confirmation — no login required, since a guest checkout has no account to view an order history from. `/order/[number]` is the post-checkout confirmation page.
 
-### 8.9 Journal (`/journal`, `/journal/[slug]`)
+### 8.9 (removed)
 
-The blog. Public list/detail pages read `Post` rows with `status: "PUBLISHED"`; the admin side (§10.11) is full CRUD.
+The journal/blog was removed entirely — storefront pages, admin CRUD, footer link, sitemap entries and the `Post` table.
 
 ### 8.10 Static/legal pages
 
 `/faq`, `/contact` (`ContactForm.tsx` → `sendContactMessage`, writes a `ContactMessage` row + triggers a `CONTACT_RECEIVED` email), `/privacy`, `/terms`, `/size-guide`, `/lookbook`. Mostly static copy with a handful of dynamic bits (payment methods list, preorder policy text) kept in sync with actual behavior. (A dedicated `/shipping-returns` page existed earlier in this project's history and has since been removed entirely — its "Returns & refunds" content was folded into `/terms` instead.)
 
-`/journal`'s eyebrow/heading, `/faq`'s heading + question/answer list, `/contact`'s heading/intro/extra-note, and `/privacy`'s and `/terms`' heading/"last updated" line/section list are all admin-editable — see §10.9a.
+`/faq`'s heading + question/answer list, `/contact`'s heading/intro/extra-note, and `/privacy`'s and `/terms`' heading/"last updated" line/section list are all admin-editable — see §10.9a.
 
 ### 8.11 Chat bubble (every storefront page)
 
@@ -366,7 +363,7 @@ This is the most heavily-audited, most heavily-tested code path in the app (see 
 
 ### 9.1 Before checkout: price derivation
 
-Every price the customer has seen up to this point — on a card, on the PDP, in the cart — came from `deriveProductDisplay()`. Checkout **does not trust any of those client-side numbers.** `placeOrder()` (`src/actions/checkout.ts`) re-fetches every variant server-side by ID, re-derives the active campaign/sale price itself, and computes `unitPrice`/`lineTotal` fresh. The only things trusted from the client are `variantId` and `qty` (both zod-validated: non-empty string, positive integer) — this closes the classic price-tampering hole where a client could submit an arbitrary `unitPrice`.
+Every price the customer has seen up to this point — on a card, on the PDP, in the cart — came from `deriveProductDisplay()`. Checkout **does not trust any of those client-side numbers.** `placeOrder()` (`src/actions/checkout.ts`) re-fetches every variant server-side by ID, re-derives the sale price itself (the product's own discount), and computes `unitPrice`/`lineTotal` fresh. The only things trusted from the client are `variantId` and `qty` (both zod-validated: non-empty string, positive integer) — this closes the classic price-tampering hole where a client could submit an arbitrary `unitPrice`.
 
 ### 9.2 The checkout form (`CheckoutView.tsx`)
 
@@ -374,7 +371,7 @@ A 4–6 step single-page form (contact → shipping address → shipping method 
 
 **Logged-in shoppers get a prefilled, "returning customer" checkout, not a blank guest one.** `(storefront)/checkout/page.tsx` calls `getCustomerSession()` and, when there is one, fetches that `Customer` row plus their default saved address (`db.address.findFirst({ orderBy: { isDefault: "desc" } })` — same "default sorts first" convention `/account/addresses` uses) and passes both down as `CheckoutView`'s `customer` prop. Every `useState` initializer that used to start blank (`email`, `phone`, `fullName`, `shipPhone`, `line1`, `area`, `district`, `postcode`, `country`) now seeds from `customer`/`customer.address` when present, falling back to `""` exactly as before for an actual guest — a customer with no saved address yet still gets their email/phone/name prefilled, just not the address fields. The page header swaps "Guest checkout · no account needed" for "Returning customer · `<name or email>`" accordingly. All of this is prefill only — every field stays editable, and `placeOrder()` already attributed the order to `session.customerId` server-side regardless of what the form showed, so no checkout logic changed, only what the form starts with.
 
-The **available payment methods list is computed reactively** from store settings (`payment_gateways`) and cart contents, but **bKash and SSLCommerz are currently commented out of `availableMethods`** regardless of those settings — COD is the only method ever offered right now. COD itself is gated only by the `codRule` setting (inside-Dhaka-only vs. nationwide) against the selected shipping zone; a nonzero preorder advance (§9.6) no longer excludes it — see the note at the end of §9.6.
+**Cash on delivery is the only payment method, in every shipping zone** — the Payment step is a fixed "Cash on delivery" row with no choice to make, and there are no payment settings (the old Settings → Payments tab, the `payment_gateways` setting and its inside-Dhaka-only COD rule are gone). `placeOrder()` still rejects bKash/SSLCommerz outright. The bKash/SSLCommerz integration code (`src/lib/payments/*`, the callback routes and the live-gateway branch in `placeOrder()`) is still in the repo but unreachable; a nonzero preorder advance (§9.6) never excluded COD — see the note at the end of §9.6.
 
 ### 9.3 The order-creation transaction
 
@@ -418,7 +415,7 @@ Since COD is the only method and nothing is ever captured online regardless (§9
 
 ### 9.6a Per-product delivery charge override
 
-`Product.deliveryChargeInsideDhaka`/`deliveryChargeOutsideDhaka` (both nullable `Decimal`) let an admin set a product's own shipping cost per zone from the product editor (§10.3), instead of the one flat site-wide rate in `store_info` → `shipping_rates` (§11). `resolveShippingCost()` (`src/lib/shipping.ts`) is the single place both `CheckoutView.tsx` (what the customer sees, pre-payment) and `placeOrder()` (the authoritative charge) compute a cart/order's shipping cost from: it collects whichever cart lines' products override the selected zone and uses the **highest** of those overrides (the whole cart ships as one shipment, so the largest single product's real cost is what it actually costs to send); with no override anywhere in the cart it falls back to the store default exactly as before. A promo's `FREE_SHIPPING` discount still zeroes shipping out regardless of any override.
+`Product.deliveryChargeInsideDhaka`/`deliveryChargeOutsideDhaka` (both nullable `Decimal`) let an admin set a product's own shipping cost per zone from the product editor (§10.3), instead of the standard per-zone rate (`getShippingRates()` in `store-settings.ts` — ৳60 inside / ৳120 outside Dhaka; there is no settings screen for it any more, so the product editor is the one place delivery cost is set, §9.6a). `resolveShippingCost()` (`src/lib/shipping.ts`) is the single place both `CheckoutView.tsx` (what the customer sees, pre-payment) and `placeOrder()` (the authoritative charge) compute a cart/order's shipping cost from: it collects whichever cart lines' products override the selected zone and uses the **highest** of those overrides (the whole cart ships as one shipment, so the largest single product's real cost is what it actually costs to send); with no override anywhere in the cart it falls back to the store default exactly as before. A promo's `FREE_SHIPPING` discount still zeroes shipping out regardless of any override.
 
 ### 9.7 Real payment gateways, and the mock fallback
 
@@ -439,7 +436,7 @@ Since COD is the only method and nothing is ever captured online regardless (§9
 
 ### 9.8 The receipt
 
-`src/app/admin/(receipt)/orders/[id]/receipt/page.tsx` — deliberately in its **own route group**, outside `(dashboard)`, so it renders with zero admin sidebar/topbar chrome (a receipt page with a sidebar next to it would look broken both on screen and if printed). Session-gated by its own minimal layout (`(receipt)/layout.tsx`), not the dashboard's. Styled **light** (`bg-paper`) against the rest of the admin's dark theme — the one deliberate visual inversion called out in §2.1. Shows: brand header (uploaded logo or drawn Monogram+Wordmark, store info from `store_info` settings), order number/date/status, billed-to/ship-to, itemized products, subtotal/coupon-line/shipping/total, a tax note (from `tax_settings`), tracking info if shipped, and a print button (`ReceiptToolbar`, `window.print()`, hidden itself via `print:hidden` when actually printing).
+`src/app/admin/(receipt)/orders/[id]/receipt/page.tsx` — deliberately in its **own route group**, outside `(dashboard)`, so it renders with zero admin sidebar/topbar chrome (a receipt page with a sidebar next to it would look broken both on screen and if printed). Session-gated by its own minimal layout (`(receipt)/layout.tsx`), not the dashboard's. Styled **light** (`bg-paper`) against the rest of the admin's dark theme — the one deliberate visual inversion called out in §2.1. Shows: brand header (uploaded logo or drawn Monogram+Wordmark, store info from `store_info` settings), order number/date/status, billed-to/ship-to, itemized products, subtotal/coupon-line/shipping/total, tracking info if shipped, and a print button (`ReceiptToolbar`, `window.print()`, hidden itself via `print:hidden` when actually printing).
 
 ### 9.9 Order tracking — customer & public views
 
@@ -457,7 +454,7 @@ Three different surfaces show order status/contents, each gated differently on p
 
 ## 10. Admin panel walkthrough
 
-Every page lives under `src/app/admin/(dashboard)/`, wrapped by `(dashboard)/layout.tsx` which enforces an admin session (redirects to `/admin/login` otherwise) and renders `AdminSidebar` + `AdminTopbar`. The sidebar (`AdminSidebar.tsx`) is the map of every section, grouped exactly as: **Overview** (Dashboard) · **Sell** (Orders, Products, Finance, Categories, Size guides) · **Grow** (Customers, Discounts, Campaigns, Content CMS, Journal, Analytics) · **System** (Emails, SMS, Settings).
+Every page lives under `src/app/admin/(dashboard)/`, wrapped by `(dashboard)/layout.tsx` which enforces an admin session (redirects to `/admin/login` otherwise) and renders `AdminSidebar` + `AdminTopbar`. The sidebar (`AdminSidebar.tsx`) is the map of every section, grouped exactly as: **Overview** (Dashboard) · **Sell** (Orders, Products, Finance, Categories, Size guides) · **Grow** (Customers, Discounts, Content CMS, Footer, Analytics) · **System** (Emails, SMS, Templates, Settings).
 
 ### 10.1 Dashboard (`/admin/dashboard`)
 
@@ -465,7 +462,7 @@ Every page lives under `src/app/admin/(dashboard)/`, wrapped by `(dashboard)/lay
 
 ### 10.2 Orders (`/admin/orders`, `/admin/orders/[id]`)
 
-List page: filterable by status/payment method, searchable by order number, name, email, phone, tracking ref, amount, or date (`src/lib/admin-search.ts`'s `parseSearchAmount`/`parseSearchDateRange` broaden the plain `contains` match into those last two). The status/payment dropdowns are `AutoSubmitSelect.tsx`, a tiny client component the GET-form filter submits through the instant a new option is picked — an inline `onChange` directly on a `<select>` in a Server Component throws at runtime ("Event handlers cannot be passed to Client Component props"), so this one interactive sliver is split out rather than making the whole list page a client component. **Every cell in every row is a link** to the order detail page (a deliberate mobile/desktop-parity fix — see §18); an order with `isPreorder` also carries a small yellow **"PREORDER"** tag beside its number. Status badges render through the shared `StatusBadge.tsx`, which looks the raw `OrderStatus` up in `ADMIN_STATUS_LABEL` (§5.3/§9.9) — the same component also badges discounts/campaigns/journal/product rows, none of which are in that map, so it falls back to the raw status text for everything that isn't an order. Detail page: a **"PREORDER ITEM"** badge beside the order number when `isPreorder` (§9.6) — no advance/balance breakdown any more, just the order total, payment method, and the fixed preorder line when it applies — itemized order (each item's title links out to its own PDP when the product still exists), `OrderActions.tsx` (**Mark Sent For Delivery** — visible whenever the order hasn't shipped yet, i.e. PENDING/PAID/PROCESSING, opens a courier+tracking-ref form and sets `SHIPPED`; **Mark delivered**; **Mark COD balance collected** — shown whenever `balanceDue > 0` and not yet collected, independent of whether the order is a preorder, since every COD order has a real cash-on-delivery balance; refund with confirmation; internal notes), a **Customer** panel that shows the shipping/contact details exactly as the customer entered them at checkout, plus either a "HAS ACCOUNT" tag and a link to that customer's CRM record (`order.customer` set) or a "GUEST ORDER — NO ACCOUNT" tag (`order.customer` null — nothing else to show, there's no account to link to), `OrderTimeline`, and a link out to the printable receipt (§9.8).
+List page: filterable by status/payment method, searchable by order number, name, email, phone, tracking ref, amount, or date (`src/lib/admin-search.ts`'s `parseSearchAmount`/`parseSearchDateRange` broaden the plain `contains` match into those last two). The status/payment dropdowns are `AutoSubmitSelect.tsx`, a tiny client component the GET-form filter submits through the instant a new option is picked — an inline `onChange` directly on a `<select>` in a Server Component throws at runtime ("Event handlers cannot be passed to Client Component props"), so this one interactive sliver is split out rather than making the whole list page a client component. **Every cell in every row is a link** to the order detail page (a deliberate mobile/desktop-parity fix — see §18); an order with `isPreorder` also carries a small yellow **"PREORDER"** tag beside its number. Status badges render through the shared `StatusBadge.tsx`, which looks the raw `OrderStatus` up in `ADMIN_STATUS_LABEL` (§5.3/§9.9) — the same component also badges discounts/coupons/product rows, none of which are in that map, so it falls back to the raw status text for everything that isn't an order. Detail page: a **"PREORDER ITEM"** badge beside the order number when `isPreorder` (§9.6) — no advance/balance breakdown any more, just the order total, payment method, and the fixed preorder line when it applies — itemized order (each item's title links out to its own PDP when the product still exists), `OrderActions.tsx` (**Mark Sent For Delivery** — visible whenever the order hasn't shipped yet, i.e. PENDING/PAID/PROCESSING, opens a courier+tracking-ref form and sets `SHIPPED`; **Mark delivered**; **Mark COD balance collected** — shown whenever `balanceDue > 0` and not yet collected, independent of whether the order is a preorder, since every COD order has a real cash-on-delivery balance; refund with confirmation; internal notes), a **Customer** panel that shows the shipping/contact details exactly as the customer entered them at checkout, plus either a "HAS ACCOUNT" tag and a link to that customer's CRM record (`order.customer` set) or a "GUEST ORDER — NO ACCOUNT" tag (`order.customer` null — nothing else to show, there's no account to link to), `OrderTimeline`, and a link out to the printable receipt (§9.8).
 
 Since bKash/SSLCommerz are commented out at checkout (every order is COD now — see the payment-methods note elsewhere in this doc), every order's `initialStatus` from `placeOrder()` is `PENDING` — there's no live gateway left to ever set `PAID` automatically. `OrderActions` accounts for this: **Mark Sent For Delivery** is reachable straight from PENDING, not gated behind a separate "mark paid"/"mark processing" step — there is no such step any more (the old `markOrderProcessing()` action and its button were removed as dead weight once the two-state model above made a distinct PROCESSING click redundant; PROCESSING is still a valid enum value nothing currently sets, kept only so historical/future data isn't constrained).
 
@@ -473,7 +470,7 @@ Since bKash/SSLCommerz are commented out at checkout (every order is COD now —
 
 ### 10.3 Products (`/admin/products`, `/admin/products/[id]`, `/admin/products/new`)
 
-`ProductEditorForm.tsx` — the biggest form in the app. Basics (title/description/image upload dropzone), variant table (**colors**, each a fixed block of **SKU**/size/**stock**/low-threshold/price-override/**preorder ৳** rows — see "Fixed size scale" below), **Size guide** (see below), Organize (**main category → sub category** two-step picker, base price, a discount box (percent or amount off, shown everywhere this product's price shows), **free-delivery dropdown**, **delivery charge ৳ (Inside/Outside Dhaka)** — §9.6a, overrides the store's flat rate for this product specifically, blank keeps the store default), Tags (New/Preorder+ship-date/Limited/Bestseller), **Coupons** (a checklist of the product-locked coupons valid on this product — §10.7), Manufacturer Information (§10.12), Status & SEO (**slug**, below). The category picker is mandatory and two steps: pick the Men/Women/Unisex branch first, then one of that branch's subcategories, both sourced live from the `Category` table (not a hard-coded list — §5.1) and re-filtered client-side as the branch changes; switching branch away from the current selection auto-picks the first subcategory in the new one, or shows a "no subcategories yet — add one from Categories" hint if it has none. There's no separate Gender field any more — `saveProduct()` looks up the chosen category and sets `Product.gender` to that category's own `gender`, so it's always consistent with the selected branch. The **Preorder ৳** column is per size/color (blank = not preorder-eligible once sold out, any value including 0 = eligible) — this is the actual preorder-purchasability control (§9.6); the number itself is never shown to or charged against the customer, just an on/off switch with a legacy name. The Tags panel's Preorder checkbox is purely the ship-date-banner/marketing flag now, not a gate on whether the item can be bought.
+`ProductEditorForm.tsx` — the biggest form in the app. Basics (title/description/image upload dropzone), variant table (**colors**, each a fixed block of **SKU**/size/**stock**/low-threshold/price-override/**preorder ৳** rows — see "Fixed size scale" below), **Size guide** (see below), Organize (**main category → sub category** two-step picker, base price, a discount box (percent or amount off, shown everywhere this product's price shows), **free-delivery dropdown**, **delivery charge ৳ (Inside/Outside Dhaka)** — §9.6a, set per product here, blank uses the standard rate, shown as the placeholder), Tags (New/Preorder+ship-date/Limited/Bestseller), **Coupons** (a checklist of the product-locked coupons valid on this product — §10.7), Manufacturer Information (§10.12), Status & SEO (**slug**, below). The category picker is mandatory and two steps: pick the Men/Women/Unisex branch first, then one of that branch's subcategories, both sourced live from the `Category` table (not a hard-coded list — §5.1) and re-filtered client-side as the branch changes; switching branch away from the current selection auto-picks the first subcategory in the new one, or shows a "no subcategories yet — add one from Categories" hint if it has none. There's no separate Gender field any more — `saveProduct()` looks up the chosen category and sets `Product.gender` to that category's own `gender`, so it's always consistent with the selected branch. The **Preorder ৳** column is per size/color (blank = not preorder-eligible once sold out, any value including 0 = eligible) — this is the actual preorder-purchasability control (§9.6); the number itself is never shown to or charged against the customer, just an on/off switch with a legacy name. The Tags panel's Preorder checkbox is purely the ship-date-banner/marketing flag now, not a gate on whether the item can be bought.
 
 `EditProductPage`/`NewProductPage` each pass `key={product.id}` / `key="new"` into `<ProductEditorForm>`. Without it, clicking from one product's edit page to another's is a same-route navigation (`/admin/products/[id]` → `/admin/products/[id]`) that React has no reason to remount — the component's `useState` initializers only ever run once, on first mount, so every field (title, tags, variants, images — all of it) would keep showing whichever product the form happened to mount with first. This was the actual cause of a "tags keep resetting" report that looked unrelated to anything variant/SKU-side: the admin would set tags on product A, click to product B via the products list (`<Link>`, soft nav), and see A's stale tag state rendered under B's title. The `key` forces a genuine remount per product, so every field is freshly initialized from that product's own `initial` prop every time.
 
@@ -547,9 +544,9 @@ The **list** is two sections — Active & Scheduled, then Inactive/Expired/Used 
 
 Product-locked coupons are attached from the product editor's **Coupons** panel (§10.3): a checklist of every product-locked coupon (inactive/expired ones included, labelled, so an admin can see why a coupon isn't live), saved with the product by `saveProduct()`. That save only ever connects/disconnects coupons whose scope is currently `PRODUCT`, so a coupon switched to global and back keeps its attachments. The admin order page and the printed receipt both name the coupon an order used (a free-delivery coupon reads "Free delivery"; the receipt's shipping line shows the ৳0).
 
-### 10.8 Campaigns (`/admin/campaigns`)
+### 10.8 (removed)
 
-`CampaignManager.tsx` — CRUD for automatic sales (§5.4): name, percent off, target (all categories, one category, or — per the schema — specific products, though the current form only exposes category targeting), start/end datetime, active toggle.  (The abandoned-bag reminder panel that used to share this page has been removed.)
+The automatic-sale Campaigns manager was removed entirely, along with the `Campaign` table. A sale is now only ever a product's own markdown — the **Discount** box in the product editor (§10.3) — plus coupon codes (§10.7).
 
 ### 10.9 Content CMS (`/admin/content`)
 
@@ -560,7 +557,6 @@ Product-locked coupons are attached from the product editor's **Coupons** panel 
 `FooterCmsView.tsx` (backed by `src/actions/admin-footer.ts`, defaults/types in `src/lib/footer-defaults.ts`) — six independently-publishable panels, each its own `ContentBlock` row:
 
 - **Social links panel**: Facebook/Instagram/WhatsApp URL fields only — writes `footer_social` (`FooterSocialData = { facebookUrl, instagramUrl, whatsappUrl }`). A blank field hides that icon in the footer entirely rather than rendering a dead link; there is no TikTok/X option any more (both were dropped from the footer in favor of Facebook and WhatsApp).
-- **Journal page panel**: the eyebrow + heading shown above the post list at `/journal` (post content itself is still full CRUD at §10.11, untouched) — writes `journal_page`.
 - **FAQ page panel**: heading + a dynamic list of question/answer rows (add/remove, same `TwoFieldRows` row-editor convention as the marquee/size-guide editors) — writes `faq_page`. Requires at least one item; `saveFaqPage()` returns `{ ok: false, error }` rather than throwing if the list would publish empty, same pattern as `saveProduct()`'s validation.
 - **Contact page panel**: heading + intro line + the extra note shown under phone/address — writes `contact_page`. The actual email/phone/address still come from Settings → Store info (§10.13); this panel only covers the surrounding copy.
 - **Privacy policy panel** and **Terms of service panel**: heading + "last updated" line + a dynamic list of `{ title, body }` sections (same `TwoFieldRows` editor, reused since both pages share one `LegalPageData` shape) — write `privacy_page`/`terms_page` respectively. Each also requires at least one section before publishing.
@@ -571,9 +567,9 @@ All six share `saveBlock()`'s `revalidatePath(path) + revalidatePath("/admin/foo
 
 Read-only aggregate views (top sellers, revenue trends) — simplest of the admin sections, no CRUD.
 
-### 10.11 Journal (`/admin/journal`, `/admin/journal/[id]`, `/admin/journal/new`)
+### 10.11 (removed)
 
-Full CRUD for `Post` via `PostEditorForm.tsx` and `admin-posts.ts` — same publish-once-stamps-`publishedAt` pattern as products.
+The journal admin (post CRUD) was removed with the rest of the journal (§8.9).
 
 ### 10.12 Manufacturer Information (product editor)
 
@@ -583,7 +579,7 @@ A normal click on a row opens its link in a new tab (`target="_blank"`) — via 
 
 ### 10.13 Settings (`/admin/settings`)
 
-`SettingsView.tsx` — a tabbed single component covering everything in `StoreSetting`: **Payments** (which gateways are enabled + COD rule), **Shipping** (per-zone label/cost/ETA for all 3 zones), **Tax** (inclusive toggle, rate, label — informational only, see the code comment: Bangladesh apparel pricing is typically tax-inclusive, so this doesn't add a separate line at checkout unless switched to exclusive), **Roles** (embeds `StaffManager.tsx` — invite/remove staff, change role, with guards: an admin can't demote or remove *themselves*, and the last remaining `ADMIN` can't be removed by anyone), **Security** (embeds `TwoFactorSetup.tsx` — per-account TOTP 2FA setup/disable, §7.5; the `findMany` backing the Roles tab now explicitly `select`s only non-sensitive `AdminUser` columns, precisely so `twoFactorSecret`/`passwordHash` are never serialized into that client component's props), **Chat** (the `chat_widget` `StoreSetting` — on/off toggle, WhatsApp number, WhatsApp prefilled message, Messenger page username/ID; see §8.11 for the storefront-facing bubble), **Store** (name/email/phone/address — used in the receipt and in emails; the **email here is the official address every notification to the brand is sent to**). Message wording and on/off switches no longer live in Settings — they moved to Templates (§10.16).
+`SettingsView.tsx` — a tabbed single component covering **Store**, **Roles**, **Security** and **Chat** (Payments, Shipping and Tax tabs were removed: COD is the only payment method, delivery charges are set per product in the product editor, and there is no tax setting or tax line on the receipt). **Roles** (embeds `StaffManager.tsx` — invite/remove staff, change role, with guards: an admin can't demote or remove *themselves*, and the last remaining `ADMIN` can't be removed by anyone), **Security** (embeds `TwoFactorSetup.tsx` — per-account TOTP 2FA setup/disable, §7.5; the `findMany` backing the Roles tab now explicitly `select`s only non-sensitive `AdminUser` columns, precisely so `twoFactorSecret`/`passwordHash` are never serialized into that client component's props), **Chat** (the `chat_widget` `StoreSetting` — on/off toggle, WhatsApp number, WhatsApp prefilled message, Messenger page username/ID; see §8.11 for the storefront-facing bubble), **Store** (name/email/phone/address — used in the receipt and in emails; the **email here is the official address every notification to the brand is sent to**). Message wording and on/off switches no longer live in Settings — they moved to Templates (§10.16).
 
 ### 10.14 Emails (`/admin/emails`)
 
@@ -723,14 +719,14 @@ Nagad was removed as a payment method entirely (was in the original spec, droppe
 
 ---
 
-## 15. Discounts vs. campaigns — the distinction
+## 15. Coupons vs. product markdowns — the distinction
 
 Two separate, deliberately non-overlapping discount mechanisms, easy to conflate:
 
 - **`Discount`** (coupon codes) — customer-entered, code-based, validated live at checkout (`/api/discount`) and re-evaluated server-side by `placeOrder()` (§9.4a). Can be percent (optionally capped), fixed-amount, or free-delivery; global or locked to specific products. Gated by min-spend, a global usage budget, first-order-only, and an active window. One per order.
-- **`Campaign`** (automatic sales) — no code, always-on for whoever matches the target (category or specific products) during the active window. This is the *only* source of `onSale`/`salePrice` (§2.3) — a `Campaign` is what makes a product show a strikethrough price on a card without the customer doing anything.
+- **Product markdown** (`Product.discountType`/`discountValue`) — no code, always on for the product until an admin clears it (set from the product editor's Discount box, percent or taka-off). This is the *only* source of `onSale`/`salePrice` (§2.3): it's what makes a product show a strikethrough price on a card, and it fills `/sale` and the pulsing dot beside SALE in the header.
 
-They **can stack**: a campaign-discounted price becomes the line's `unitPrice`, and a coupon code discount is then applied against the resulting subtotal — the discount can never exceed the eligible subtotal and the total is floored at 0 (`Math.max(..., 0)` in `checkout.ts`, `min(value, eligibleSubtotal)` in `coupon.ts`).
+They **can stack**: the marked-down price becomes the line's `unitPrice`, and a coupon code discount is then applied against the resulting subtotal — the discount can never exceed the eligible subtotal and the total is floored at 0 (`Math.max(..., 0)` in `checkout.ts`, `min(value, eligibleSubtotal)` in `coupon.ts`).
 
 ---
 
@@ -780,7 +776,6 @@ Every non-trivial claim in this document — the stock-race guard actually preve
 - **No per-variant ship-date for auto-preorder-on-stockout items** — only tag-based (pre-launch) preorders carry a ship date; a size that sold out and became preorder-eligible mid-life just shows the generic "7–15 days" window, not a specific date.
 - **OAuth account linking is by email match** — a Google account with a different email than an existing password account creates a second, separate customer record rather than prompting a merge.
 - **No session revocation** beyond cookie expiry or rotating `SESSION_SECRET` (§7.1).
-- **Tax is informational only** unless switched from inclusive to exclusive pricing.
 - **No CSP** (security headers stop short of one — §7.4).
 - **Inventory costing is weighted-average only** (§10.4a) — no FIFO/LIFO lot tracking; a sold/in-stock unit with no recorded `StockPurchase` history has no cost basis and is explicitly excluded from COGS/inventory-value rather than assumed to be zero-cost.
 - **2FA has no recovery path beyond backup codes** — if an admin loses both their authenticator app and their backup codes, another `ADMIN` must disable 2FA for them via direct database access (there's no admin-to-admin "reset this user's 2FA" UI today).
@@ -813,7 +808,7 @@ Full annotated template: `.env.example`.
 
 For "what touches what" at a glance:
 
-- **A price appears anywhere** → traces back to `deriveProductDisplay()` in `product-view.ts`, or — at checkout specifically — to the same campaign logic re-run server-side in `checkout.ts`.
+- **A price appears anywhere** → traces back to `deriveProductDisplay()` in `product-view.ts`, or — at checkout specifically — to the same `variantUnitPrice()` re-run server-side in `checkout.ts`.
 - **An order is created** → `checkout.ts` → decrements `Variant.stockQty`, claims a coupon use (`Discount.usedCount` + a `DiscountRedemption` row) when one was applied, creates `Order`+`OrderItem`, optionally calls out to `lib/payments/*`. Once it's actually confirmed (immediately for instant-paid/COD, or from the payment callback route once a live gateway redirect resolves) it calls `notifyOrderPlaced()` (`notifications.ts`) → the customer's email + SMS and the brand's new-order email, each through `messages.ts` → `mail.ts`/`sms.ts` → `EmailLog`/`SmsLog` (+ the real Resend / SSL Wireless call if configured), §13.
 - **Stock changes** → `admin-stock.ts`'s `setVariantStock` (manual correction, also fires back-in-stock/wishlist emails), `checkout.ts`'s guarded decrement (a sale), `admin-orders.ts`'s `refundOrder` (a restock), or `admin-finance.ts`'s `recordStockPurchase` (an accountable increase, alongside a `StockPurchase` row — §10.4a).
 - **A product is saved** → `admin-products.ts`'s `saveProduct` → looks up the chosen `Category` to derive `gender`, touches `Product` (including `sizeGuide`, §10.3), `Variant` (upsert/delete), `ProductTag` (replace), defensively re-runs `ensureMirrorCategories` if that category is Unisex, and conditionally emails everyone with an active preorder order for it if the ship date changed.

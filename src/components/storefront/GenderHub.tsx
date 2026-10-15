@@ -1,5 +1,5 @@
 import Image from "next/image";
-import { getActiveCampaigns, getContentBlock, getGenderCategories, getGenderHubProducts } from "@/lib/public-cache";
+import { getContentBlock, getGenderCategories, getGenderHubProducts } from "@/lib/public-cache";
 import { deriveProductDisplay } from "@/lib/product-view";
 import { PlaceholderFrame } from "@/components/ui/PlaceholderFrame";
 import { ProductCard } from "@/components/ui/ProductCard";
@@ -11,15 +11,13 @@ import { DEFAULT_GENDER_HERO, type GenderHeroData } from "@/lib/gender-hero-defa
 export async function GenderHub({ gender }: { gender: "MEN" | "WOMEN" }) {
   const path = gender === "MEN" ? "men" : "women";
   const label = gender === "MEN" ? "Men" : "Women";
-  const now = new Date();
 
-  const [products, campaigns, categories, heroBlock] = await Promise.all([
+  const [products, categories, heroBlock] = await Promise.all([
     getGenderHubProducts(gender),
-    getActiveCampaigns(),
     getGenderCategories(gender),
     getContentBlock(gender === "MEN" ? "men_hero" : "women_hero"),
   ]);
-  const display = products.map((p) => deriveProductDisplay(p, campaigns, now));
+  const display = products.map((p) => deriveProductDisplay(p));
   const hero: GenderHeroData = { ...DEFAULT_GENDER_HERO, ...(heroBlock?.data as Partial<GenderHeroData> | undefined) };
 
   return (

@@ -1,44 +1,29 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import {
-  saveShippingRates,
-  savePaymentGateways,
-  saveStoreInfo,
-  saveTaxSettings,
-  saveChatWidgetSettings,
-} from "@/actions/admin-settings";
+import { saveStoreInfo, saveChatWidgetSettings } from "@/actions/admin-settings";
 import { Panel } from "@/components/admin/Panel";
 import { StaffManager } from "@/components/admin/StaffManager";
 import { TwoFactorSetup } from "@/components/admin/TwoFactorSetup";
-import type { ChatWidgetSettings, PaymentGatewaySettings, ShippingRates, StoreInfo, TaxSettings } from "@/lib/store-settings";
+import type { ChatWidgetSettings, StoreInfo } from "@/lib/store-settings";
 
-const TABS = ["Payments", "Shipping", "Tax", "Roles", "Security", "Chat", "Store"] as const;
+const TABS = ["Store", "Roles", "Security", "Chat"] as const;
 
 export function SettingsView({
-  rates: initialRates,
-  gateways: initialGateways,
   storeInfo: initialInfo,
-  tax: initialTax,
   chatWidget: initialChatWidget,
   staff,
   selfId,
   twoFactorEnabled,
 }: {
-  rates: ShippingRates;
-  gateways: PaymentGatewaySettings;
   storeInfo: StoreInfo;
-  tax: TaxSettings;
   chatWidget: ChatWidgetSettings;
   staff: { id: string; email: string; name: string; role: "ADMIN" | "STAFF" }[];
   selfId: string;
   twoFactorEnabled: boolean;
 }) {
-  const [tab, setTab] = useState<(typeof TABS)[number]>("Payments");
-  const [rates, setRates] = useState(initialRates);
-  const [gateways, setGateways] = useState(initialGateways);
+  const [tab, setTab] = useState<(typeof TABS)[number]>("Store");
   const [info, setInfo] = useState(initialInfo);
-  const [tax, setTax] = useState(initialTax);
   const [chatWidget, setChatWidget] = useState(initialChatWidget);
   const [pending, startTransition] = useTransition();
   const [saved, setSaved] = useState(false);
@@ -57,102 +42,6 @@ export function SettingsView({
           </button>
         ))}
       </div>
-
-      {tab === "Payments" && (
-        <Panel title="Payment gateways">
-          <div className="flex flex-wrap gap-4">
-            {(["bkash", "sslcommerz", "cod"] as const).map((key) => (
-              <label key={key} className="inline-flex items-center gap-1.5 text-sm">
-                <input
-                  type="checkbox"
-                  checked={gateways[key]}
-                  onChange={(e) => setGateways((g) => ({ ...g, [key]: e.target.checked }))}
-                />
-                {key === "sslcommerz" ? "SSLCommerz (cards)" : key === "cod" ? "Cash on delivery" : key[0].toUpperCase() + key.slice(1)}
-              </label>
-            ))}
-          </div>
-          <div className="mt-3">
-            <label className="font-label mb-1.5 block text-[13px] tracking-[1.2px] text-muted">COD rule</label>
-            <select
-              value={gateways.codRule}
-              onChange={(e) => setGateways((g) => ({ ...g, codRule: e.target.value as PaymentGatewaySettings["codRule"] }))}
-              className="border border-line-2 bg-ink px-3 py-2 text-sm"
-            >
-              <option value="inside_dhaka_only">Inside Dhaka only</option>
-              <option value="nationwide">Nationwide</option>
-            </select>
-          </div>
-          <SaveBtn
-            pending={pending}
-            saved={saved}
-            onClick={() => startTransition(async () => { await savePaymentGateways(gateways); flashSaved(); })}
-          />
-        </Panel>
-      )}
-
-      {tab === "Shipping" && (
-        <Panel title="Shipping zones">
-          {(["INSIDE_DHAKA", "OUTSIDE_DHAKA"] as const).map((zone) => (
-            <div key={zone} className="mb-3 grid grid-cols-3 gap-2.5">
-              <input
-                value={rates[zone].label}
-                onChange={(e) => setRates((r) => ({ ...r, [zone]: { ...r[zone], label: e.target.value } }))}
-                className="border border-line-2 bg-ink px-2.5 py-1.5 text-sm"
-              />
-              <input
-                type="number"
-                value={rates[zone].cost}
-                onChange={(e) => setRates((r) => ({ ...r, [zone]: { ...r[zone], cost: Number(e.target.value) } }))}
-                className="border border-line-2 bg-ink px-2.5 py-1.5 text-sm"
-              />
-              <input
-                value={rates[zone].etaDays}
-                onChange={(e) => setRates((r) => ({ ...r, [zone]: { ...r[zone], etaDays: e.target.value } }))}
-                className="border border-line-2 bg-ink px-2.5 py-1.5 text-sm"
-              />
-            </div>
-          ))}
-          <SaveBtn
-            pending={pending}
-            saved={saved}
-            onClick={() => startTransition(async () => { await saveShippingRates(rates); flashSaved(); })}
-          />
-        </Panel>
-      )}
-
-      {tab === "Tax" && (
-        <Panel title="Tax">
-          <label className="mb-3 flex items-center gap-1.5 text-sm">
-            <input type="checkbox" checked={tax.inclusive} onChange={(e) => setTax((t) => ({ ...t, inclusive: e.target.checked }))} />
-            Prices include tax
-          </label>
-          <div className="grid grid-cols-1 gap-2.5 desktop:grid-cols-2">
-            <div>
-              <label className="font-label mb-1 block text-[12px] tracking-[1px] text-muted">Rate (%)</label>
-              <input
-                type="number"
-                value={tax.rate}
-                onChange={(e) => setTax((t) => ({ ...t, rate: Number(e.target.value) }))}
-                className="w-full border border-line-2 bg-ink px-2.5 py-1.5 text-sm"
-              />
-            </div>
-            <div>
-              <label className="font-label mb-1 block text-[12px] tracking-[1px] text-muted">Label</label>
-              <input
-                value={tax.label}
-                onChange={(e) => setTax((t) => ({ ...t, label: e.target.value }))}
-                className="w-full border border-line-2 bg-ink px-2.5 py-1.5 text-sm"
-              />
-            </div>
-          </div>
-          <p className="mt-2 text-[12px] text-muted">
-            Bangladesh apparel pricing is typically tax-inclusive — this stays informational unless you switch to
-            exclusive pricing.
-          </p>
-          <SaveBtn pending={pending} saved={saved} onClick={() => startTransition(async () => { await saveTaxSettings(tax); flashSaved(); })} />
-        </Panel>
-      )}
 
       {tab === "Roles" && <StaffManager users={staff} selfId={selfId} />}
 

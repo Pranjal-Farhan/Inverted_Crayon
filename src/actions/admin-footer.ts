@@ -6,7 +6,6 @@ import { getAdminSession } from "@/lib/session";
 import { invalidateContent } from "@/lib/invalidate";
 import type {
   FooterSocialData,
-  JournalPageData,
   FaqPageData,
   ContactPageData,
   LegalPageData,
@@ -17,7 +16,7 @@ async function requireAdmin() {
   if (!session) throw new Error("Not authorized.");
 }
 
-// Footer.tsx and the FAQ/Contact/Privacy/Terms/Journal pages all read their block through
+// Footer.tsx and the FAQ/Contact/Privacy/Terms pages all read their block through
 // getContentBlock(), tagged "content" (public-cache.ts) — invalidateContent() is what actually
 // makes an edit visible everywhere immediately, since the footer renders on every storefront
 // page via (storefront)/layout.tsx, not just the one revalidatePath() call below reaches.
@@ -43,10 +42,6 @@ export async function saveFooterSocial(data: FooterSocialData) {
     },
     "/",
   );
-}
-
-export async function saveJournalPage(data: JournalPageData) {
-  await saveBlock("journal_page", { eyebrow: data.eyebrow.trim(), heading: data.heading.trim() }, "/journal");
 }
 
 export async function saveContactPage(data: ContactPageData) {

@@ -5,35 +5,29 @@ import { bestSalePrice, deriveProductDisplay } from "@/lib/product-view";
 import { toNumber } from "@/lib/money";
 
 export async function getProductForPDP(slug: string) {
-  const [product, campaigns] = await Promise.all([
-    db.product.findUnique({
-      where: { slug },
-      include: {
-        variants: true,
-        images: { orderBy: { position: "asc" } },
-        tags: { include: { tag: true } },
-        category: true,
-      },
-    }),
-    db.campaign.findMany({
-      where: { active: true, startsAt: { lte: new Date() }, endsAt: { gte: new Date() } },
-    }),
-  ]);
+  const product = await db.product.findUnique({
+    where: { slug },
+    include: {
+      variants: true,
+      images: { orderBy: { position: "asc" } },
+      tags: { include: { tag: true } },
+      category: true,
+    },
+  });
   if (!product) return null;
 
-  const now = new Date();
-  const display = deriveProductDisplay(product, campaigns, now);
+  const display = deriveProductDisplay(product);
 
   // The top price block above already shows display.basePrice/salePrice (the product-level sale
-  // price) — but AddToCartForm's size picker and the cart/checkout that follow it were built from
-  // each variant's own priceOverride-or-basePrice with no sale applied at all, a pre-existing gap
-  // (Campaign-era, not new to this discount feature) where the price shown while *choosing* a
-  // size didn't match the price shown just above it. Same bestSalePrice() checkout.ts now uses as
-  // the authoritative charge, so what's shown here always matches what's actually billed.
+  // price) — but AddToCartForm's size picker and the cart/checkout that follow it are built from
+  // each variant's own priceOverride-or-basePrice, so the sale has to be applied here too or the
+  // price shown while *choosing* a size wouldn't match the price shown just above it. Same
+  // bestSalePrice() checkout.ts uses as the authoritative charge, so what's shown here always
+  // matches what's actually billed.
   const variantPrices: Record<string, number> = {};
   for (const v of product.variants) {
     const base = v.priceOverride != null ? toNumber(v.priceOverride) : toNumber(product.basePrice);
-    variantPrices[v.id] = bestSalePrice(product, base, campaigns, now) ?? base;
+    variantPrices[v.id] = bestSalePrice(product, base) ?? base;
   }
 
   // "Complete the look" suggests across the whole gender branch (any category), not just more of
@@ -46,7 +40,7 @@ export async function getProductForPDP(slug: string) {
     include: { variants: true, images: { orderBy: { position: "asc" } }, tags: { include: { tag: true } }, category: true },
     take: 4,
   });
-  const related = relatedRaw.map((p) => deriveProductDisplay(p, campaigns, now));
+  const related = relatedRaw.map((p) => deriveProductDisplay(p));
 
   return { product, display, related, variantPrices };
 }
@@ -66,13 +60,11 @@ export async function getCachedProductForPDP(slug: string) {
   return unstable_cache(
     () => getProductForPDP(slug),
     ["pdp-product", slug],
-    // revalidate: 300 — display.onSale/salePrice (this product and its `related` list) are
-    // derived from whichever campaigns are active right now. A campaign's startsAt/endsAt
-    // crossing with no admin action never calls revalidateTag, so without this the PDP's sale
-    // badge/price could stay wrong indefinitely rather than for a bounded window. The page's own
-    // `export const revalidate = 300` (product/[slug]/page.tsx) controls how often the page's
-    // HTML regenerates, not whether this specific cached read is still considered fresh when it
-    // does — this option is what actually bounds that.
+    // revalidate: 300 — a safety net so the PDP's sale badge/price (this product and its
+    // `related` list) can't stay wrong indefinitely if a change ever slips past an admin action's
+    // tag invalidation. The page's own `export const revalidate = 300`
+    // (product/[slug]/page.tsx) controls how often the page's HTML regenerates, not whether this
+    // specific cached read is still considered fresh when it does — this option is what bounds that.
     { tags: ["products", `product:${slug}`], revalidate: 300 },
   )();
 }

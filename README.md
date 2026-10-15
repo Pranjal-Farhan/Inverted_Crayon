@@ -10,7 +10,7 @@ Streetwear storefront + admin, built from the [Build Specification v1.0](.) — 
 - **Database**: PostgreSQL via Prisma 7 (`@prisma/adapter-pg` driver adapter)
 - **Styling**: Tailwind CSS v4, design tokens in `src/app/globals.css` matching Build Spec §02–§04
 - **Auth**: Signed JWT session cookies (`jose`) — separate admin and customer sessions. Email/password always works; Google and Facebook sign-in work too once you add OAuth credentials (see below) — until then the buttons bounce back with a clear message instead of erroring. Admin/staff accounts can additionally turn on TOTP two-factor authentication (Google Authenticator-compatible) from `/admin/settings` → Security.
-- **Payments**: bKash and SSLCommerz (cards/mobile banking) are wired for real and go live the moment you add real merchant credentials (see below) — but are currently **commented out at checkout** (`CheckoutView.tsx`/`checkout.ts`), so **cash on delivery is the only option offered right now**, for every order including preorders (nothing is captured online for a preorder either — see "Preorders" below).
+- **Payments**: **cash on delivery is the only payment method**, in every shipping zone and for every order including preorders (nothing is captured online for a preorder either — see "Preorders" below). There are no payment settings. The bKash/SSLCommerz integration code is still in the repo (`src/lib/payments/*`) but unreachable — checkout never offers it and `placeOrder()` rejects it.
 - **Emails & SMS**: Every "send" always writes to an outbox first (`EmailLog` at `/admin/emails`, `SmsLog` at `/admin/sms`); add a Resend key and/or SSL Wireless credentials (see below) and it also actually sends. What each message says is editable at `/admin/templates`. See "Emails & SMS" below and `src/lib/notifications.ts`.
 - **Image hosting**: Product photos, the CMS logo, and hero images upload to ImgBB when `IMGBB_API_KEY` is set. The database stores the returned CDN URL instead of Base64 or local files.
 
@@ -23,7 +23,7 @@ npm install
 cp .env.example .env
 
 npx prisma migrate dev   # creates tables
-npx prisma db seed       # seeds catalog, orders, admin/customer test accounts, journal posts
+npx prisma db seed       # seeds catalog, orders, admin/customer test accounts
 
 npm run dev              # http://localhost:3000
 ```
@@ -69,9 +69,9 @@ Google/Facebook sign-in for **admin and staff accounts** only ever logs in to an
 
 ```
 prisma/schema.prisma          data model (§10 of the spec, extended)
-prisma/seed.ts                catalog + orders + accounts + journal posts seed
-src/app/(storefront)/         public site — home, PLP/PDP, cart, checkout, account, journal, legal
-src/app/admin/                admin app — dashboard, orders, products, CRM, journal, emails, settings
+prisma/seed.ts                catalog + orders + accounts seed
+src/app/(storefront)/         public site — home, PLP/PDP, cart, checkout, account, legal
+src/app/admin/                admin app — dashboard, orders, products, CRM, emails, settings
 src/actions/                  server actions (checkout, admin CRUD, auth, mail-triggering events)
 src/components/                brand, ui, layout, storefront, admin component libraries
 src/lib/                      domain logic — tag/pricing derivation, cart, sessions, settings, mail
@@ -79,16 +79,16 @@ src/lib/                      domain logic — tag/pricing derivation, cart, ses
 
 ## Build phases
 
-Both P1 (launch-critical) and P2 (fast-follow) from the spec's §13 checklist are implemented in full, including every item originally listed but not elaborated on in the page-by-page spec (journal/blog, lifecycle emails, staff roles management):
+Both P1 (launch-critical) and P2 (fast-follow) from the spec's §13 checklist are implemented in full, including every item originally listed but not elaborated on in the page-by-page spec (lifecycle emails, staff roles management):
 
-- **P1**: design system, storefront browse/PDP, cart → guest checkout → confirmation → track order, admin dashboard/orders/products/categories/settings (including the Tax tab and the message Templates page), all legal/utility pages.
-- **P2**: customer accounts (register/login/orders/returns/wishlist/back-in-stock — guest orders auto-claim on registration), drops/collections landing, lookbook, journal/blog, live search suggestions, a "recently viewed" rail, a swipeable multi-image PDP gallery, admin CRM/discounts/campaigns/content CMS/analytics/staff-roles CRUD, and the full lifecycle email set (order confirmed/shipped, back-in-stock, preorder ship-date changes, newsletter welcome, contact acknowledgement, plus notification emails to the brand).
+- **P1**: design system, storefront browse/PDP, cart → guest checkout → confirmation → track order, admin dashboard/orders/products/categories/settings (including the message Templates page), all legal/utility pages.
+- **P2**: customer accounts (register/login/orders/returns/wishlist/back-in-stock — guest orders auto-claim on registration), drops/collections landing, lookbook, live search suggestions, a "recently viewed" rail, a swipeable multi-image PDP gallery, admin CRM/discounts/content CMS/analytics/staff-roles CRUD, and the full lifecycle email set (order confirmed/shipped, back-in-stock, preorder ship-date changes, newsletter welcome, contact acknowledgement, plus notification emails to the brand).
 
 ## Homepage CMS
 
 `/admin/content` → **Brand identity**, **Marquee ticker**, and **Homepage hero** panels control, without a code deploy: the logo image (falls back to the drawn monogram + wordmark when unset), brand name, motto (shown in the footer), the scrolling strip's 3–5 headlines (any length), the hero eyebrow/headline/sub-copy/badge text, a hero background color override, and a hero image carousel (falls back to a styled placeholder when empty). All of it renders live site-wide (the marquee shows on every page, not just `/`) immediately after publishing.
 
-`/admin/footer` → controls the footer's social icons (Facebook, Instagram, WhatsApp only — leave a URL blank to hide that icon) and the text content of the **Journal**, **FAQ**, **Contact**, **Privacy**, and **Terms** pages (headings, intro copy, and — for FAQ/Privacy/Terms — the full question/section list), each published independently. There is no separate Shipping & Returns page any more; its returns policy now lives inside Terms.
+`/admin/footer` → controls the footer's social icons (Facebook, Instagram, WhatsApp only — leave a URL blank to hide that icon) and the text content of the **FAQ**, **Contact**, **Privacy**, and **Terms** pages (headings, intro copy, and — for FAQ/Privacy/Terms — the full question/section list), each published independently. There is no separate Shipping & Returns page any more; its returns policy now lives inside Terms.
 
 ## Homepage "New In" — 20 at a time, load more
 
@@ -102,9 +102,9 @@ No advance payment is ever shown to or charged against the customer — the **Pr
 
 > **bKash / card checkout is currently commented out.** `CheckoutView.tsx` only ever offers **Cash on delivery**, and `placeOrder()` rejects a direct `BKASH`/`SSLCOMMERZ` submission server-side too — both reversibly, pending re-enabling. COD works for every cart, preorders included.
 
-## Delivery charges — store default or per-product override
+## Delivery charges — set per product
 
-Shipping is normally one flat rate per zone (Inside/Outside Dhaka) set in `/admin/settings`. Any product can override that from its own editor — **Delivery charge ৳ (Inside/Outside Dhaka)**, blank keeps the store default — since the real cost to ship an item genuinely varies product to product. When a cart mixes several such products, the highest override applies (they ship together as one shipment); `resolveShippingCost()` (`src/lib/shipping.ts`) is the one place both the checkout page and the server's actual charge compute this from, so the number shown always matches what's billed.
+Delivery cost is set on each product, in its editor: **Delivery charge ৳ (Inside/Outside Dhaka)** — the real cost to ship an item genuinely varies product to product. A box left blank uses the standard rate (৳60 inside Dhaka, ৳120 outside; shown as the placeholder in the box). There is no shipping tab in Settings. When a cart mixes several products with their own charges, the highest applies (they ship together as one shipment); `resolveShippingCost()` (`src/lib/shipping.ts`) is the one place both the checkout page and the server's actual charge compute this from, so the number shown always matches what's billed.
 
 ## Order tracking — admin, account, and public
 

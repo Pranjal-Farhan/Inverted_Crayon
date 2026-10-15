@@ -112,16 +112,12 @@ export async function evaluateCoupon(input: {
 /** Prices cart lines exactly as placeOrder will charge them. Null when a variant no longer exists. */
 export async function priceCartLines(
   lines: { variantId: string; qty: number }[],
-  now: Date = new Date(),
 ): Promise<{ priced: CouponLine[]; subtotal: number } | null> {
   const variants = await db.variant.findMany({
     where: { id: { in: lines.map((l) => l.variantId) } },
     include: { product: true },
   });
   const byId = new Map(variants.map((v) => [v.id, v]));
-  const campaigns = await db.campaign.findMany({
-    where: { active: true, startsAt: { lte: now }, endsAt: { gte: now } },
-  });
 
   const priced: CouponLine[] = [];
   for (const line of lines) {
@@ -129,7 +125,7 @@ export async function priceCartLines(
     if (!variant) return null;
     priced.push({
       productId: variant.productId,
-      lineTotal: round2(variantUnitPrice(variant, variant.product, campaigns, now) * line.qty),
+      lineTotal: round2(variantUnitPrice(variant, variant.product) * line.qty),
     });
   }
   return { priced, subtotal: round2(priced.reduce((s, l) => s + l.lineTotal, 0)) };

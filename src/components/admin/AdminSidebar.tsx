@@ -21,10 +21,8 @@ const NAV: { group: string; items: { href: string; label: string; icon: string }
     items: [
       { href: "/admin/customers", label: "Customers", icon: "☺" },
       { href: "/admin/discounts", label: "Discounts", icon: "%" },
-      { href: "/admin/campaigns", label: "Campaigns", icon: "◔" },
       { href: "/admin/content", label: "Content CMS", icon: "▥" },
       { href: "/admin/footer", label: "Footer", icon: "▤" },
-      { href: "/admin/journal", label: "Journal", icon: "✎" },
       { href: "/admin/analytics", label: "Analytics", icon: "◧" },
     ],
   },

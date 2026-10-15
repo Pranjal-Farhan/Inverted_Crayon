@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { formatTaka, toNumber } from "@/lib/money";
-import { getStoreInfo, getTaxSettings } from "@/lib/store-settings";
+import { getStoreInfo } from "@/lib/store-settings";
 import { Monogram } from "@/components/brand/Monogram";
 import { Wordmark } from "@/components/brand/Wordmark";
 import { ReceiptToolbar } from "@/components/admin/PrintButton";
@@ -15,10 +15,9 @@ const SHIPPING_ZONE_LABEL: Record<string, string> = {
 
 export default async function OrderReceiptPage({ params }: Props) {
   const { id } = await params;
-  const [order, store, tax] = await Promise.all([
+  const [order, store] = await Promise.all([
     db.order.findUnique({ where: { id }, include: { items: true } }),
     getStoreInfo(),
-    getTaxSettings(),
   ]);
   if (!order) notFound();
 
@@ -147,9 +146,6 @@ export default async function OrderReceiptPage({ params }: Props) {
                 Preorder Now and Our Sales Agent Will Reach Out.
               </p>
             )}
-            <p className="mt-1.5 text-right text-[11px] text-ink/45">
-              {tax.rate > 0 ? `Includes ${tax.rate}% ${tax.label}` : tax.label}
-            </p>
           </div>
         </div>
 

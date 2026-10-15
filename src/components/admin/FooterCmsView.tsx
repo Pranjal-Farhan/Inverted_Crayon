@@ -3,7 +3,6 @@
 import { useState, useTransition } from "react";
 import {
   saveFooterSocial,
-  saveJournalPage,
   saveFaqPage,
   saveContactPage,
   savePrivacyPage,
@@ -11,7 +10,6 @@ import {
 } from "@/actions/admin-footer";
 import type {
   FooterSocialData,
-  JournalPageData,
   FaqPageData,
   ContactPageData,
   LegalPageData,
@@ -74,14 +72,12 @@ function TwoFieldRows({
 
 export function FooterCmsView({
   social,
-  journal,
   faq,
   contact,
   privacy,
   terms,
 }: {
   social: FooterSocialData;
-  journal: JournalPageData;
   faq: FaqPageData;
   contact: ContactPageData;
   privacy: LegalPageData;
@@ -95,7 +91,6 @@ export function FooterCmsView({
   }
 
   const [socialData, setSocialData] = useState(social);
-  const [journalData, setJournalData] = useState(journal);
   const [faqData, setFaqData] = useState(faq);
   const [faqError, setFaqError] = useState<string | null>(null);
   const [contactData, setContactData] = useState(contact);
@@ -108,7 +103,7 @@ export function FooterCmsView({
     <div>
       <p className="mb-4.5 max-w-[70ch] text-[13px] text-muted">
         Controls the footer (social links, and what every navigational link in it points to) and the
-        text content of the Journal, FAQ, Contact, Privacy, and Terms pages. Shipping &amp; Returns has
+        text content of the FAQ, Contact, Privacy, and Terms pages. Shipping &amp; Returns has
         been removed site-wide.
       </p>
 
@@ -150,36 +145,6 @@ export function FooterCmsView({
           className="btn-primary bg-lime px-4 py-2 font-impact text-sm text-ink disabled:opacity-50"
         >
           {saved === "social" ? "Published ✓" : "Publish"}
-        </button>
-      </Panel>
-
-      <Panel title="Journal page" className="mt-4.5">
-        <p className="mb-3 text-[13px] text-muted">
-          The eyebrow and heading shown above the post list at /journal. Posts themselves are managed
-          from Journal in the sidebar.
-        </p>
-        <div className="mb-2.5">
-          <label className="font-label mb-1 block text-[12px] tracking-[1px] text-muted">Eyebrow</label>
-          <input
-            value={journalData.eyebrow}
-            onChange={(e) => setJournalData((d) => ({ ...d, eyebrow: e.target.value }))}
-            className={inputClass}
-          />
-        </div>
-        <div className="mb-3">
-          <label className="font-label mb-1 block text-[12px] tracking-[1px] text-muted">Heading</label>
-          <input
-            value={journalData.heading}
-            onChange={(e) => setJournalData((d) => ({ ...d, heading: e.target.value }))}
-            className={inputClass}
-          />
-        </div>
-        <button
-          disabled={pending}
-          onClick={() => startTransition(async () => { await saveJournalPage(journalData); flash("journal"); })}
-          className="btn-primary bg-lime px-4 py-2 font-impact text-sm text-ink disabled:opacity-50"
-        >
-          {saved === "journal" ? "Published ✓" : "Publish"}
         </button>
       </Panel>
 

@@ -1,7 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
 import {
-  getActiveCampaigns,
   getCachedProductById,
   getContentBlock,
   getHomeCategoryExplorerData,
@@ -22,20 +21,17 @@ import { NewInGrid } from "@/components/storefront/NewInGrid";
 import { DEFAULT_HERO, type HeroData } from "@/lib/hero-defaults";
 import { DEFAULT_GENDER_CARDS, type GenderCardsData } from "@/lib/gender-cards-defaults";
 
-// 300s rather than the usual 3600s safety net: this page shows campaign-derived sale pricing
-// (onSale/salePrice), and a campaign's startsAt/endsAt boundary passes with zero admin action —
-// nothing calls revalidateTag at that exact moment, so only this timer catches it. Checkout
-// still recomputes price fresh from the DB regardless (src/actions/checkout.ts), so the risk
-// here is a stale *displayed* badge/price for up to 5 minutes, never an actual overcharge.
+// 300s rather than the usual 3600s safety net: this page shows sale pricing (onSale/salePrice),
+// so a change that slips past an admin action's revalidateTag is caught by this timer. Checkout
+// recomputes price fresh from the DB regardless (src/actions/checkout.ts), so the risk here is a
+// stale *displayed* badge/price for up to 5 minutes, never an actual overcharge.
 export const revalidate = 300;
 
 export default async function HomePage() {
-  const now = new Date();
-  const [heroBlock, featuredBlock, genderCardsBlock, campaigns, newProductsRaw, explorerData] = await Promise.all([
+  const [heroBlock, featuredBlock, genderCardsBlock, newProductsRaw, explorerData] = await Promise.all([
     getContentBlock("home_hero"),
     getContentBlock("home_featured_drop"),
     getContentBlock("home_gender_cards"),
-    getActiveCampaigns(),
     getHomeNewProducts(),
     // Categories + a capped product preview per category, for the homepage drill-down — same
     // taxonomy the admin already manages from /admin/categories (§5.1).
@@ -54,8 +50,8 @@ export default async function HomePage() {
   const featuredProduct = featuredId ? await getCachedProductById(featuredId) : newProductsRaw[0];
 
   const newInHasMore = newProductsRaw.length > 20;
-  const newProducts = newProductsRaw.slice(0, 20).map((p) => deriveProductDisplay(p, campaigns, now));
-  const featuredDisplay = featuredProduct ? deriveProductDisplay(featuredProduct, campaigns, now) : null;
+  const newProducts = newProductsRaw.slice(0, 20).map((p) => deriveProductDisplay(p));
+  const featuredDisplay = featuredProduct ? deriveProductDisplay(featuredProduct) : null;
   const featuredAccent = featuredProduct ? pickAccent(featuredProduct.id) : null;
   const featuredImage = featuredProduct?.images.find((img) => img.url)?.url;
 
@@ -64,7 +60,7 @@ export default async function HomePage() {
   const explorerProductsByCategory = Object.fromEntries(
     Object.entries(explorerData.productsByCategory).map(([categoryId, products]) => [
       categoryId,
-      products.map((p) => deriveProductDisplay(p, campaigns, now)),
+      products.map((p) => deriveProductDisplay(p)),
     ]),
   );
 

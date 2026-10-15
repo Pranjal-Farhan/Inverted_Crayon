@@ -1,6 +1,6 @@
 // Inverted Crayon — data model
 // Faithful to Build Spec §10 (Product, Variant, Category, Collection, Tag,
-// Order, OrderItem, Customer, Discount, Campaign), extended with the
+// Order, OrderItem, Customer, Discount), extended with the
 // practical entities needed to actually run the store (admin users,
 // addresses, wishlist, back-in-stock subscriptions, CMS content blocks).
 // No customer-facing review system — admin-only product notes instead (ManufacturerLink).
@@ -112,9 +112,8 @@ model Product {
   gender                     Gender
   basePrice                  Decimal              @db.Decimal(10, 2)
   // A standing markdown set directly on the product (no start/end date — on until an admin
-  // removes it), separate from the category/date-driven Campaign system. Null discountType means
-  // no discount is active; deriveProductDisplay (src/lib/product-view.ts) combines this with any
-  // active Campaign and shows whichever produces the lower price.
+  // removes it). Null discountType means no discount is active; deriveProductDisplay
+  // (src/lib/product-view.ts) prices the product from it.
   discountType               ProductDiscountType?
   discountValue              Decimal?             @db.Decimal(10, 2)
   status                     ProductStatus        @default(DRAFT)
@@ -217,7 +216,7 @@ model Category {
 }
 
 // Cosmetic/behavioral tags. Sale and Sold-out are intentionally NOT rows here
-// — Sale is derived from an active Campaign, Sold-out is derived from stock.
+// — Sale is derived from the product's own discount, Sold-out is derived from stock.
 model Tag {
   id       String       @id @default(cuid())
   type     TagType      @unique
@@ -432,19 +431,6 @@ model DiscountRedemption {
   @@index([discountId, createdAt])
 }
 
-model Campaign {
-  id               String   @id @default(cuid())
-  name             String
-  percentOff       Decimal? @db.Decimal(5, 2)
-  fixedSalePrice   Decimal? @db.Decimal(10, 2)
-  targetCategoryId String?
-  targetProductIds String[] @default([])
-  startsAt         DateTime
-  endsAt           DateTime
-  active           Boolean  @default(true)
-  createdAt        DateTime @default(now())
-}
-
 // Admin-only notes on a product, almost always a link to its manufacturer's page — never shown
 // to customers. One row per link; the admin adds/removes them freely and can tag exactly one as
 // the "current vendor" (isCurrentVendor) — see src/actions/admin-manufacturer-links.ts, which
@@ -594,27 +580,6 @@ model SizeGuideTemplate {
   data      Json
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-}
-
-// ---------- journal / blog ----------
-
-enum PostStatus {
-  DRAFT
-  PUBLISHED
-}
-
-model Post {
-  id          String     @id @default(cuid())
-  slug        String     @unique
-  title       String
-  excerpt     String
-  body        String
-  accentColor String     @default("#ff2d84")
-  authorName  String     @default("Inverted Crayon")
-  status      PostStatus @default(DRAFT)
-  publishedAt DateTime?
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
 }
 
 // ---------- email (mocked outbox) ----------

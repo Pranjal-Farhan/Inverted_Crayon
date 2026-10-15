@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { getShippingRates, getPaymentGateways } from "@/lib/store-settings";
+import { getShippingRates } from "@/lib/store-settings";
 import { getCustomerSession } from "@/lib/session";
 import { db } from "@/lib/db";
 import { CheckoutView } from "@/components/storefront/CheckoutView";
@@ -8,9 +8,8 @@ export const metadata: Metadata = { title: "Checkout" };
 
 export default async function CheckoutPage() {
   const session = await getCustomerSession();
-  const [rates, gateways, customer, address] = await Promise.all([
+  const [rates, customer, address] = await Promise.all([
     getShippingRates(),
-    getPaymentGateways(),
     session ? db.customer.findUnique({ where: { id: session.customerId } }) : null,
     // Same "default sorts first" convention as /account/addresses — the customer's own default
     // address (or, failing that, whichever one they saved) is what checkout should prefill with.
@@ -21,7 +20,6 @@ export default async function CheckoutPage() {
     <section className="pg pb-16">
       <CheckoutView
         rates={rates}
-        gateways={gateways}
         customer={
           customer
             ? {

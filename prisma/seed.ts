@@ -16,12 +16,7 @@ const CATEGORY_DEFS = [
   { slug: "headwear", name: "Headwear" },
   { slug: "accessories", name: "Accessories" },
 ] as const;
-import {
-  DEFAULT_PAYMENT_GATEWAYS,
-  DEFAULT_SHIPPING_RATES,
-  DEFAULT_STORE_INFO,
-  DEFAULT_TAX_SETTINGS,
-} from "../src/lib/store-settings";
+import { DEFAULT_STORE_INFO } from "../src/lib/store-settings";
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const db = new PrismaClient({ adapter });
@@ -274,31 +269,6 @@ async function main() {
 
   console.log(`Seeded ${createdProducts.length} products.`);
 
-  // ---------- campaign: End-of-season sale on Hoodies ----------
-  const hoodiesCat = catByKey.get("MEN:hoodies")!;
-  await db.campaign.deleteMany({ where: { name: "End-of-season" } });
-  await db.campaign.create({
-    data: {
-      name: "End-of-season",
-      percentOff: 25,
-      targetCategoryId: hoodiesCat.id,
-      startsAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000),
-      endsAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-      active: true,
-    },
-  });
-  await db.campaign.deleteMany({ where: { name: "Eid Drop" } });
-  await db.campaign.create({
-    data: {
-      name: "Eid Drop",
-      percentOff: 15,
-      targetProductIds: createdProducts.slice(0, 5).map((p) => p.id),
-      startsAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
-      endsAt: new Date(Date.now() + 28 * 24 * 60 * 60 * 1000),
-      active: true,
-    },
-  });
-
   // ---------- discounts ----------
   await db.discount.upsert({
     where: { code: "INVERT10" },
@@ -467,57 +437,10 @@ async function main() {
 
   // ---------- store settings ----------
   await db.storeSetting.upsert({
-    where: { key: "shipping_rates" },
-    update: {},
-    create: { key: "shipping_rates", value: DEFAULT_SHIPPING_RATES },
-  });
-  await db.storeSetting.upsert({
-    where: { key: "payment_gateways" },
-    update: {},
-    create: { key: "payment_gateways", value: DEFAULT_PAYMENT_GATEWAYS },
-  });
-  await db.storeSetting.upsert({
     where: { key: "store_info" },
     update: {},
     create: { key: "store_info", value: DEFAULT_STORE_INFO },
   });
-  await db.storeSetting.upsert({
-    where: { key: "tax_settings" },
-    update: {},
-    create: { key: "tax_settings", value: DEFAULT_TAX_SETTINGS },
-  });
-
-  // ---------- journal ----------
-  const posts = [
-    {
-      slug: "made-to-stand-out",
-      title: "Made to stand out — the story behind the crayon",
-      excerpt: "Why we flipped the crayon upside down and built a brand around it.",
-      body: "Every crayon box has that one colour nobody reaches for. We built a brand around being that colour — inverted, on purpose, impossible to ignore. This is the short version of how Inverted Crayon started as a single screen-printed tee and turned into a full drop cycle.",
-      accentColor: "#ff2d84",
-    },
-    {
-      slug: "how-we-print",
-      title: "How we print — and why it cracks on purpose",
-      excerpt: "The screen-print process behind every heavyweight tee, and why the crack-and-fade finish is intentional.",
-      body: "Heavyweight 260gsm cotton, hand-mixed ink, and a print technique that's built to crack and fade with wear — the same way a favourite tee always looks better after the twentieth wash. Here's exactly how it's done, and why we'll never switch to a 'permanent' print.",
-      accentColor: "#26a7e6",
-    },
-    {
-      slug: "drop-04-the-outsiders",
-      title: "Inside Drop 04 — The Outsiders",
-      excerpt: "A 12-piece capsule for the ones who never fit the box, numbered and gone when they're gone.",
-      body: "The Outsiders started as a single sketch on the back of a delivery receipt. Twelve pieces, limited runs, each one numbered. Here's what went into it, from the first fit sample to the final print run.",
-      accentColor: "#c3f53a",
-    },
-  ];
-  for (const p of posts) {
-    await db.post.upsert({
-      where: { slug: p.slug },
-      update: {},
-      create: { ...p, status: "PUBLISHED", publishedAt: new Date(), authorName: "Inverted Crayon" },
-    });
-  }
 
   console.log("Seed complete.");
   console.log(`Admin login → ${adminEmail} / ${adminPassword}`);

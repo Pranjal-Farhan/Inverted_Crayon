@@ -12,17 +12,11 @@ import { Button } from "@/components/ui/Button";
 import { CouponBox } from "@/components/storefront/CouponBox";
 import { DiscountPriceTag, FreeDeliveryTag } from "@/components/brand/DiscountPriceTag";
 import { resolveShippingCost, type ShippingZoneKey } from "@/lib/shipping";
-import type { PaymentGatewaySettings, ShippingRates } from "@/lib/store-settings";
+import type { ShippingRates } from "@/lib/store-settings";
 
 const PREORDER_NOTE = "Preorder Now and Our Sales Agent Will Reach Out";
 
 const ZONE_ORDER: ShippingZoneKey[] = ["INSIDE_DHAKA", "OUTSIDE_DHAKA"];
-
-const PAYMENT_LABELS: Record<string, string> = {
-  BKASH: "bKash",
-  SSLCOMMERZ: "Card / mobile banking (SSLCommerz)",
-  COD: "Cash on delivery",
-};
 
 const PAYMENT_ERROR_MESSAGES: Record<string, string> = {
   failed: "Your payment didn't go through. Your bag has been restored — please try again.",
@@ -47,11 +41,9 @@ type CheckoutCustomer = {
 
 export function CheckoutView({
   rates,
-  gateways,
   customer = null,
 }: {
   rates: ShippingRates;
-  gateways: PaymentGatewaySettings;
   /** Set when the shopper is logged in — prefills contact/shipping fields from their account
    * (and saved default address, if any) instead of starting every field blank like a guest. */
   customer?: CheckoutCustomer | null;
@@ -79,11 +71,6 @@ export function CheckoutView({
   const [postcode, setPostcode] = useState(customer?.address?.postcode ?? "");
   const [country, setCountry] = useState(customer?.address?.country ?? "Bangladesh");
   const [zone, setZone] = useState<ShippingZoneKey>("INSIDE_DHAKA");
-  const [paymentMethod, setPaymentMethod] = useState<"BKASH" | "SSLCOMMERZ" | "COD">(
-    // bKash and card/mobile banking are commented out for now (see availableMethods below) —
-    // COD is the only method on offer at checkout regardless of the admin settings toggle.
-    "COD",
-  );
   const [preorderShipMode, setPreorderShipMode] = useState<"together" | "split">("together");
 
   // The one coupon check for this page: the box shows its outcome and the summary below prices the
@@ -106,23 +93,7 @@ export function CheckoutView({
 
   // No advance/balance split is shown or charged at checkout any more — a preorder is placed with
   // nothing special required online, and our sales agent follows up on the specifics directly.
-  // Preorder no longer gates COD out either — see checkout.ts's matching removal of that rejection.
-  const codAllowed = gateways.cod && (gateways.codRule === "nationwide" || zone === "INSIDE_DHAKA");
-  const availableMethods = (["BKASH", "SSLCOMMERZ", "COD"] as const).filter((m) => {
-    // bKash and card/mobile banking (SSLCommerz) are commented out for now — only COD is
-    // offered at checkout, regardless of the admin settings toggle, until these come back.
-    // if (m === "BKASH") return gateways.bkash;
-    // if (m === "SSLCOMMERZ") return gateways.sslcommerz;
-    if (m === "BKASH" || m === "SSLCOMMERZ") return false;
-    return codAllowed;
-  });
-
-  useEffect(() => {
-    if (!availableMethods.includes(paymentMethod) && availableMethods.length > 0) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- syncing selection to the derived set of methods the current cart/zone actually allows
-      setPaymentMethod(availableMethods[0]);
-    }
-  }, [availableMethods, paymentMethod]);
+  // Cash on delivery is the only way to pay, in every shipping zone — there's nothing to choose.
 
   // Rendered here (not in page.tsx's server component) because the blinking preorder tag beside
   // it depends on the cart's contents, which only this client component — reading from
@@ -167,7 +138,6 @@ export function CheckoutView({
     if (area.trim().length < 2) errs.area = "Enter your area.";
     if (district.trim().length < 2) errs.district = "Enter your district.";
     if (postcode.trim().length < 3) errs.postcode = "Enter a valid postcode.";
-    if (!availableMethods.includes(paymentMethod)) errs.paymentMethod = "Choose a payment method.";
     setFieldErrors(errs);
     return Object.keys(errs).length === 0;
   }
@@ -188,7 +158,7 @@ export function CheckoutView({
         phone,
         shipping: { fullName, phone: shipPhone, line1, area, district, postcode, country },
         shippingZone: zone,
-        paymentMethod,
+        paymentMethod: "COD",
         promoCode: coupon ? cart.promoCode : null,
         preorderShipMode,
         lines: cart.lines.map((l) => ({ variantId: l.variantId, qty: l.qty })),
@@ -288,26 +258,11 @@ export function CheckoutView({
         )}
 
         <Step n={hasPreorder ? 5 : 4} title="Payment">
-          <div className="flex flex-col gap-2">
-            {availableMethods.map((m) => (
-              <label
-                key={m}
-                className={`flex items-center gap-2.5 border px-3.5 py-2.5 text-sm transition-colors ${paymentMethod === m ? "border-lime" : "border-line-2"}`}
-              >
-                <input
-                  type="radio"
-                  name="payment"
-                  checked={paymentMethod === m}
-                  onChange={() => setPaymentMethod(m)}
-                  className="accent-lime"
-                />
-                {PAYMENT_LABELS[m]}
-              </label>
-            ))}
+          <div className="flex items-center gap-2.5 border border-lime px-3.5 py-2.5 text-sm">
+            <input type="radio" name="payment" checked readOnly className="accent-lime" />
+            Cash on delivery
           </div>
-          {gateways.cod && !codAllowed && (
-            <p className="mt-2 text-[12px] text-muted">Cash on delivery is available inside Dhaka only.</p>
-          )}
+          <p className="mt-2 text-[12px] text-muted">Pay in cash when your order arrives.</p>
         </Step>
 
         {mixedCart && (

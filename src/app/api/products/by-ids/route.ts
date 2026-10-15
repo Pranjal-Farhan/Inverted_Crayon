@@ -17,13 +17,11 @@ export async function GET(request: Request) {
   const ids = (url.searchParams.get("ids") ?? "").split(",").filter(Boolean).slice(0, 10);
   if (ids.length === 0) return NextResponse.json([]);
 
-  const now = new Date();
-  const [products, campaigns, images] = await Promise.all([
+  const [products, images] = await Promise.all([
     db.product.findMany({
       where: { id: { in: ids }, status: "ACTIVE" },
       include: { variants: true, tags: { include: { tag: true } }, category: true },
     }),
-    db.campaign.findMany({ where: { active: true, startsAt: { lte: now }, endsAt: { gte: now } } }),
     db.$queryRaw<RecentImage[]>(Prisma.sql`
       SELECT "id", "productId", "alt", "position", "accentColor",
         CASE WHEN "url" LIKE 'data:%' THEN '' ELSE "url" END AS "url"
@@ -48,8 +46,6 @@ export async function GET(request: Request) {
     ordered.map((product) =>
       deriveProductDisplay(
         { ...product, images: imagesByProduct.get(product.id) ?? [] } as ProductWithRelations,
-        campaigns,
-        now,
       ),
     ),
     { headers: { "Cache-Control": "public, max-age=30, stale-while-revalidate=120" } },

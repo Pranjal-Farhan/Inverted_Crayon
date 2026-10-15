@@ -4,12 +4,13 @@ import { toNumber } from "@/lib/money";
 import { ProductEditorForm } from "@/components/admin/ProductEditorForm";
 import { parseSizeGuide, type SizeGuideTemplateOption } from "@/lib/size-guide";
 import { getProductLockedCouponOptions } from "@/lib/coupon-options";
+import { getShippingRates } from "@/lib/store-settings";
 
 type Props = { params: Promise<{ id: string }> };
 
 export default async function EditProductPage({ params }: Props) {
   const { id } = await params;
-  const [product, categories, sizeGuideTemplateRows, couponOptions] = await Promise.all([
+  const [product, categories, sizeGuideTemplateRows, couponOptions, rates] = await Promise.all([
     db.product.findUnique({
       where: { id },
       include: {
@@ -23,6 +24,7 @@ export default async function EditProductPage({ params }: Props) {
     db.category.findMany({ orderBy: [{ gender: "asc" }, { position: "asc" }] }),
     db.sizeGuideTemplate.findMany({ orderBy: { name: "asc" } }),
     getProductLockedCouponOptions(),
+    getShippingRates(),
   ]);
   if (!product) notFound();
 
@@ -81,6 +83,7 @@ export default async function EditProductPage({ params }: Props) {
       categories={categories}
       sizeGuideTemplates={sizeGuideTemplates}
       couponOptions={couponOptions}
+      standardDelivery={{ insideDhaka: rates.INSIDE_DHAKA.cost, outsideDhaka: rates.OUTSIDE_DHAKA.cost }}
     />
   );
 }

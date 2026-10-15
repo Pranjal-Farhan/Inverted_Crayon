@@ -1,6 +1,6 @@
 import type { MetadataRoute } from "next";
 import { getAllActiveProductSlugs } from "@/lib/get-product";
-import { getAllPublishedPostSlugs, getNavCategories } from "@/lib/public-cache";
+import { getNavCategories } from "@/lib/public-cache";
 import { PRODUCTION_SITE_URL } from "@/lib/site-url";
 
 // Same reasoning as robots.ts for not using getSiteOrigin() (avoids a headers() call that would
@@ -17,7 +17,6 @@ const STATIC_PATHS = [
   "/new",
   "/sale",
   "/lookbook",
-  "/journal",
   "/faq",
   "/contact",
   "/privacy",
@@ -26,9 +25,8 @@ const STATIC_PATHS = [
 ];
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const [productSlugs, postSlugs, categories] = await Promise.all([
+  const [productSlugs, categories] = await Promise.all([
     getAllActiveProductSlugs(),
-    getAllPublishedPostSlugs(),
     getNavCategories(),
   ]);
 
@@ -40,9 +38,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   for (const slug of productSlugs) {
     entries.push({ url: `${SITE_ORIGIN}/product/${slug}`, changeFrequency: "daily", priority: 0.8 });
-  }
-  for (const slug of postSlugs) {
-    entries.push({ url: `${SITE_ORIGIN}/journal/${slug}`, changeFrequency: "monthly", priority: 0.4 });
   }
   for (const c of categories.men) {
     entries.push({ url: `${SITE_ORIGIN}/men/${c.slug}`, changeFrequency: "weekly", priority: 0.7 });

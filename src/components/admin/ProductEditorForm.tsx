@@ -141,6 +141,7 @@ export function ProductEditorForm({
   categories,
   sizeGuideTemplates = [],
   couponOptions = [],
+  standardDelivery,
 }: {
   initial:
     | (ProductFormInput & {
@@ -153,6 +154,8 @@ export function ProductEditorForm({
   sizeGuideTemplates?: SizeGuideTemplateOption[];
   /** Every product-locked coupon — the "Coupons" panel's checklist. */
   couponOptions?: CouponOption[];
+  /** What a product with no delivery charge of its own is charged, per zone (store-settings.ts). */
+  standardDelivery: { insideDhaka: number; outsideDhaka: number };
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -894,14 +897,14 @@ export function ProductEditorForm({
               <option value="NATIONWIDE">Free delivery — Nationwide</option>
             </select>
           </Field>
-          <Field label="Delivery charge ৳ (overrides the store default — leave blank to use it)">
+          <Field label="Delivery charge ৳ — set it here per product; leave a box blank to use the standard rate">
             <div className="flex gap-2">
               <input
                 type="number"
                 min={0}
                 value={deliveryChargeInsideDhaka}
                 onChange={(e) => setDeliveryChargeInsideDhaka(e.target.value === "" ? "" : Number(e.target.value))}
-                placeholder="Inside Dhaka — store default"
+                placeholder={`Inside Dhaka — standard ৳${standardDelivery.insideDhaka}`}
                 className={inputClass}
               />
               <input
@@ -909,7 +912,7 @@ export function ProductEditorForm({
                 min={0}
                 value={deliveryChargeOutsideDhaka}
                 onChange={(e) => setDeliveryChargeOutsideDhaka(e.target.value === "" ? "" : Number(e.target.value))}
-                placeholder="Outside Dhaka — store default"
+                placeholder={`Outside Dhaka — standard ৳${standardDelivery.outsideDhaka}`}
                 className={inputClass}
               />
             </div>

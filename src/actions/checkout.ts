@@ -70,11 +70,6 @@ export async function placeOrder(input: CheckoutInput): Promise<CheckoutResult> 
     return { ok: false, error: "Something in your bag is no longer available." };
   }
 
-  const now = new Date();
-  const campaigns = await db.campaign.findMany({
-    where: { active: true, startsAt: { lte: now }, endsAt: { gte: now } },
-  });
-
   const rates = await getShippingRates();
 
   let subtotal = 0;
@@ -105,7 +100,7 @@ export async function placeOrder(input: CheckoutInput): Promise<CheckoutResult> 
       return { ok: false, error: `Not enough stock for ${product.title} (${variant.size}/${variant.color}).` };
     }
 
-    const unitPrice = variantUnitPrice(variant, product, campaigns, now);
+    const unitPrice = variantUnitPrice(variant, product);
 
     const lineTotal = Math.round(unitPrice * line.qty * 100) / 100;
     subtotal += lineTotal;

@@ -10,9 +10,9 @@ type Props = {
 
 // Now fully static (○/ISR): no searchParams read anywhere in this file — filtering/sorting/
 // pagination moved entirely client-side (see StaticPLPView.tsx / StaticPLPClient.tsx).
-// 300s rather than 3600s: this page shows campaign-derived sale pricing, and a campaign's
-// startsAt/endsAt boundary passes with no admin action to eagerly revalidateTag — this timer is
-// the only thing that catches it. Checkout always recomputes price fresh regardless.
+// 300s rather than 3600s: this page shows sale pricing, so this timer is the safety net for a
+// change that slips past an admin action's revalidateTag. Checkout always recomputes price fresh
+// regardless.
 export const revalidate = 300;
 
 export async function generateStaticParams() {

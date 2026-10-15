@@ -10,16 +10,6 @@ export const DEFAULT_FOOTER_SOCIAL: FooterSocialData = {
   whatsappUrl: "",
 };
 
-export type JournalPageData = {
-  eyebrow: string;
-  heading: string;
-};
-
-export const DEFAULT_JOURNAL_PAGE: JournalPageData = {
-  eyebrow: "Dispatches",
-  heading: "Journal",
-};
-
 export type FaqItem = { q: string; a: string };
 
 export type FaqPageData = {

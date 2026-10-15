@@ -46,30 +46,23 @@ function getCachedCatalogForScope(gender: PLPParams["gender"], categorySlug: str
       // (or, for a Unisex product under /men or /women, its own Unisex row by the same slug).
       if (categorySlug) where.category = { slug: categorySlug };
 
-      const now = new Date();
-      const [products, campaigns] = await Promise.all([
-        db.product.findMany({
-          where,
-          include: {
-            variants: true,
-            // See PRODUCT_CARD_INCLUDE in public-cache.ts: an unordered fetch can hand ProductCard
-            // any image in the gallery as the "cover" instead of the intended position-0 shot.
-            images: { orderBy: { position: "asc" } },
-            tags: { include: { tag: true } },
-            category: true,
-          },
-        }),
-        db.campaign.findMany({ where: { active: true, startsAt: { lte: now }, endsAt: { gte: now } } }),
-      ]);
-      return { products, campaigns };
+      return db.product.findMany({
+        where,
+        include: {
+          variants: true,
+          // See PRODUCT_CARD_INCLUDE in public-cache.ts: an unordered fetch can hand ProductCard
+          // any image in the gallery as the "cover" instead of the intended position-0 shot.
+          images: { orderBy: { position: "asc" } },
+          tags: { include: { tag: true } },
+          category: true,
+        },
+      });
     },
     ["public-plp-catalog", gender ?? "all", categorySlug ?? "all"],
-    // revalidate: 300 — this result carries both the campaign list and every product's derived
-    // sale pricing, so a scheduled campaign startsAt/endsAt boundary (no admin action, nothing to
-    // eagerly revalidateTag) would otherwise leave it wrong indefinitely — tag invalidation alone
-    // isn't enough here. See the module doc on src/lib/public-cache.ts for why the page-level
-    // `export const revalidate` on the pages that call this doesn't substitute for this.
-    { tags: ["products", "campaigns"], revalidate: 300 },
+    // revalidate: 300 — a safety net: this result carries every product's derived sale pricing.
+    // See the module doc on src/lib/public-cache.ts for why the page-level `export const
+    // revalidate` on the pages that call this doesn't substitute for this.
+    { tags: ["products"], revalidate: 300 },
   )();
 }
 
@@ -92,21 +85,19 @@ export async function getPLPCatalog(
   gender: PLPParams["gender"],
   categorySlug: string | undefined,
 ): Promise<PLPCatalogItem[]> {
-  const { products, campaigns } = await getCachedCatalogForScope(gender, categorySlug);
-  const now = new Date();
+  const products = await getCachedCatalogForScope(gender, categorySlug);
   return products.map((p) => ({
-    ...deriveProductDisplay(p, campaigns, now),
+    ...deriveProductDisplay(p),
     sizes: [...new Set(p.variants.map((v) => v.size))],
     colors: [...new Set(p.variants.map((v) => v.color))],
   }));
 }
 
 export async function getPLPResults(params: PLPParams) {
-  const { products, campaigns } = await getCachedCatalogForScope(params.gender, params.categorySlug);
+  const products = await getCachedCatalogForScope(params.gender, params.categorySlug);
 
   const variantsByProduct = new Map(products.map((p) => [p.id, p.variants]));
-  const now = new Date();
-  let display: ProductDisplay[] = products.map((p) => deriveProductDisplay(p, campaigns, now));
+  let display: ProductDisplay[] = products.map((p) => deriveProductDisplay(p));
 
   if (params.q) {
     const q = params.q.toLowerCase();
