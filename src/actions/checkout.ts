@@ -3,15 +3,14 @@
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { Prisma, type Discount } from "@/generated/prisma/client";
-import { formatTaka, toNumber } from "@/lib/money";
+import { toNumber } from "@/lib/money";
 import { generateOrderNumber } from "@/lib/order-number";
 import { claimCouponUse, evaluateCoupon, isFirstOrder } from "@/lib/coupon";
 import { getShippingRates } from "@/lib/store-settings";
 import { resolveShippingCost } from "@/lib/shipping";
 import { getCustomerSession } from "@/lib/session";
 import { variantUnitPrice } from "@/lib/product-view";
-import { sendMail } from "@/lib/mail";
-import { sendOrderConfirmationSms } from "@/lib/sms";
+import { notifyOrderPlaced } from "@/lib/notifications";
 import { getSiteOrigin } from "@/lib/site-url";
 import { restockAndCancelOrder } from "@/lib/payments/rollback";
 import { bkashConfigured, createBkashPayment } from "@/lib/payments/bkash";
@@ -258,7 +257,6 @@ export async function placeOrder(input: CheckoutInput): Promise<CheckoutResult> 
           },
         });
 
-        await tx.abandonedCheckout.deleteMany({ where: { email: data.email } });
       });
       succeeded = true;
     } catch (e) {
@@ -319,41 +317,9 @@ export async function placeOrder(input: CheckoutInput): Promise<CheckoutResult> 
     }
   }
 
-  await sendMail({
-    to: data.email,
-    subject: "Order confirmed",
-    body: `Order #${orderNumber} confirmed — ${formatTaka(total)} via ${data.paymentMethod}. ${
-      hasPreorder
-        ? "Preorder Now and Our Sales Agent Will Reach Out."
-        : "We'll email you when it ships."
-    }`,
-    type: "ORDER_CONFIRMED",
-    relatedOrderId: orderNumber,
-  }).catch((e) => console.error("order-confirmation email failed", e));
-
-  await sendOrderConfirmationSms(orderNumber).catch((e) => console.error("order-confirmation SMS failed", e));
+  // The customer's confirmation email + SMS, and the brand's new-order/preorder email (with the
+  // receipt). Best-effort: none of it can fail the order that was just placed.
+  await notifyOrderPlaced(orderNumber);
 
   return { ok: true, orderNumber };
-}
-
-const captureSchema = z.object({
-  email: z.email(),
-  lines: z.array(
-    z.object({ title: z.string(), size: z.string(), color: z.string(), qty: z.number(), unitPrice: z.number() }),
-  ),
-});
-
-/** Captured on checkout's contact-step blur — the standard "abandoned cart" hook point. */
-export async function captureAbandonedCheckout(input: z.infer<typeof captureSchema>) {
-  const parsed = captureSchema.safeParse(input);
-  if (!parsed.success || parsed.data.lines.length === 0) return;
-
-  const hasOrder = await db.order.findFirst({ where: { email: parsed.data.email } });
-  if (hasOrder) return; // returning customer mid-checkout, not actually abandoning
-
-  await db.abandonedCheckout.upsert({
-    where: { email: parsed.data.email },
-    update: { cartSnapshot: parsed.data.lines, remindedAt: null },
-    create: { email: parsed.data.email, cartSnapshot: parsed.data.lines },
-  });
 }

@@ -6,6 +6,7 @@ import { Panel } from "@/components/admin/Panel";
 import { OrderTimeline } from "@/components/storefront/OrderTimeline";
 import { OrderActions } from "@/components/admin/OrderActions";
 import { Avatar } from "@/components/ui/Avatar";
+import { formatDhaka } from "@/lib/message-vars";
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -45,6 +46,22 @@ export default async function AdminOrderDetailPage({ params }: Props) {
               </span>
             )}
           </div>
+          {order.cancellationRequestedAt && (
+            <div className="mb-3.5 border border-yellow/40 bg-yellow/[0.07] px-3.5 py-2.5 text-sm">
+              <p className="font-label text-[12px] tracking-[1.2px] text-yellow">
+                CUSTOMER REQUESTED CANCELLATION
+                {(order.status === "REFUNDED" || order.status === "CANCELLED") && " · HANDLED"}
+              </p>
+              <p className="mt-1 text-muted">
+                {formatDhaka(order.cancellationRequestedAt)} — {order.cancellationReason ?? "no reason given"}
+              </p>
+              {order.status !== "REFUNDED" && order.status !== "CANCELLED" && (
+                <p className="mt-1 text-[12px] text-muted-2">
+                  Nothing has been cancelled yet. Use Refund below to cancel the order and restore its stock, or contact the customer.
+                </p>
+              )}
+            </div>
+          )}
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
             <thead>

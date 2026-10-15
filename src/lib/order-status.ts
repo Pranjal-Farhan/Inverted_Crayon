@@ -50,3 +50,6 @@ export function parseVariantLabel(label: string): { size: string; color: string 
   if (parts.length === 2) return { size: parts[0], color: parts[1] };
   return { size: label, color: null };
 }
+
+/** The statuses an order can still be cancelled from — before it's been sent for delivery. */
+export const CANCELLABLE_STATUSES = ["PENDING", "PAID", "PROCESSING"] as const;

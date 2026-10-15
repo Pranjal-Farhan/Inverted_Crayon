@@ -1,5 +1,4 @@
 import { db } from "@/lib/db";
-import type { $Enums } from "@/generated/prisma/client";
 
 export type ShippingZoneRate = {
   label: string;
@@ -71,19 +70,6 @@ export const DEFAULT_TAX_SETTINGS: TaxSettings = {
   label: "VAT (included in listed price)",
 };
 
-export type EmailTemplateConfig = { subject: string; enabled: boolean };
-export type EmailTemplates = Record<$Enums.EmailType, EmailTemplateConfig>;
-
-export const DEFAULT_EMAIL_TEMPLATES: EmailTemplates = {
-  WELCOME: { subject: "Stay inverted.", enabled: true },
-  ORDER_CONFIRMED: { subject: "Order confirmed", enabled: true },
-  ORDER_SHIPPED: { subject: "It's shipped", enabled: true },
-  BACK_IN_STOCK: { subject: "Back in stock", enabled: true },
-  PREORDER_SHIP_UPDATE: { subject: "Your preorder ships soon", enabled: true },
-  ABANDONED_CHECKOUT: { subject: "You left something behind", enabled: true },
-  CONTACT_RECEIVED: { subject: "We got your message", enabled: true },
-};
-
 async function getSetting<T>(key: string, fallback: T): Promise<T> {
   const row = await db.storeSetting.findUnique({ where: { key } });
   if (!row) return fallback;
@@ -108,10 +94,6 @@ export async function getTaxSettings(): Promise<TaxSettings> {
 
 export async function getChatWidgetSettings(): Promise<ChatWidgetSettings> {
   return getSetting("chat_widget", DEFAULT_CHAT_WIDGET_SETTINGS);
-}
-
-export async function getEmailTemplates(): Promise<EmailTemplates> {
-  return getSetting("email_templates", DEFAULT_EMAIL_TEMPLATES);
 }
 
 export async function setSetting(key: string, value: unknown) {

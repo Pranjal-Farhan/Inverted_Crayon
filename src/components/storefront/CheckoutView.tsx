@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useCart } from "@/context/cart-context";
 import { cartHasPreorder, cartHasInStock } from "@/lib/cart-types";
-import { placeOrder, captureAbandonedCheckout } from "@/actions/checkout";
+import { placeOrder } from "@/actions/checkout";
 import { usePromoValidation } from "@/lib/use-promo";
 import { formatTaka } from "@/lib/money";
 import { Button } from "@/components/ui/Button";
@@ -70,8 +70,6 @@ export function CheckoutView({
   }, [searchParams]);
 
   const [email, setEmail] = useState(customer?.email ?? "");
-  // Tab away and back without editing shouldn't re-send the same capture.
-  const lastCapturedEmailRef = useRef<string | null>(null);
   const [phone, setPhone] = useState(customer?.phone ?? "");
   const [fullName, setFullName] = useState(customer?.address?.fullName ?? customer?.name ?? "");
   const [shipPhone, setShipPhone] = useState(customer?.address?.phone ?? customer?.phone ?? "");
@@ -218,15 +216,6 @@ export function CheckoutView({
             <input
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              onBlur={() => {
-                if (/^\S+@\S+\.\S+$/.test(email) && cart.lines.length > 0 && email !== lastCapturedEmailRef.current) {
-                  lastCapturedEmailRef.current = email;
-                  captureAbandonedCheckout({
-                    email,
-                    lines: cart.lines.map((l) => ({ title: l.title, size: l.size, color: l.color, qty: l.qty, unitPrice: l.unitPrice })),
-                  });
-                }
-              }}
               type="email"
               className={inputClass(fieldErrors.email)}
             />

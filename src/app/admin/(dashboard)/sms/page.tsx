@@ -1,11 +1,11 @@
 import { db } from "@/lib/db";
 import { Panel } from "@/components/admin/Panel";
+import { TEMPLATES, smsTypeFor } from "@/lib/message-templates";
 
-const TYPE_LABEL: Record<string, string> = {
-  ORDER_CONFIRMED_PAID: "Order confirmed — paid",
-  ORDER_CONFIRMED_COD: "Order confirmed — COD",
-  ORDER_CONFIRMED_PARTIAL: "Order confirmed — partial (preorder)",
-};
+// Labels come from the template catalog (SMS_ORDER_SHIPPED is logged as ORDER_SHIPPED, and so on).
+const TYPE_LABEL: Record<string, string> = Object.fromEntries(
+  TEMPLATES.filter((t) => t.channel === "SMS").map((t) => [smsTypeFor(t.key), t.title]),
+);
 
 type Props = { searchParams: Promise<{ type?: string; q?: string }> };
 

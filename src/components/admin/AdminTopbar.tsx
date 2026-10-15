@@ -17,6 +17,8 @@ const TITLES: [string, string][] = [
   ["/admin/journal", "Journal"],
   ["/admin/analytics", "Analytics"],
   ["/admin/emails", "Emails"],
+  ["/admin/sms", "SMS"],
+  ["/admin/templates", "Message templates"],
   ["/admin/settings", "Settings"],
 ];
 

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { getCustomerSession, setCustomerSession } from "@/lib/session";
+import { notifyReturnRequested } from "@/lib/notifications";
 
 async function requireCustomer() {
   const session = await getCustomerSession();
@@ -127,5 +128,6 @@ export async function requestReturn(input: z.infer<typeof returnSchema>) {
       items: { create: data.orderItemIds.map((orderItemId) => ({ orderItemId, qty: 1 })) },
     },
   });
+  await notifyReturnRequested(order.id, data.orderItemIds, data.reason);
   revalidatePath("/account/returns");
 }

@@ -926,6 +926,10 @@ export function ProductEditorForm({
           {tagPreorder && (
             <Field label="Preorder ship date" className="mt-2.5">
               <input value={preorderShipDate} onChange={(e) => setPreorderShipDate(e.target.value)} placeholder="15 Oct" className={inputClass} />
+              <p className="mt-1 text-[12px] text-muted-2">
+                Shown on the product page. Whenever you change this and save, every customer with an open preorder for
+                this product is emailed the new date (edit that email under Templates).
+              </p>
             </Field>
           )}
         </Panel>

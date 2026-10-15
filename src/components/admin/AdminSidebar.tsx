@@ -33,6 +33,7 @@ const NAV: { group: string; items: { href: string; label: string; icon: string }
     items: [
       { href: "/admin/emails", label: "Emails", icon: "✉" },
       { href: "/admin/sms", label: "SMS", icon: "☏" },
+      { href: "/admin/templates", label: "Templates", icon: "✎" },
       { href: "/admin/settings", label: "Settings", icon: "⚙" },
     ],
   },

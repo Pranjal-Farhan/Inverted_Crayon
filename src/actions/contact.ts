@@ -2,7 +2,7 @@
 
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { sendMail } from "@/lib/mail";
+import { notifyContactMessage } from "@/lib/notifications";
 
 const schema = z.object({
   name: z.string().min(1),
@@ -28,11 +28,7 @@ export async function sendContactMessage(
     console.error("sendContactMessage failed", e);
     return { ok: false, message: "That didn't go through. Please try again in a moment." };
   }
-  await sendMail({
-    to: parsed.data.email,
-    subject: "We got your message",
-    body: `Hey ${parsed.data.name} — we got it and will reply within 1–2 business days.`,
-    type: "CONTACT_RECEIVED",
-  }).catch((e) => console.error("contact confirmation email failed", e));
+  // Acknowledge to the sender, and forward the message to the brand's own inbox.
+  await notifyContactMessage(parsed.data);
   return { ok: true, message: "Got it — we'll reply within 1–2 business days." };
 }

@@ -6,6 +6,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { setCustomerSession, clearCustomerSession } from "@/lib/session";
 import { isLocked, lockoutMessage, nextLockoutState } from "@/lib/login-lockout";
+import { notifyAccountRegistered, notifyLoginLockout } from "@/lib/notifications";
 
 export async function customerLogin(
   _prev: { ok: boolean; error: string } | null,
@@ -24,6 +25,10 @@ export async function customerLogin(
     if (customer) {
       const next = nextLockoutState(customer.failedLoginCount);
       await db.customer.update({ where: { id: customer.id }, data: next });
+      // This is the failed attempt that tripped the lock (it only becomes non-null at the limit).
+      if (next.lockedUntil) {
+        await notifyLoginLockout({ email: customer.email, role: "Customer", attempts: next.failedLoginCount, lockedUntil: next.lockedUntil });
+      }
     }
     return { ok: false, error: "Invalid email or password." };
   }
@@ -39,6 +44,8 @@ export async function customerLogin(
 const registerSchema = z.object({
   name: z.string().min(1),
   email: z.email(),
+  // Needed for the welcome SMS (and it's the number order updates will be texted to).
+  phone: z.string().trim().min(6),
   password: z.string().min(8),
 });
 
@@ -49,6 +56,7 @@ export async function customerRegister(
   const parsed = registerSchema.safeParse({
     name: formData.get("name"),
     email: formData.get("email"),
+    phone: formData.get("phone"),
     password: formData.get("password"),
   });
   if (!parsed.success) {
@@ -66,10 +74,19 @@ export async function customerRegister(
     return { ok: false, error: "An account with that email already exists. Please log in instead." };
   }
   const passwordHash = await bcrypt.hash(parsed.data.password, 10);
-  const customer = await db.customer.create({ data: { email, passwordHash, name: parsed.data.name } });
+  const customer = await db.customer.create({ data: { email, passwordHash, name: parsed.data.name, phone: parsed.data.phone } });
 
   // registering with an email used for guest orders claims those orders (§08)
-  await db.order.updateMany({ where: { email, customerId: null }, data: { customerId: customer.id } });
+  const claimed = await db.order.updateMany({ where: { email, customerId: null }, data: { customerId: customer.id } });
+
+  // Tells the brand a new account exists, and texts the customer a welcome.
+  await notifyAccountRegistered({
+    name: customer.name,
+    email: customer.email,
+    phone: customer.phone,
+    method: "Email & password",
+    claimedOrders: claimed.count,
+  });
 
   await setCustomerSession({ customerId: customer.id, email: customer.email, name: customer.name, avatarUrl: customer.avatarUrl });
   redirect("/account");

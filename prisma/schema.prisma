@@ -321,6 +321,12 @@ model Order {
   trackingRef     String?
   internalNotes   String?
 
+  // Set when the customer asks (from their account's order page) to cancel an order that hasn't
+  // shipped yet. Only a flag + their reason for the admin to act on — the admin still decides and
+  // performs the actual cancellation/refund.
+  cancellationRequestedAt DateTime?
+  cancellationReason      String?
+
   items            OrderItem[]
   returns          ReturnRequest[]
   couponRedemption DiscountRedemption?
@@ -614,13 +620,27 @@ model Post {
 // ---------- email (mocked outbox) ----------
 
 enum EmailType {
+  // Sent to customers
   WELCOME
   ORDER_CONFIRMED
   ORDER_SHIPPED
   BACK_IN_STOCK
   PREORDER_SHIP_UPDATE
-  ABANDONED_CHECKOUT
   CONTACT_RECEIVED
+  // Retired: abandoned-bag reminders no longer exist. The value stays only because Postgres can't
+  // drop an enum value without rewriting the type, and old outbox rows still carry it.
+  ABANDONED_CHECKOUT
+  // Sent to the brand's official address (Settings -> Store -> email) — see src/lib/message-templates.ts
+  ADMIN_CONTACT_MESSAGE
+  ADMIN_NEW_ORDER
+  ADMIN_NEW_PREORDER
+  ADMIN_ORDER_UPDATE
+  ADMIN_CANCELLATION_REQUEST
+  ADMIN_ACCOUNT_REGISTERED
+  ADMIN_LOGIN_LOCKOUT
+  ADMIN_ORDER_DELIVERED
+  ADMIN_RETURN_REQUEST
+  ADMIN_NOTIFY_ME
 }
 
 model EmailLog {
@@ -644,7 +664,11 @@ model EmailLog {
 enum SmsType {
   ORDER_CONFIRMED_PAID
   ORDER_CONFIRMED_COD
+  // The preorder confirmation ("pre-order requested") — the name predates preorders dropping the
+  // advance/balance split, so it's kept to avoid rewriting every existing SmsLog row.
   ORDER_CONFIRMED_PARTIAL
+  ACCOUNT_REGISTERED
+  ORDER_SHIPPED
 }
 
 model SmsLog {
@@ -657,15 +681,4 @@ model SmsLog {
 
   @@index([to])
   @@index([type])
-}
-
-// Captured at checkout (on contact-step blur) so an abandoned session can be
-// followed up on. Cleared once that email completes an order.
-model AbandonedCheckout {
-  id           String    @id @default(cuid())
-  email        String    @unique
-  cartSnapshot Json
-  remindedAt   DateTime?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
 }

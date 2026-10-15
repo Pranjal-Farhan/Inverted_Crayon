@@ -1,15 +1,15 @@
 import { db } from "@/lib/db";
 import { Panel } from "@/components/admin/Panel";
+import { TEMPLATES } from "@/lib/message-templates";
 
+// Labels come from the template catalog so a new message type shows up here automatically; the
+// retired abandoned-bag reminder keeps a label only so old outbox rows still read properly.
 const TYPE_LABEL: Record<string, string> = {
-  WELCOME: "Welcome",
-  ORDER_CONFIRMED: "Order confirmed",
-  ORDER_SHIPPED: "Shipped",
-  BACK_IN_STOCK: "Back in stock",
-  PREORDER_SHIP_UPDATE: "Preorder update",
-  ABANDONED_CHECKOUT: "Abandoned checkout",
-  CONTACT_RECEIVED: "Contact received",
+  ...Object.fromEntries(TEMPLATES.filter((t) => t.channel === "EMAIL").map((t) => [t.key, t.title])),
+  ABANDONED_CHECKOUT: "Abandoned checkout (retired)",
 };
+const CUSTOMER_TYPES = TEMPLATES.filter((t) => t.channel === "EMAIL" && t.audience === "CUSTOMER");
+const BRAND_TYPES = TEMPLATES.filter((t) => t.channel === "EMAIL" && t.audience === "BRAND");
 
 type Props = { searchParams: Promise<{ type?: string; q?: string }> };
 
@@ -28,17 +28,28 @@ export default async function AdminEmailsPage({ searchParams }: Props) {
   return (
     <div>
       <p className="mb-3.5 text-[13px] text-muted">
-        Emails are mocked — every &quot;send&quot; lands here instead of a real inbox. This is the outbox.
+        Every email the site sends is recorded here. It only leaves for a real inbox once an email provider is
+        connected — until then this is where you can see exactly what would have been sent.
       </p>
       <form className="mb-3.5 flex flex-wrap items-center gap-2.5" method="get">
         <input name="q" defaultValue={q} placeholder="Search recipient…" className="border border-line-2 bg-panel px-2.5 py-2 text-sm outline-none focus:border-lime" />
         <select name="type" defaultValue={type ?? ""} className="border border-line-2 bg-panel px-2.5 py-2 text-sm">
           <option value="">All types</option>
-          {Object.entries(TYPE_LABEL).map(([value, label]) => (
-            <option key={value} value={value}>
-              {label}
-            </option>
-          ))}
+          <optgroup label="To customers">
+            {CUSTOMER_TYPES.map((t) => (
+              <option key={t.key} value={t.key}>
+                {t.title}
+              </option>
+            ))}
+          </optgroup>
+          <optgroup label="To the brand">
+            {BRAND_TYPES.map((t) => (
+              <option key={t.key} value={t.key}>
+                {t.title}
+              </option>
+            ))}
+          </optgroup>
+          <option value="ABANDONED_CHECKOUT">Abandoned checkout (retired)</option>
         </select>
         <button type="submit" className="border border-line-2 px-3 py-2 text-sm hover:border-lime">
           Filter

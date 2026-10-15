@@ -8,7 +8,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { Prisma } from "@/generated/prisma/client";
 import { getAdminSession } from "@/lib/session";
-import { sendMail } from "@/lib/mail";
+import { notifyPreorderShipDate } from "@/lib/notifications";
 import { uploadToImgBb } from "@/lib/imgbb";
 import { ensureMirrorCategories } from "@/actions/admin-categories";
 import { slugify } from "@/lib/slugify";
@@ -401,11 +401,11 @@ export async function saveProduct(input: ProductFormInput): Promise<ProductSaveR
       });
       const emails = [...new Set(affected.map((i) => i.order.email))];
       for (const to of emails) {
-        await sendMail({
+        await notifyPreorderShipDate({
           to,
-          subject: "Your preorder ships soon",
-          body: `${product.title} now ships ${data.preorderShipDate}. We'll keep you posted if that changes.`,
-          type: "PREORDER_SHIP_UPDATE",
+          productName: product.title,
+          productSlug: product.slug,
+          shipDate: data.preorderShipDate,
         });
       }
     }

@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { getAdminSession } from "@/lib/session";
-import { sendMail } from "@/lib/mail";
+import { notifyBackInStock } from "@/lib/notifications";
 import { invalidateProduct } from "@/lib/invalidate";
 
 export async function setVariantStock(variantId: string, stockQty: number) {
@@ -17,13 +17,9 @@ export async function setVariantStock(variantId: string, stockQty: number) {
   if (before.stockQty === 0 && nextQty > 0) {
     const subs = await db.backInStockSubscription.findMany({ where: { variantId, notifiedAt: null } });
     const subscriberEmails = new Set(subs.map((s) => s.email.toLowerCase()));
+    const variantLabel = `${before.size} / ${before.color}`;
     for (const sub of subs) {
-      await sendMail({
-        to: sub.email,
-        subject: "Back in stock",
-        body: `${before.product.title} (${before.size} / ${before.color}) is back — grab it before it's gone again.`,
-        type: "BACK_IN_STOCK",
-      });
+      await notifyBackInStock({ to: sub.email, productName: before.product.title, productSlug: before.product.slug, variantLabel });
     }
     if (subs.length > 0) {
       await db.backInStockSubscription.updateMany({
@@ -42,12 +38,7 @@ export async function setVariantStock(variantId: string, stockQty: number) {
     });
     const toNotify = wishlisters.filter((w) => !subscriberEmails.has(w.customer.email.toLowerCase()));
     for (const w of toNotify) {
-      await sendMail({
-        to: w.customer.email,
-        subject: "Back in stock",
-        body: `${before.product.title} is back in stock — it's on your wishlist. Grab it before it's gone again.`,
-        type: "BACK_IN_STOCK",
-      });
+      await notifyBackInStock({ to: w.customer.email, productName: before.product.title, productSlug: before.product.slug, variantLabel });
     }
     if (toNotify.length > 0) {
       await db.wishlistItem.updateMany({

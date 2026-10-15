@@ -5,7 +5,9 @@ import { db } from "@/lib/db";
 import { formatTaka, toNumber } from "@/lib/money";
 import { OrderTimeline } from "@/components/storefront/OrderTimeline";
 import { Button } from "@/components/ui/Button";
-import { parseVariantLabel } from "@/lib/order-status";
+import { CANCELLABLE_STATUSES, parseVariantLabel } from "@/lib/order-status";
+import { CancellationRequest } from "@/components/storefront/CancellationRequest";
+import { formatDhaka } from "@/lib/message-vars";
 
 type Props = { params: Promise<{ number: string }> };
 
@@ -50,6 +52,17 @@ export default async function AccountOrderDetailPage({ params }: Props) {
           <span>{formatTaka(toNumber(order.total))}</span>
         </div>
       </div>
+      {(CANCELLABLE_STATUSES as readonly string[]).includes(order.status) &&
+        (order.cancellationRequestedAt ? (
+          <div className="mt-4 border border-yellow/40 bg-yellow/[0.07] px-4 py-3 text-sm">
+            <p className="font-label text-[13px] tracking-[1.2px] text-yellow">CANCELLATION REQUESTED</p>
+            <p className="mt-1 text-muted">
+              You asked to cancel this order on {formatDhaka(order.cancellationRequestedAt)}. Our team will contact you to confirm.
+            </p>
+          </div>
+        ) : (
+          <CancellationRequest orderNumber={order.number} />
+        ))}
       {order.status === "DELIVERED" && (
         <Button href="/account/returns" size="sm" className="mt-4">
           Start a return

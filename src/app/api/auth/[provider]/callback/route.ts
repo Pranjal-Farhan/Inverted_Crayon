@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { setCustomerSession, setAdminSession } from "@/lib/session";
 import { googleExchangeCode } from "@/lib/oauth/google";
 import { facebookExchangeCode } from "@/lib/oauth/facebook";
+import { notifyAccountRegistered } from "@/lib/notifications";
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ provider: string }> }) {
   const { provider: rawProvider } = await params;
@@ -89,7 +90,15 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ prov
           },
         });
         // Guest orders placed under this email before signing up get claimed, same as password registration.
-        await db.order.updateMany({ where: { email, customerId: null }, data: { customerId: customer.id } });
+        const claimed = await db.order.updateMany({ where: { email, customerId: null }, data: { customerId: customer.id } });
+        // A brand-new account: tell the brand (no phone from Google/Facebook, so no SMS goes out).
+        await notifyAccountRegistered({
+          name: customer.name,
+          email: customer.email,
+          phone: null,
+          method: provider === "google" ? "Google" : "Facebook",
+          claimedOrders: claimed.count,
+        });
       }
     }
 

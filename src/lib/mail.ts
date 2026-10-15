@@ -1,13 +1,15 @@
 import "server-only";
 import { db } from "@/lib/db";
-import { getEmailTemplates } from "@/lib/store-settings";
 import { emailProviderConfigured, sendViaResend } from "@/lib/email-provider";
 import type { $Enums } from "@/generated/prisma/client";
 
 /**
- * Every "send" always writes to EmailLog (the outbox, viewable at /admin/emails) as an audit
- * trail. When RESEND_API_KEY + EMAIL_FROM are set, it also actually sends the email; otherwise it
- * stays mocked exactly as before this integration existed, so local dev needs no credentials.
+ * The low-level email writer. Every "send" always writes to EmailLog (the outbox, viewable at
+ * /admin/emails) as an audit trail. When RESEND_API_KEY + EMAIL_FROM are set, it also actually
+ * sends the email; otherwise it stays mocked, so local dev needs no credentials.
+ *
+ * Call sites don't use this directly — they go through sendTemplatedEmail (src/lib/messages.ts),
+ * which applies the admin-editable body, the on/off switch, and the right recipient.
  */
 export async function sendMail({
   to,
@@ -22,9 +24,6 @@ export async function sendMail({
   type: $Enums.EmailType;
   relatedOrderId?: string;
 }) {
-  const templates = await getEmailTemplates();
-  if (templates[type]?.enabled === false) return null;
-
   const log = await db.emailLog.create({
     data: { to, subject, body, type, relatedOrderId },
   });

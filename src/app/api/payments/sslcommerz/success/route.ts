@@ -2,9 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { validateSslcommerzTransaction } from "@/lib/payments/sslcommerz";
 import { restockAndCancelOrder } from "@/lib/payments/rollback";
-import { sendMail } from "@/lib/mail";
-import { sendOrderConfirmationSms } from "@/lib/sms";
-import { formatTaka, toNumber } from "@/lib/money";
+import { notifyOrderPlaced } from "@/lib/notifications";
 
 // SSLCommerz POSTs (application/x-www-form-urlencoded) back to this URL after a successful payment.
 export async function POST(req: NextRequest) {
@@ -29,17 +27,8 @@ export async function POST(req: NextRequest) {
     data: { paymentStatus: "PAID", status: "PAID", paymentTransactionId: valId },
   });
 
-  await sendMail({
-    to: order.email,
-    subject: "Order confirmed",
-    body: `Order #${order.number} confirmed — ${formatTaka(toNumber(order.advanceAmount))}${
-      toNumber(order.balanceDue) > 0 ? ` now, ${formatTaka(toNumber(order.balanceDue))} due on delivery` : ""
-    }. We'll email you when it ships.`,
-    type: "ORDER_CONFIRMED",
-    relatedOrderId: order.number,
-  }).catch((e) => console.error("order-confirmation email failed", e));
-
-  await sendOrderConfirmationSms(order.number).catch((e) => console.error("order-confirmation SMS failed", e));
+  // Payment cleared — now the order counts as placed: customer email + SMS, and the brand's new-order email.
+  await notifyOrderPlaced(order.number);
 
   return NextResponse.redirect(`${origin}/order/${order.number}`);
 }

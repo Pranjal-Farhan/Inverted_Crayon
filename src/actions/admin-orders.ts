@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { getAdminSession } from "@/lib/session";
-import { sendMail } from "@/lib/mail";
+import { notifyOrderDelivered, notifyOrderShipped, notifyOrderUpdated } from "@/lib/notifications";
 import { invalidateProduct } from "@/lib/invalidate";
 
 async function requireAdmin() {
@@ -13,32 +13,29 @@ async function requireAdmin() {
 }
 
 export async function markOrderShipped(orderId: string, courier: string, trackingRef: string) {
-  await requireAdmin();
-  const order = await db.order.update({
+  const admin = await requireAdmin();
+  await db.order.update({
     where: { id: orderId },
     data: { status: "SHIPPED", trackingCourier: courier, trackingRef },
   });
-  await sendMail({
-    to: order.email,
-    subject: "It's shipped",
-    body: `Order #${order.number} is on its way via ${courier} — tracking ref ${trackingRef}.`,
-    type: "ORDER_SHIPPED",
-    relatedOrderId: order.number,
-  });
+  // Customer: shipped email + SMS. Brand: an order-update email.
+  await notifyOrderShipped(orderId, admin);
   revalidatePath(`/admin/orders/${orderId}`);
   revalidatePath("/admin/orders");
 }
 
 export async function markOrderDelivered(orderId: string) {
-  await requireAdmin();
+  const admin = await requireAdmin();
   await db.order.update({ where: { id: orderId }, data: { status: "DELIVERED" } });
+  await notifyOrderDelivered(orderId, admin);
   revalidatePath(`/admin/orders/${orderId}`);
   revalidatePath("/admin/orders");
 }
 
 export async function refundOrder(orderId: string) {
-  await requireAdmin();
+  const admin = await requireAdmin();
   const restockedProductIds = new Set<string>();
+  let refunded = false;
   await db.$transaction(async (tx) => {
     const order = await tx.order.findUniqueOrThrow({ where: { id: orderId }, include: { items: true } });
 
@@ -50,6 +47,7 @@ export async function refundOrder(orderId: string) {
       data: { status: "REFUNDED", paymentStatus: "REFUNDED" },
     });
     if (claimed.count === 0) return; // already refunded
+    refunded = true;
 
     for (const item of order.items) {
       if (!item.isPreorder && item.variantId) {
@@ -58,6 +56,7 @@ export async function refundOrder(orderId: string) {
       }
     }
   });
+  if (refunded) await notifyOrderUpdated(orderId, "Refunded — stock restored", admin);
   revalidatePath(`/admin/orders/${orderId}`);
   revalidatePath("/admin/orders");
   if (restockedProductIds.size > 0) {
@@ -74,7 +73,8 @@ export async function updateOrderNotes(orderId: string, notes: string) {
 
 /** Marks a preorder's cash-on-delivery balance as collected — purely a record-keeping flag, doesn't touch paymentStatus (that still tracks the online advance). */
 export async function markBalanceCollected(orderId: string) {
-  await requireAdmin();
+  const admin = await requireAdmin();
   await db.order.update({ where: { id: orderId }, data: { balanceCollected: true } });
+  await notifyOrderUpdated(orderId, "Cash-on-delivery balance marked as collected", admin);
   revalidatePath(`/admin/orders/${orderId}`);
 }

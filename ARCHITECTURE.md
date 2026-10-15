@@ -137,8 +137,11 @@ src/
     coupon.ts                   coupon rules: evaluateCoupon(), priceCartLines(), atomic claim/release (server only)
     coupon-format.ts            client-safe coupon labels + couponStatus() — the one definition of "usable right now"
     coupon-options.ts           the product editor's picker data (product-locked coupons)
-    mail.ts                     the email outbox + optional real send
-    sms.ts                      the order-confirmation SMS outbox + optional real send
+    mail.ts / sms.ts            the low-level email / SMS outboxes + optional real send (§13)
+    message-templates.ts        the catalog of every message the site sends (client-safe — the editor previews from it)
+    messages.ts                 template overrides → render → send (sendTemplatedEmail / sendTemplatedSms)
+    message-vars.ts             builds the {placeholder} values for an order (receipt, items, address…)
+    notifications.ts            WHEN each message goes out — the one place the triggers are defined
     money.ts                    Taka formatting + Decimal-to-number conversion
     order-number.ts             human-facing order number generator
     login-lockout.ts            shared brute-force guard for admin + customer login
@@ -190,7 +193,7 @@ Full schema: `prisma/schema.prisma`. Every model below, grouped the way the sche
 - **`Discount`** — a coupon. `type` is `PERCENT`/`FIXED` (an amount in ৳)/`FREE_SHIPPING`; `maxDiscountAmount` caps what a percentage coupon can take off one order (null = uncapped; meaningless for the other two). `usageLimit`/`usedCount` are the coupon's **global** budget across every customer — one customer can redeem the same code any number of times, only this shared counter runs out (null limit = unlimited). `startsAt`/`endsAt` both null means no time limit. `scope` is `GLOBAL` (valid on every product) or `PRODUCT` (valid only on the products attached through the implicit many-to-many `Discount.products` ↔ `Product.coupons`, managed from each product's editor — §10.3). `firstOrderOnly` + `minSpend` are extra gates. All of it is enforced server-side in `src/lib/coupon.ts`'s `evaluateCoupon()` — see §9.4a, and §9.3 for how the counter is protected from a race.
 - **`DiscountRedemption`** — the usage ledger: one row per order that used a coupon (`orderId` is `@unique`, which is what makes it one coupon per order). `amount` is the value of the benefit — the item discount for `PERCENT`/`FIXED`, or the delivery charge waived for `FREE_SHIPPING` (where `Order.discountAmount` stays 0, since the waiver is just a `shippingCost` of 0). The Discounts admin page reads uses, money deducted and the who/which-order list from here. The migration backfilled rows for orders that had already used a code before the ledger existed.
 - **`Campaign`** — automatic sales, no code needed. Targets either a category (`targetCategoryId`) or an explicit product-ID list (`targetProductIds`), with a mandatory time window (`startsAt`/`endsAt`, both non-nullable — a campaign can't run forever by accident). This is the *only* mechanism that sets `onSale`/`salePrice` on a product (§2.3).
-- **`WishlistItem`** — `notifiedAt` drives the back-in-stock-for-wishlisted-items email (§13.2); it's reset to `null` whenever the product goes fully out of stock again, so a later restock re-notifies.
+- **`WishlistItem`** — `notifiedAt` drives the back-in-stock-for-wishlisted-items email (§13.1); it's reset to `null` whenever the product goes fully out of stock again, so a later restock re-notifies.
 - **`BackInStockSubscription`** — the explicit "Notify me" click on a sold-out variant, unique per `(email, variantId)`.
 
 ### 5.5 Admin / CMS
@@ -198,15 +201,16 @@ Full schema: `prisma/schema.prisma`. Every model below, grouped the way the sche
 - **`AdminUser`** — `role` is `ADMIN` or `STAFF` (no finer-grained permissions today — see §10.13 for what STAFF can't do). Same OAuth-link fields as Customer, with one critical asymmetry: OAuth sign-in for this model **never creates a row** — see §7.3. `twoFactorSecret`/`twoFactorEnabled`/`twoFactorBackupCodes` back TOTP 2FA (§7.5) — a secret can exist while `twoFactorEnabled` is still `false` (mid-setup, QR shown but not yet confirmed); backup codes are stored bcrypt-hashed, each single-use.
 - **`StockOwner`** / **`StockPurchase`** — the inventory finance ledger (§10.4a). `StockOwner` is just who funds stock (name/contact/notes). `StockPurchase` follows the same denormalized snapshot pattern as `OrderItem` (§5.3): `productTitleSnapshot`/`variantLabelSnapshot` freeze the product's identity at purchase time, and `productId`/`variantId` are nullable (`onDelete: SetNull`) so a purchase record survives the product/variant later being deleted. `ownerId` is `onDelete: Restrict` — an owner with recorded purchases can't be deleted out from under its financial history. Recording a purchase increments `Variant.stockQty` in the same transaction, making this the accountable counterpart to `setVariantStock`'s manual correction (§10.4).
 - **`ContentBlock`** — a generic `key → JSON` slot store. Keys in use: `home_hero` (the full homepage CMS payload — brand identity, hero text, images, background), `home_featured_drop` (`{ productId }`), and `men_hero`/`women_hero` (`{ imageUrl }` — the gender-hub editorial banner, §8.2/§10.9). A new slot follows the same read-with-a-default pattern: `db.contentBlock.findUnique({ where: { key } })`, spread over a `DEFAULT_*` constant so a fresh database with nothing published yet still renders something sane.
-- **`StoreSetting`** — same `key → JSON` shape as `ContentBlock`, used for store-wide operational settings instead of content: `shipping_rates`, `payment_gateways`, `store_info`, `tax_settings`, `email_templates`, `chat_widget`. Typed accessors for every key live in `src/lib/store-settings.ts` (`getShippingRates()`, etc.), each with a hard-coded default so a fresh database with no seeded settings still renders something sane.
+- **`StoreSetting`** — same `key → JSON` shape as `ContentBlock`, used for store-wide operational settings instead of content: `shipping_rates`, `payment_gateways`, `store_info`, `tax_settings`, `message_templates`, `chat_widget`. Typed accessors for every key live in `src/lib/store-settings.ts` (`getShippingRates()`, etc.), each with a hard-coded default so a fresh database with no seeded settings still renders something sane.
 - **`Post`** — the journal/blog, independently publishable (`PostStatus`, `publishedAt` stamped once on first publish, same pattern as `Product`).
 - **`ManufacturerLink`** — admin-only per-product notes, almost always a manufacturer page URL, never rendered to customers (§10.12). `isCurrentVendor` is exclusivity-enforced in `admin-manufacturer-links.ts` (unset every other row for that product, then set this one, in one transaction) rather than a DB constraint.
 
-### 5.6 Email, SMS & abandoned-checkout
+### 5.6 Email & SMS outboxes
 
-- **`EmailLog`** — the outbox. Every `sendMail()` call writes one row here *unconditionally*, whether or not a real provider is configured (§13).
-- **`SmsLog`** — same outbox shape as `EmailLog`, for order-confirmation SMS (§13a). `relatedOrderId` is a plain string (the order number), not a real FK, same reasoning as `EmailLog.relatedOrderId`: the log should survive an order later being deleted.
-- **`AbandonedCheckout`** — one row per email address (unique), holding a JSON snapshot of the cart at the moment the customer typed their email into checkout and blurred the field. Cleared automatically on a completed order for that email.
+- **`EmailLog`** — the outbox. Every email the site sends writes one row here *unconditionally*, whether or not a real provider is configured (§13). `EmailType` covers the customer emails (`WELCOME`, `ORDER_CONFIRMED`, `ORDER_SHIPPED`, `BACK_IN_STOCK`, `PREORDER_SHIP_UPDATE`, `CONTACT_RECEIVED`) and the notifications to the brand (`ADMIN_*`). `ABANDONED_CHECKOUT` is a retired value kept only because Postgres can't drop an enum value without rewriting the type, and old outbox rows still carry it.
+- **`SmsLog`** — same outbox shape, for the SMS sent to customers (§13a). `relatedOrderId` is a plain string (the order number), not a real FK, same reasoning as `EmailLog.relatedOrderId`: the log should survive an order later being deleted.
+- **`Order.cancellationRequestedAt` / `cancellationReason`** — set when a customer asks to cancel an order that hasn't shipped (§8.7). A request only; it never changes the order's status.
+- The abandoned-checkout feature (its `AbandonedCheckout` table, the capture-on-blur at checkout, the admin reminder panel) was removed completely; the migration drops the table.
 
 ---
 
@@ -313,7 +317,7 @@ The cart itself is **entirely client-side state**, never touching the database u
 
 ### 8.7 Account area (`/account`, route group `(protected)`)
 
-Every page under `account/(protected)/` requires a customer session (checked per-page; there's no shared layout-level redirect guard beyond what each page does). `AccountNav.tsx` is the shared sidebar. Sub-pages: profile (`ProfileForm.tsx` → `updateProfile`), order history + single-order detail with `OrderTimeline.tsx` (a 5-step visual tracker, or a terminal-state message for cancelled/refunded/returned), returns (`ReturnRequestForm.tsx` → `requestReturn`, references specific `OrderItem`s), wishlist (`toggleWishlist`/`removeWishlistItem`), addresses (`AddressManager.tsx`, one-default-enforced), back-in-stock subscriptions.
+Every page under `account/(protected)/` requires a customer session (checked per-page; there's no shared layout-level redirect guard beyond what each page does). `AccountNav.tsx` is the shared sidebar. Sub-pages: profile (`ProfileForm.tsx` → `updateProfile`), order history + single-order detail with `OrderTimeline.tsx` (a 5-step visual tracker, or a terminal-state message for cancelled/refunded/returned), returns (`ReturnRequestForm.tsx` → `requestReturn`, references specific `OrderItem`s), wishlist (`toggleWishlist`/`removeWishlistItem`), addresses (`AddressManager.tsx`, one-default-enforced), back-in-stock subscriptions. An order that hasn't shipped (PENDING/PAID/PROCESSING, `CANCELLABLE_STATUSES` in `order-status.ts`) shows a **Request cancellation** button on its detail page (`CancellationRequest.tsx` → `requestOrderCancellation()` in `customer-orders.ts`): an optional reason, a session-ownership check, then it stamps `cancellationRequestedAt`/`cancellationReason` and emails the brand once (a repeat request is ignored). It does not cancel anything — the admin order page shows a red "CUSTOMER REQUESTED CANCELLATION" banner with the reason, and the admin decides. **Registering by email now requires a phone number** (stored on the `Customer`; it is where the welcome SMS goes and prefills checkout).
 
 Guest orders are **claimed automatically** on registration or OAuth sign-up: both `customerRegister` and the OAuth callback run `db.order.updateMany({ where: { email, customerId: null }, data: { customerId } })` — any past order placed as a guest with that email becomes visible in the new account's order history the moment they sign up.
 
@@ -379,7 +383,8 @@ Everything inside `db.$transaction()` in `placeOrder()`:
 1. **Guarded stock decrement.** For each non-preorder line: `tx.variant.updateMany({ where: { id, stockQty: { gte: qty } }, data: { stockQty: { decrement: qty } } })`. If the row count comes back 0, the stock vanished between the earlier read-time check and now (another concurrent checkout won the race) — the transaction throws a `CheckoutConflictError`, rolls back everything, and the customer sees "Not enough stock left... update your bag and try again." This single `WHERE ... AND stockQty >= qty` guard is what makes two simultaneous checkouts for the last unit of stock **impossible to both succeed** — verified with a real concurrent-browser test (§19).
 2. **Guarded coupon claim**, same pattern: `claimCouponUse()` (`src/lib/coupon.ts`) is `updateMany({ where: { id, active: true, usedCount: { lt: usageLimit } } })` (the `usedCount` guard only when the coupon has a limit) — the last remaining use can't be double-spent by two simultaneous checkouts. A claim that matches no row throws a `CheckoutConflictError`; if instead the second checkout re-validates *after* the first has committed, it's refused earlier with "fully redeemed". Either way exactly one order gets the last use.
 3. **Order + OrderItem creation**, with the fully server-derived totals — and, when a coupon is used, the nested `couponRedemption` ledger row, created in the same statement so the order and its ledger entry can't disagree.
-4. **Abandoned-checkout cleanup** — any `AbandonedCheckout` row for this email is deleted (the checkout just completed, so it's no longer "abandoned").
+
+Once the transaction has committed (or, for a live gateway, once the payment callback confirms it), `notifyOrderPlaced()` sends the customer's confirmation email and SMS and the brand's new-order / new-preorder email with the full receipt (§13).
 
 ### 9.4a Coupons at checkout
 
@@ -507,7 +512,7 @@ The table UI itself (`SizeGuideTable.tsx`) is a presentational component shared 
 
 ### 10.4 Stock editing (no separate Inventory page)
 
-There is no standalone Inventory section: stock is edited where the product lives. The product editor's `VariantStockStepper.tsx` (§10.3) writes straight to the database per click/edit via `setVariantStock()` (`src/actions/admin-stock.ts`), and the products list (§10.3b) shows each product's total stock plus how many variants are out or low, which covers the "what needs restocking" question the old page's low-stock toggle answered. `setVariantStock` is also where the wishlist/back-in-stock notification emails fire (§13.2), which is why it stayed when the page around it went.
+There is no standalone Inventory section: stock is edited where the product lives. The product editor's `VariantStockStepper.tsx` (§10.3) writes straight to the database per click/edit via `setVariantStock()` (`src/actions/admin-stock.ts`), and the products list (§10.3b) shows each product's total stock plus how many variants are out or low, which covers the "what needs restocking" question the old page's low-stock toggle answered. `setVariantStock` is also where the wishlist/back-in-stock notification emails fire (§13.1), which is why it stayed when the page around it went.
 
 ### 10.4a Finance (`/admin/finance`)
 
@@ -544,7 +549,7 @@ Product-locked coupons are attached from the product editor's **Coupons** panel 
 
 ### 10.8 Campaigns (`/admin/campaigns`)
 
-`CampaignManager.tsx` — CRUD for automatic sales (§5.4): name, percent off, target (all categories, one category, or — per the schema — specific products, though the current form only exposes category targeting), start/end datetime, active toggle. This same page also hosts `AbandonedCheckoutPanel.tsx` — the list of captured-but-incomplete checkouts, with per-row and "send all pending" reminder-email buttons (only rows older than 1 hour are eligible for the bulk send, a rough proxy for "genuinely abandoned" vs. "still actively checking out").
+`CampaignManager.tsx` — CRUD for automatic sales (§5.4): name, percent off, target (all categories, one category, or — per the schema — specific products, though the current form only exposes category targeting), start/end datetime, active toggle.  (The abandoned-bag reminder panel that used to share this page has been removed.)
 
 ### 10.9 Content CMS (`/admin/content`)
 
@@ -578,7 +583,7 @@ A normal click on a row opens its link in a new tab (`target="_blank"`) — via 
 
 ### 10.13 Settings (`/admin/settings`)
 
-`SettingsView.tsx` — a tabbed single component covering everything in `StoreSetting`: **Payments** (which gateways are enabled + COD rule), **Shipping** (per-zone label/cost/ETA for all 3 zones), **Tax** (inclusive toggle, rate, label — informational only, see the code comment: Bangladesh apparel pricing is typically tax-inclusive, so this doesn't add a separate line at checkout unless switched to exclusive), **Emails** (per-type enable toggle + subject line, for all 7 `EmailType`s), **Roles** (embeds `StaffManager.tsx` — invite/remove staff, change role, with guards: an admin can't demote or remove *themselves*, and the last remaining `ADMIN` can't be removed by anyone), **Security** (embeds `TwoFactorSetup.tsx` — per-account TOTP 2FA setup/disable, §7.5; the `findMany` backing the Roles tab now explicitly `select`s only non-sensitive `AdminUser` columns, precisely so `twoFactorSecret`/`passwordHash` are never serialized into that client component's props), **Chat** (the `chat_widget` `StoreSetting` — on/off toggle, WhatsApp number, WhatsApp prefilled message, Messenger page username/ID; see §8.11 for the storefront-facing bubble), **Store** (name/email/phone/address — used in the receipt and in emails).
+`SettingsView.tsx` — a tabbed single component covering everything in `StoreSetting`: **Payments** (which gateways are enabled + COD rule), **Shipping** (per-zone label/cost/ETA for all 3 zones), **Tax** (inclusive toggle, rate, label — informational only, see the code comment: Bangladesh apparel pricing is typically tax-inclusive, so this doesn't add a separate line at checkout unless switched to exclusive), **Roles** (embeds `StaffManager.tsx` — invite/remove staff, change role, with guards: an admin can't demote or remove *themselves*, and the last remaining `ADMIN` can't be removed by anyone), **Security** (embeds `TwoFactorSetup.tsx` — per-account TOTP 2FA setup/disable, §7.5; the `findMany` backing the Roles tab now explicitly `select`s only non-sensitive `AdminUser` columns, precisely so `twoFactorSecret`/`passwordHash` are never serialized into that client component's props), **Chat** (the `chat_widget` `StoreSetting` — on/off toggle, WhatsApp number, WhatsApp prefilled message, Messenger page username/ID; see §8.11 for the storefront-facing bubble), **Store** (name/email/phone/address — used in the receipt and in emails; the **email here is the official address every notification to the brand is sent to**). Message wording and on/off switches no longer live in Settings — they moved to Templates (§10.16).
 
 ### 10.14 Emails (`/admin/emails`)
 
@@ -586,7 +591,13 @@ A read-only view of the `EmailLog` table — the outbox. Every email the app has
 
 ### 10.15 SMS (`/admin/sms`)
 
-Same shape as Emails, one level down: a read-only, filterable (by type/recipient) view of `SmsLog` — every order-confirmation text the app has ever "sent" (§13a), whether or not SSL Wireless actually delivered it.
+Same shape as Emails, one level down: a read-only, filterable (by type/recipient) view of `SmsLog` — every text the app has ever "sent" (§13a), whether or not SSL Wireless actually delivered it.
+
+### 10.16 Templates (`/admin/templates`)
+
+Edit the wording of every message the site sends. `TemplateManager.tsx` shows three tabs — **Emails to customers (6)**, **Emails to the brand (10)**, **SMS to customers (5)** — with one card per message: what triggers it, the fixed subject (emails), a textarea for the **body**, a "tap to insert" row of `{placeholders}` valid for that message, a live preview rendered with sample data, a character counter (SMS also shows its estimated part count), a **Send this message** on/off switch, **Save** and **Reset to default**. Only the body and the on/off switch are editable — the recipient and the subject line are fixed. An unknown `{placeholder}` turns the box red and blocks the save, so a typo can't ship a literal `{nme}` to a customer.
+
+`saveMessageTemplate()` / `resetMessageTemplate()` (`src/actions/admin-templates.ts`, admin session required) write into the `message_templates` `StoreSetting` — only what's been changed, so a message the admin never touched keeps following the default wording in the code. Everything (defaults, placeholders, previews, limits) comes from the one client-safe catalog, `src/lib/message-templates.ts`; adding a message type means adding one entry there plus its trigger in `notifications.ts`, and its card appears here automatically.
 
 ---
 
@@ -644,39 +655,57 @@ Verified directly against the database (not just the UI): seeding a product with
 
 ---
 
-## 13. Email system
+## 13. Messages: emails and SMS
 
-`src/lib/mail.ts`'s `sendMail()` is the one function every email-triggering call site uses. It always, unconditionally, writes an `EmailLog` row first — this is the outbox, visible at `/admin/emails`, and it's the ground truth for "did this email fire" regardless of whether real delivery is configured. If `emailProviderConfigured()` (`src/lib/email-provider.ts` — checks `RESEND_API_KEY` + `EMAIL_FROM`) is true, it *also* calls Resend's plain REST API (`POST https://api.resend.com/emails`) to actually deliver it; a real-send failure is caught and logged, never thrown back up (an email provider hiccup should never crash the checkout/inventory/etc. flow that triggered it — every call site also wraps its own `sendMail()` call in `.catch()`).
+Every email and SMS is one entry in a catalog (`src/lib/message-templates.ts`): a key, who gets it (customer or the brand), a plain-language "when", a fixed subject (emails), a default body, and the `{placeholders}` it may use. The pipeline is the same for all of them:
 
-Every `EmailType` and its exact trigger:
+1. **`notifications.ts`** is the single place that decides *when* something is sent — each `notify*()` function is called from the action/route where the event happens (`checkout.ts`, the two payment callbacks, `admin-orders.ts`, `contact.ts`, `back-in-stock.ts`, `customer-auth.ts`, `customer-orders.ts`, the OAuth callback, `admin-auth.ts`, …) and sends everything that event triggers.
+2. **`messages.ts`** (`sendTemplatedEmail` / `sendTemplatedSms`) loads the admin's overrides from the `message_templates` `StoreSetting` (falling back to the catalog default, and to the old `email_templates` on/off flags for anything not yet re-saved), skips the message if its switch is off, fills in the `{placeholders}`, picks the recipient (the customer, or the store's official address — `getStoreInfo().email`, Settings → Store), and hands it on. It never throws: a failed message must not break the order, signup or admin action that triggered it.
+3. **`mail.ts` / `sms.ts`** (`sendMail` / `sendSms`) are the low-level outboxes. They always, unconditionally, write an `EmailLog` / `SmsLog` row first — visible at `/admin/emails` and `/admin/sms`, and the ground truth for "did this fire" whether or not real delivery is configured. If `emailProviderConfigured()` (`src/lib/email-provider.ts` — `RESEND_API_KEY` + `EMAIL_FROM`) / `smsProviderConfigured()` (`src/lib/sms-provider.ts` — `SSLWIRELESS_SMS_API_TOKEN` + `SSLWIRELESS_SMS_SID`) is true they *also* really send (Resend REST / SSL Wireless SMS Plus); a provider failure is logged, never thrown.
 
-| Type | Fired from | When |
+Message bodies are edited at `/admin/templates` (§10.16); dates inside messages are formatted in Asia/Dhaka. `message-vars.ts` builds the order placeholders, including `{receipt}` — an itemised plain-text receipt (items, subtotal, discount/coupon, shipping, total, payment).
+
+### 13.1 Emails to customers
+
+| Key | Fired from | When |
 |---|---|---|
+| `ORDER_CONFIRMED` | `notifyOrderPlaced` (`checkout.ts`, both payment callbacks) | Order placed / confirmed |
+| `ORDER_SHIPPED` | `notifyOrderShipped` (`admin-orders.ts` → `markOrderShipped`) | Admin marks an order sent for delivery |
+| `BACK_IN_STOCK` | `admin-stock.ts` (`setVariantStock`) | A variant goes 0 → positive — to everyone who clicked "notify me" for it and everyone who wishlisted the product (deduplicated; the wishlist notification resets when the product goes fully sold-out again) |
+| `PREORDER_SHIP_UPDATE` | `admin-products.ts` (`saveProduct`) | A preorder product's ship date is changed in the product editor (Tags → Preorder → "Preorder ship date") — one email per address with an open (PENDING/PAID/PROCESSING) preorder containing it. Saving the same date again sends nothing. |
 | `WELCOME` | `newsletter.ts` | New newsletter signup |
-| `ORDER_CONFIRMED` | `checkout.ts`, both payment callback routes | Order successfully placed/paid |
-| `ORDER_SHIPPED` | `admin-orders.ts` (`markOrderShipped`) | Admin marks an order shipped |
-| `BACK_IN_STOCK` | `admin-stock.ts` (`setVariantStock`) | A variant's stock goes 0 → positive — sent to both explicit `BackInStockSubscription` rows *and* customers who wishlisted the product (deduplicated against each other; wishlist notification resets when the product goes back to fully sold-out, so a later restock re-fires it) |
-| `PREORDER_SHIP_UPDATE` | `admin-products.ts` (`saveProduct`) | A preorder product's ship date changes, to every customer with an active order containing it |
-| `ABANDONED_CHECKOUT` | `admin-marketing.ts` | Admin sends a reminder (single or bulk) for a captured-but-incomplete checkout |
-| `CONTACT_RECEIVED` | `contact.ts` | Contact form submission acknowledgement |
+| `CONTACT_RECEIVED` | `contact.ts` | Acknowledgement of a contact-form message |
 
-Each type can be individually disabled (skipping the outbox write entirely, checked at the top of `sendMail()`) and has an editable subject line, both from Settings → Emails (§10.13).
+### 13.2 Emails to the brand
 
-### 13a. Order-confirmation SMS
+All go to the official address in Settings → Store. Order emails carry the full order and customer details (name, email, phone, guest vs. registered, ship-to address, items, totals) and links to the admin order page and the printable receipt; new orders and pre-orders include the complete receipt.
 
-Same outbox-first shape as email, in `src/lib/sms.ts`. `sendSms()` always writes an `SmsLog` row (visible at `/admin/sms`, §10.14) and, when `smsProviderConfigured()` (`src/lib/sms-provider.ts` — checks `SSLWIRELESS_SMS_API_TOKEN` + `SSLWIRELESS_SMS_SID`) is true, also POSTs to SSL Wireless's SMS Plus API to actually deliver it — a real-send failure is caught and logged, never thrown, same reasoning as email. Every call site wraps `sendOrderConfirmationSms()` in `.catch()` too, so an SMS-gateway hiccup can never fail an order.
+| Key | When |
+|---|---|
+| `ADMIN_CONTACT_MESSAGE` | A customer sends a contact-form message |
+| `ADMIN_NEW_ORDER` | A new order (with receipt) |
+| `ADMIN_NEW_PREORDER` | A new pre-order (with receipt; chosen by `order.isPreorder`) |
+| `ADMIN_ORDER_UPDATE` | An order changes: sent for delivery, refunded (only when the refund actually happened), COD balance collected |
+| `ADMIN_ORDER_DELIVERED` | An admin marks an order delivered |
+| `ADMIN_CANCELLATION_REQUEST` | A customer asks to cancel an unshipped order (with their reason) |
+| `ADMIN_RETURN_REQUEST` | A customer submits a return request (which items, why) |
+| `ADMIN_ACCOUNT_REGISTERED` | A new customer account (email/password, Google or Facebook), including how many earlier guest orders it claimed |
+| `ADMIN_LOGIN_LOCKOUT` | An account (customer, admin or staff) is locked — sent only on the failed attempt that trips the lock (5 failures, 15 minutes), not on later attempts while locked |
+| `ADMIN_NOTIFY_ME` | A new "notify me" sign-up for a sold-out size (a repeat sign-up by the same email for the same size is not re-announced) |
 
-Unlike email, there's no per-type admin toggle or editable copy — SMS content is generated, not templated, because it has to react to which of three mutually-exclusive payment scenarios the order is actually in (`classifyOrderSmsType()`):
+### 13a. SMS to customers
 
-| `SmsType` | When | What it says |
+Same pipeline, to `Order.phone` — the checkout form's "Phone (delivery SMS)" field, not `shippingPhone` (who physically receives the parcel, possibly a gift recipient) — except the registration text, which goes to the phone given at sign-up.
+
+| Template | `SmsType` | When |
 |---|---|---|
-| `ORDER_CONFIRMED_COD` | `paymentMethod === "COD"` and not a preorder | Order #, items, full total, "pay cash on delivery to `<area>, <district>`" |
-| `ORDER_CONFIRMED_PARTIAL` | `isPreorder` (checked first — always lands here, not in `_COD`, since the reservation framing differs regardless of payment method) | Order #, items ("preorder"), the fixed "Preorder now and our sales agent will reach out" line (no amount), delivery location |
-| `ORDER_CONFIRMED_PAID` | everything else (paid online, nothing outstanding) | Order #, items, total paid in full, shipping location |
+| Order confirmation — cash on delivery | `ORDER_CONFIRMED_COD` | `paymentMethod === "COD"` and not a preorder (`classifyOrderSmsType()`) |
+| Order confirmation — paid | `ORDER_CONFIRMED_PAID` | Paid online, nothing outstanding |
+| Pre-order requested | `ORDER_CONFIRMED_PARTIAL` | `isPreorder` — checked first, so a preorder always lands here whatever the payment method (the enum name predates preorders dropping the advance/balance split) |
+| Account registration | `ACCOUNT_REGISTERED` | An email/password sign-up (which now requires a phone number). Google/Facebook sign-ups have no phone, so they get no SMS. |
+| Order shipped | `ORDER_SHIPPED` | Admin marks the order sent for delivery |
 
-`composeOrderConfirmationSms()` builds the message from the order + its items (title/qty, truncated to "first item & N more" beyond two lines) plus `StoreInfo.name`/`.phone` (§5.5) for branding and a help contact. The recipient is `Order.phone` specifically — the checkout form's "Phone (delivery SMS)" field (Step 1, distinct from `shippingPhone`, which is who physically receives the parcel and may be a different person for a gift order) — not `shippingPhone`.
-
-`sendOrderConfirmationSms(orderNumber)` is the one call site every checkout path shares, fired from the same three places `ORDER_CONFIRMED` email fires from: the instant-paid/COD branch of `placeOrder` (`checkout.ts`), and both the bKash and SSLCommerz payment-success callback routes (`api/payments/{bkash,sslcommerz}/...`) — i.e. exactly where an order actually becomes confirmed, not at initial (pending) creation when a live gateway redirect is still in flight.
+SMS bodies are capped at 640 characters in the editor; the Templates page shows the estimated length and part count (the ৳ sign makes each part shorter).
 
 ---
 
@@ -705,7 +734,7 @@ They **can stack**: a campaign-discounted price becomes the line's `unitPrice`, 
 
 ---
 
-## 16. Wishlist and back-in-stock — see §13's table for the email mechanics; the data-model side is §5.4.
+## 16. Wishlist and back-in-stock — see §13.1's table for the email mechanics; the data-model side is §5.4.
 
 ---
 
@@ -746,12 +775,11 @@ Every non-trivial claim in this document — the stock-race guard actually preve
 ## 20. Known limitations / what's still mocked
 
 - **Payments, real email, real SMS, and OAuth** all need externally-provisioned credentials to go live — see §14, §13, §13a, §7.3, and the table in `README.md`'s "Going live" section for exactly which env vars.
-- **Order-confirmation SMS has no per-type admin toggle** the way email does (§13a) — it's always on if SSL Wireless is configured, since it's a single generated message rather than an editable template.
+- **Message sending is mocked until a provider is set** — every email and SMS lands in its outbox (§13); the admin edits wording and on/off switches at `/admin/templates` (§10.16), but nothing leaves the building until the Resend / SSL Wireless variables are set.
 - **Free-delivery tag is presentational only** — it doesn't currently zero out the shipping line at checkout.
 - **No per-variant ship-date for auto-preorder-on-stockout items** — only tag-based (pre-launch) preorders carry a ship date; a size that sold out and became preorder-eligible mid-life just shows the generic "7–15 days" window, not a specific date.
 - **OAuth account linking is by email match** — a Google account with a different email than an existing password account creates a second, separate customer record rather than prompting a merge.
 - **No session revocation** beyond cookie expiry or rotating `SESSION_SECRET` (§7.1).
-- **Abandoned-checkout reminders are admin-triggered**, not on an automatic schedule (`sendAllAbandonedReminders` would need a cron job wired to it for real automation).
 - **Tax is informational only** unless switched from inclusive to exclusive pricing.
 - **No CSP** (security headers stop short of one — §7.4).
 - **Inventory costing is weighted-average only** (§10.4a) — no FIFO/LIFO lot tracking; a sold/in-stock unit with no recorded `StockPurchase` history has no cost basis and is explicitly excluded from COGS/inventory-value rather than assumed to be zero-cost.
@@ -773,8 +801,8 @@ Every non-trivial claim in this document — the stock-race guard actually preve
 | `FACEBOOK_CLIENT_ID`, `FACEBOOK_CLIENT_SECRET` | No | Facebook OAuth |
 | `BKASH_APP_KEY`, `BKASH_APP_SECRET`, `BKASH_USERNAME`, `BKASH_PASSWORD`, `BKASH_BASE_URL` | No | Real bKash payments (base URL defaults to bKash's sandbox) |
 | `SSLCOMMERZ_STORE_ID`, `SSLCOMMERZ_STORE_PASSWORD`, `SSLCOMMERZ_SANDBOX` | No | Real card/mobile-banking payments |
-| `RESEND_API_KEY`, `EMAIL_FROM` | No | Real email delivery |
-| `SSLWIRELESS_SMS_API_TOKEN`, `SSLWIRELESS_SMS_SID`, `SSLWIRELESS_SMS_BASE_URL` | No | Real order-confirmation SMS delivery (base URL defaults to SSL Wireless's SMS Plus host) |
+| `RESEND_API_KEY`, `EMAIL_FROM` | No | Real email delivery — customer emails and the notifications to the brand |
+| `SSLWIRELESS_SMS_API_TOKEN`, `SSLWIRELESS_SMS_SID`, `SSLWIRELESS_SMS_BASE_URL` | No | Real SMS delivery (base URL defaults to SSL Wireless's SMS Plus host) |
 | `IMGBB_API_KEY` | Yes, for image uploads | All product/site image uploads go through ImgBB (§12) — without it, `uploadToImgBb()` throws and the upload action returns an error |
 
 Full annotated template: `.env.example`.
@@ -786,7 +814,7 @@ Full annotated template: `.env.example`.
 For "what touches what" at a glance:
 
 - **A price appears anywhere** → traces back to `deriveProductDisplay()` in `product-view.ts`, or — at checkout specifically — to the same campaign logic re-run server-side in `checkout.ts`.
-- **An order is created** → `checkout.ts` → decrements `Variant.stockQty`, claims a coupon use (`Discount.usedCount` + a `DiscountRedemption` row) when one was applied, deletes any matching `AbandonedCheckout`, creates `Order`+`OrderItem`, optionally calls out to `lib/payments/*`. Once it's actually confirmed (immediately for instant-paid/COD, or from the payment callback route once a live gateway redirect resolves) it calls `sendMail()` → writes `EmailLog` (+ real Resend call if configured) and `sendOrderConfirmationSms()` → writes `SmsLog` (+ real SSL Wireless call if configured), §13a.
+- **An order is created** → `checkout.ts` → decrements `Variant.stockQty`, claims a coupon use (`Discount.usedCount` + a `DiscountRedemption` row) when one was applied, creates `Order`+`OrderItem`, optionally calls out to `lib/payments/*`. Once it's actually confirmed (immediately for instant-paid/COD, or from the payment callback route once a live gateway redirect resolves) it calls `notifyOrderPlaced()` (`notifications.ts`) → the customer's email + SMS and the brand's new-order email, each through `messages.ts` → `mail.ts`/`sms.ts` → `EmailLog`/`SmsLog` (+ the real Resend / SSL Wireless call if configured), §13.
 - **Stock changes** → `admin-stock.ts`'s `setVariantStock` (manual correction, also fires back-in-stock/wishlist emails), `checkout.ts`'s guarded decrement (a sale), `admin-orders.ts`'s `refundOrder` (a restock), or `admin-finance.ts`'s `recordStockPurchase` (an accountable increase, alongside a `StockPurchase` row — §10.4a).
 - **A product is saved** → `admin-products.ts`'s `saveProduct` → looks up the chosen `Category` to derive `gender`, touches `Product` (including `sizeGuide`, §10.3), `Variant` (upsert/delete), `ProductTag` (replace), defensively re-runs `ensureMirrorCategories` if that category is Unisex, and conditionally emails everyone with an active preorder order for it if the ship date changed.
 - **An image is uploaded** (product, site, category tile, or gender-hub hero) → uploads to ImgBB and a `ProductImage` row, the `home_hero`/`men_hero`/`women_hero` `ContentBlock`'s own field, or `Category.imageUrl` stores the returned CDN URL — same validation/upload pattern either way (`§12`).

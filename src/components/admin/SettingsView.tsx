@@ -6,32 +6,20 @@ import {
   savePaymentGateways,
   saveStoreInfo,
   saveTaxSettings,
-  saveEmailTemplates,
   saveChatWidgetSettings,
 } from "@/actions/admin-settings";
 import { Panel } from "@/components/admin/Panel";
 import { StaffManager } from "@/components/admin/StaffManager";
 import { TwoFactorSetup } from "@/components/admin/TwoFactorSetup";
-import type { ChatWidgetSettings, EmailTemplates, PaymentGatewaySettings, ShippingRates, StoreInfo, TaxSettings } from "@/lib/store-settings";
+import type { ChatWidgetSettings, PaymentGatewaySettings, ShippingRates, StoreInfo, TaxSettings } from "@/lib/store-settings";
 
-const TABS = ["Payments", "Shipping", "Tax", "Emails", "Roles", "Security", "Chat", "Store"] as const;
-
-const EMAIL_TYPE_LABEL: Record<keyof EmailTemplates, string> = {
-  WELCOME: "Newsletter welcome",
-  ORDER_CONFIRMED: "Order confirmed",
-  ORDER_SHIPPED: "It's shipped",
-  BACK_IN_STOCK: "Back in stock",
-  PREORDER_SHIP_UPDATE: "Preorder ship update",
-  ABANDONED_CHECKOUT: "Abandoned checkout reminder",
-  CONTACT_RECEIVED: "Contact form received",
-};
+const TABS = ["Payments", "Shipping", "Tax", "Roles", "Security", "Chat", "Store"] as const;
 
 export function SettingsView({
   rates: initialRates,
   gateways: initialGateways,
   storeInfo: initialInfo,
   tax: initialTax,
-  emailTemplates: initialTemplates,
   chatWidget: initialChatWidget,
   staff,
   selfId,
@@ -41,7 +29,6 @@ export function SettingsView({
   gateways: PaymentGatewaySettings;
   storeInfo: StoreInfo;
   tax: TaxSettings;
-  emailTemplates: EmailTemplates;
   chatWidget: ChatWidgetSettings;
   staff: { id: string; email: string; name: string; role: "ADMIN" | "STAFF" }[];
   selfId: string;
@@ -52,7 +39,6 @@ export function SettingsView({
   const [gateways, setGateways] = useState(initialGateways);
   const [info, setInfo] = useState(initialInfo);
   const [tax, setTax] = useState(initialTax);
-  const [templates, setTemplates] = useState(initialTemplates);
   const [chatWidget, setChatWidget] = useState(initialChatWidget);
   const [pending, startTransition] = useTransition();
   const [saved, setSaved] = useState(false);
@@ -168,34 +154,6 @@ export function SettingsView({
         </Panel>
       )}
 
-      {tab === "Emails" && (
-        <Panel title="Email templates">
-          <p className="mb-3 text-[13px] text-muted">Emails are mocked — toggling one off here skips writing it to the outbox.</p>
-          {(Object.keys(EMAIL_TYPE_LABEL) as (keyof EmailTemplates)[]).map((key) => (
-            <div key={key} className="mb-2.5 flex items-center gap-3">
-              <label className="flex w-8 items-center">
-                <input
-                  type="checkbox"
-                  checked={templates[key].enabled}
-                  onChange={(e) => setTemplates((t) => ({ ...t, [key]: { ...t[key], enabled: e.target.checked } }))}
-                />
-              </label>
-              <span className="w-[220px] shrink-0 text-sm text-muted">{EMAIL_TYPE_LABEL[key]}</span>
-              <input
-                value={templates[key].subject}
-                onChange={(e) => setTemplates((t) => ({ ...t, [key]: { ...t[key], subject: e.target.value } }))}
-                className="flex-1 border border-line-2 bg-ink px-2.5 py-1.5 text-sm"
-              />
-            </div>
-          ))}
-          <SaveBtn
-            pending={pending}
-            saved={saved}
-            onClick={() => startTransition(async () => { await saveEmailTemplates(templates); flashSaved(); })}
-          />
-        </Panel>
-      )}
-
       {tab === "Roles" && <StaffManager users={staff} selfId={selfId} />}
 
       {tab === "Security" && <TwoFactorSetup enabled={twoFactorEnabled} />}
@@ -264,6 +222,12 @@ export function SettingsView({
                 onChange={(e) => setInfo((i) => ({ ...i, [key]: e.target.value }))}
                 className="w-full border border-line-2 bg-ink px-2.5 py-1.5 text-sm"
               />
+              {key === "email" && (
+                <p className="mt-1 text-[12px] text-muted-2">
+                  Also the address your team&apos;s notifications go to — new orders, contact messages, return and
+                  cancellation requests and so on. Edit what they say under Templates.
+                </p>
+              )}
             </div>
           ))}
           <SaveBtn

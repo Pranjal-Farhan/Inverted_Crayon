@@ -2,9 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { executeBkashPayment } from "@/lib/payments/bkash";
 import { restockAndCancelOrder } from "@/lib/payments/rollback";
-import { sendMail } from "@/lib/mail";
-import { sendOrderConfirmationSms } from "@/lib/sms";
-import { formatTaka, toNumber } from "@/lib/money";
+import { notifyOrderPlaced } from "@/lib/notifications";
 
 // bKash redirects the customer's browser back here with ?paymentID=...&status=success|failure|cancel
 export async function GET(req: NextRequest) {
@@ -30,17 +28,8 @@ export async function GET(req: NextRequest) {
 
   await db.order.update({ where: { id: order.id }, data: { paymentStatus: "PAID", status: "PAID" } });
 
-  await sendMail({
-    to: order.email,
-    subject: "Order confirmed",
-    body: `Order #${order.number} confirmed — ${formatTaka(toNumber(order.advanceAmount))}${
-      toNumber(order.balanceDue) > 0 ? ` now, ${formatTaka(toNumber(order.balanceDue))} due on delivery` : ""
-    }. We'll email you when it ships.`,
-    type: "ORDER_CONFIRMED",
-    relatedOrderId: order.number,
-  }).catch((e) => console.error("order-confirmation email failed", e));
-
-  await sendOrderConfirmationSms(order.number).catch((e) => console.error("order-confirmation SMS failed", e));
+  // Payment cleared — now the order counts as placed: customer email + SMS, and the brand's new-order email.
+  await notifyOrderPlaced(order.number);
 
   return NextResponse.redirect(`${origin}/order/${order.number}`);
 }

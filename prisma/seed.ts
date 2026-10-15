@@ -17,7 +17,6 @@ const CATEGORY_DEFS = [
   { slug: "accessories", name: "Accessories" },
 ] as const;
 import {
-  DEFAULT_EMAIL_TEMPLATES,
   DEFAULT_PAYMENT_GATEWAYS,
   DEFAULT_SHIPPING_RATES,
   DEFAULT_STORE_INFO,
@@ -486,11 +485,6 @@ async function main() {
     where: { key: "tax_settings" },
     update: {},
     create: { key: "tax_settings", value: DEFAULT_TAX_SETTINGS },
-  });
-  await db.storeSetting.upsert({
-    where: { key: "email_templates" },
-    update: {},
-    create: { key: "email_templates", value: DEFAULT_EMAIL_TEMPLATES },
   });
 
   // ---------- journal ----------

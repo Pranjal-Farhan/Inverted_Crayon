@@ -2,7 +2,7 @@
 
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { sendMail } from "@/lib/mail";
+import { notifyNewsletterSignup } from "@/lib/notifications";
 
 const schema = z.email();
 
@@ -18,12 +18,7 @@ export async function subscribeNewsletter(
     const existing = await db.newsletterSubscriber.findUnique({ where: { email: parsed.data } });
     if (!existing) {
       await db.newsletterSubscriber.create({ data: { email: parsed.data } });
-      await sendMail({
-        to: parsed.data,
-        subject: "Stay inverted.",
-        body: "Drops, restocks, nothing boring. You're on the list.",
-        type: "WELCOME",
-      }).catch((e) => console.error("newsletter welcome email failed", e));
+      await notifyNewsletterSignup(parsed.data);
     }
   } catch (e) {
     console.error("subscribeNewsletter failed", e);

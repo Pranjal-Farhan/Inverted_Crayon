@@ -11,8 +11,7 @@ Streetwear storefront + admin, built from the [Build Specification v1.0](.) — 
 - **Styling**: Tailwind CSS v4, design tokens in `src/app/globals.css` matching Build Spec §02–§04
 - **Auth**: Signed JWT session cookies (`jose`) — separate admin and customer sessions. Email/password always works; Google and Facebook sign-in work too once you add OAuth credentials (see below) — until then the buttons bounce back with a clear message instead of erroring. Admin/staff accounts can additionally turn on TOTP two-factor authentication (Google Authenticator-compatible) from `/admin/settings` → Security.
 - **Payments**: bKash and SSLCommerz (cards/mobile banking) are wired for real and go live the moment you add real merchant credentials (see below) — but are currently **commented out at checkout** (`CheckoutView.tsx`/`checkout.ts`), so **cash on delivery is the only option offered right now**, for every order including preorders (nothing is captured online for a preorder either — see "Preorders" below).
-- **Emails**: Every "send" always writes to an `EmailLog` outbox (viewable at `/admin/emails`); add a Resend API key (see below) and it also actually sends. See `src/lib/mail.ts`.
-- **Order-confirmation SMS**: same outbox pattern as email — every confirmed order writes to an `SmsLog` outbox (viewable at `/admin/sms`); add SSL Wireless credentials (see below) and it also actually sends. See `src/lib/sms.ts`.
+- **Emails & SMS**: Every "send" always writes to an outbox first (`EmailLog` at `/admin/emails`, `SmsLog` at `/admin/sms`); add a Resend key and/or SSL Wireless credentials (see below) and it also actually sends. What each message says is editable at `/admin/templates`. See "Emails & SMS" below and `src/lib/notifications.ts`.
 - **Image hosting**: Product photos, the CMS logo, and hero images upload to ImgBB when `IMGBB_API_KEY` is set. The database stores the returned CDN URL instead of Base64 or local files.
 
 ## Getting started
@@ -80,10 +79,10 @@ src/lib/                      domain logic — tag/pricing derivation, cart, ses
 
 ## Build phases
 
-Both P1 (launch-critical) and P2 (fast-follow) from the spec's §13 checklist are implemented in full, including every item originally listed but not elaborated on in the page-by-page spec (journal/blog, abandoned-checkout + lifecycle emails, staff roles management):
+Both P1 (launch-critical) and P2 (fast-follow) from the spec's §13 checklist are implemented in full, including every item originally listed but not elaborated on in the page-by-page spec (journal/blog, lifecycle emails, staff roles management):
 
-- **P1**: design system, storefront browse/PDP, cart → guest checkout → confirmation → track order, admin dashboard/orders/products/categories/settings (including Tax and Email-template tabs), all legal/utility pages.
-- **P2**: customer accounts (register/login/orders/returns/wishlist/back-in-stock — guest orders auto-claim on registration), drops/collections landing, lookbook, journal/blog, live search suggestions, a "recently viewed" rail, a swipeable multi-image PDP gallery, admin CRM/discounts/campaigns/content CMS/analytics/staff-roles CRUD, and the full lifecycle email set (order confirmed/shipped, back-in-stock, preorder ship-date changes, newsletter welcome, contact acknowledgement, abandoned-checkout reminders).
+- **P1**: design system, storefront browse/PDP, cart → guest checkout → confirmation → track order, admin dashboard/orders/products/categories/settings (including the Tax tab and the message Templates page), all legal/utility pages.
+- **P2**: customer accounts (register/login/orders/returns/wishlist/back-in-stock — guest orders auto-claim on registration), drops/collections landing, lookbook, journal/blog, live search suggestions, a "recently viewed" rail, a swipeable multi-image PDP gallery, admin CRM/discounts/campaigns/content CMS/analytics/staff-roles CRUD, and the full lifecycle email set (order confirmed/shipped, back-in-stock, preorder ship-date changes, newsletter welcome, contact acknowledgement, plus notification emails to the brand).
 
 ## Homepage CMS
 
@@ -117,15 +116,19 @@ Every order gets a unique number at checkout (`generateOrderNumber()`, retried o
 
 **Checking out while logged in prefills the form from your account** — email, phone, full name, and (if you've saved one) your default address, with the page reading "Returning customer · `<you>`" instead of "Guest checkout." Every field stays editable; this only changes what the form starts with, not how `placeOrder()` processes it (it already linked the order to your account either way).
 
-## Order-confirmation SMS
+## Emails & SMS
 
-Every confirmed order texts the customer's contact number (the "Phone (delivery SMS)" field from checkout) with order details, amount, and delivery location — content differs by how the order is paid:
+Every message the site sends is one entry in `src/lib/message-templates.ts`, sent through `src/lib/messages.ts`; *when* each goes out is defined in one file, `src/lib/notifications.ts`. Messages are mocked by default (every "send" lands in the `/admin/emails` or `/admin/sms` outbox) and switch to real delivery once `RESEND_API_KEY` + `EMAIL_FROM` and/or `SSLWIRELESS_SMS_API_TOKEN` + `SSLWIRELESS_SMS_SID` are set (see above).
 
-- **Full paid** (bKash/card, nothing outstanding): order number, item(s), total paid, shipping location.
-- **Cash on delivery**: order number, item(s), total due at delivery, delivery location.
-- **Preorder**: order number, item(s), the fixed "Preorder now and our sales agent will reach out" line (no amount), delivery location.
+**To customers — email:** order confirmed, order shipped, back in stock, pre-order ship date changed, newsletter welcome, contact-form acknowledgement.
+**To customers — SMS:** order confirmation (cash on delivery / paid), pre-order requested, account registration, order shipped. The order texts go to the "Phone (delivery SMS)" number from checkout; the registration text goes to the phone given at sign-up (a phone number is required when registering with email — Google/Facebook sign-ups have no phone, so no SMS).
+**To the brand — email** (always to the address in Settings → Store): contact messages, new orders and new pre-orders (with the full receipt, customer details and admin links), order updates (sent for delivery / refunded / COD balance collected), order delivered, cancellation requests, return requests, new account registrations, login lockouts (customer, admin and staff — once, when the lock trips), and "notify me" sign-ups.
 
-Fires at every point an order actually becomes confirmed: the instant-paid/COD path in `placeOrder`, and both the bKash and SSLCommerz payment-success callbacks. Like email, it's mocked by default (every "send" lands in the `SmsLog` outbox at `/admin/sms`) and switches to real delivery once SSL Wireless credentials are set (see above).
+**Templates (`/admin/templates`)** lists every message in three tabs (emails to customers, emails to the brand, SMS to customers) as editable boxes: change the body text, drop in `{placeholders}` (order number, items, receipt, customer details…), see a live preview, switch a message off, or reset it to the default. Subjects and recipients are fixed.
+
+**Pre-order ship date.** In the product editor (Tags → Preorder → "Preorder ship date"), changing the date and saving emails every customer with an open (not yet shipped) pre-order containing that product; saving the same date again sends nothing. Edit that email under Templates → "Pre-order ship date changed".
+
+**Cancellation requests.** A customer can ask to cancel an order that hasn't shipped from its page in their account; the brand is emailed once and the admin order page shows a "Customer requested cancellation" banner with the reason. Nothing is cancelled automatically — the admin decides.
 
 ## Free delivery tags
 
@@ -214,6 +217,5 @@ The `Button` scribble treatment covers the shared `Button.tsx` component, which 
 
 ## Notes for further work
 
-- Abandoned-checkout reminders are admin-triggered (`/admin/campaigns` → "Send all pending reminders") rather than on an automatic schedule — wire that button's action (`sendAllAbandonedReminders` in `src/actions/admin-marketing.ts`) into a cron job for real automation.
 - The free-delivery tag is presentational only; making it actually waive the shipping fee would mean threading it into `src/actions/checkout.ts`'s shipping-cost calculation.
 - OAuth account linking is by email match — if someone's Google email differs from the email on their existing password account, they'll get a second, separate account rather than a merge prompt.

@@ -11,6 +11,7 @@ import {
   clearAdmin2FAPending,
 } from "@/lib/session";
 import { isLocked, lockoutMessage, nextLockoutState } from "@/lib/login-lockout";
+import { notifyLoginLockout } from "@/lib/notifications";
 import { verifyTotpCode } from "@/lib/totp";
 
 export async function adminLogin(
@@ -30,6 +31,14 @@ export async function adminLogin(
     if (user) {
       const next = nextLockoutState(user.failedLoginCount);
       await db.adminUser.update({ where: { id: user.id }, data: next });
+      if (next.lockedUntil) {
+        await notifyLoginLockout({
+          email: user.email,
+          role: user.role === "ADMIN" ? "Admin" : "Staff",
+          attempts: next.failedLoginCount,
+          lockedUntil: next.lockedUntil,
+        });
+      }
     }
     return { ok: false, error: "Invalid email or password.", needsTwoFactor: false };
   }
@@ -100,6 +109,14 @@ export async function verifyAdminTwoFactor(
 
   const next = nextLockoutState(user.failedLoginCount);
   await db.adminUser.update({ where: { id: user.id }, data: next });
+  if (next.lockedUntil) {
+    await notifyLoginLockout({
+      email: user.email,
+      role: user.role === "ADMIN" ? "Admin" : "Staff",
+      attempts: next.failedLoginCount,
+      lockedUntil: next.lockedUntil,
+    });
+  }
   return { ok: false, error: "Invalid code." };
 }
 

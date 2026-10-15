@@ -58,6 +58,10 @@ export function AuthForm({ initialTab = "login" }: { initialTab?: "login" | "reg
             <input name="email" type="email" required className="w-full border border-line-2 bg-ink px-3 py-2.5 outline-none focus:border-lime" />
           </div>
           <div className="mb-3">
+            <label className="font-label mb-1.5 block text-[13px] tracking-[1.2px] text-muted">Phone (order updates by SMS)</label>
+            <input name="phone" type="tel" required minLength={6} placeholder="01XXXXXXXXX" className="w-full border border-line-2 bg-ink px-3 py-2.5 outline-none focus:border-lime" />
+          </div>
+          <div className="mb-3">
             <label className="font-label mb-1.5 block text-[13px] tracking-[1.2px] text-muted">Password</label>
             <input name="password" type="password" required minLength={8} className="w-full border border-line-2 bg-ink px-3 py-2.5 outline-none focus:border-lime" />
           </div>
