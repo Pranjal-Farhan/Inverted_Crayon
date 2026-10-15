@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { addManufacturerLink, removeManufacturerLink, setCurrentVendor, type ManufacturerLinkRow } from "@/actions/admin-manufacturer-links";
+import { manufacturerHref } from "@/lib/manufacturer-link";
 
 /**
  * Admin-only notes on a product — rows of (usually) manufacturer page links, never shown to
@@ -76,15 +77,17 @@ export function ManufacturerLinksPanel({
               >
                 {link.url}
               </button>
-            ) : (
+            ) : manufacturerHref(link.url) ? (
               <a
-                href={link.url}
+                href={manufacturerHref(link.url)!}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="min-w-0 flex-1 truncate text-sm text-[#ddd] hover:text-lime hover:underline"
               >
                 {link.url}
               </a>
+            ) : (
+              <span className="min-w-0 flex-1 truncate text-sm text-[#ddd]">{link.url}</span>
             )}
             {link.isCurrentVendor && (
               // Reuses globals.css's .preorder-blink keyframe (already neutralized under
