@@ -100,6 +100,9 @@ export default async function AdminEmailsPage({ searchParams }: Props) {
                 <td className="px-4 py-2.5">
                   <div>{e.subject}</div>
                   <div className="mt-0.5 text-[12px] text-muted">{e.body}</div>
+                  {e.attachmentNames.length > 0 && (
+                    <div className="mt-1 text-[12px] text-cyan">📎 {e.attachmentNames.join(", ")}</div>
+                  )}
                 </td>
                 <td className="px-4 py-2.5 whitespace-nowrap">
                   {e.sentAt.toLocaleDateString("en-GB", { day: "2-digit", month: "short" })}{" "}

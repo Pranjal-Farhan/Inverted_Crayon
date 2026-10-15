@@ -3,6 +3,9 @@ import { db } from "@/lib/db";
 import { classifyOrderSmsType } from "@/lib/sms";
 import { getMessageContext, sendTemplatedEmail, sendTemplatedSms } from "@/lib/messages";
 import { formatDhaka, itemsList, orderVars } from "@/lib/message-vars";
+import { buildReceiptPdf, type ReceiptOrder } from "@/lib/receipt-pdf";
+import type { EmailAttachment } from "@/lib/email-provider";
+import type { StoreInfo } from "@/lib/store-settings";
 import type { TemplateKey } from "@/lib/message-templates";
 
 /**
@@ -25,6 +28,21 @@ async function loadOrder(where: { id: string } | { number: string }) {
   return db.order.findUnique({ where, include: { items: true } });
 }
 
+/**
+ * The order's receipt as a PDF, ready to attach to the order emails (to the customer and to the
+ * official address). Built once per event and shared by every email that carries it. If the PDF
+ * can't be built the emails still go out, just without it — a receipt must never block a message.
+ */
+async function receiptAttachments(order: ReceiptOrder, store: StoreInfo): Promise<EmailAttachment[]> {
+  try {
+    const content = await buildReceiptPdf(order, store);
+    return [{ filename: `Receipt-${order.number}.pdf`, content, contentType: "application/pdf" }];
+  } catch (e) {
+    console.error(`[notifications] receipt PDF for ${order.number} failed — sending without it`, e);
+    return [];
+  }
+}
+
 // ---------------------------------------------------------------------------- orders
 
 /** A new order (or preorder) was placed: confirm to the customer, tell the brand, text the customer. */
@@ -32,15 +50,17 @@ export async function notifyOrderPlaced(orderNumber: string) {
   const [order, ctx] = await Promise.all([loadOrder({ number: orderNumber }), getMessageContext()]);
   if (!order) return;
   const vars = orderVars(order, ctx);
+  const attachments = await receiptAttachments(order, ctx.store);
 
   // Independent of each other, so sent together — with a real mail server each send is a network
   // round trip, and the customer is waiting on the checkout page for all of them.
   await Promise.all([
-    sendTemplatedEmail({ key: "ORDER_CONFIRMED", to: order.email, vars, relatedOrderId: order.number }),
+    sendTemplatedEmail({ key: "ORDER_CONFIRMED", to: order.email, vars, relatedOrderId: order.number, attachments }),
     sendTemplatedEmail({
       key: order.isPreorder ? "ADMIN_NEW_PREORDER" : "ADMIN_NEW_ORDER",
       vars,
       relatedOrderId: order.number,
+      attachments,
     }),
     sendTemplatedSms({
       key: `SMS_${classifyOrderSmsType(order)}` as Extract<TemplateKey, `SMS_${string}`>,
@@ -56,9 +76,10 @@ export async function notifyOrderShipped(orderId: string, actor: AdminActor) {
   const [order, ctx] = await Promise.all([loadOrder({ id: orderId }), getMessageContext()]);
   if (!order) return;
   const vars = orderVars(order, ctx);
+  const attachments = await receiptAttachments(order, ctx.store);
 
   await Promise.all([
-    sendTemplatedEmail({ key: "ORDER_SHIPPED", to: order.email, vars, relatedOrderId: order.number }),
+    sendTemplatedEmail({ key: "ORDER_SHIPPED", to: order.email, vars, relatedOrderId: order.number, attachments }),
     sendTemplatedSms({ key: "SMS_ORDER_SHIPPED", to: order.phone, vars, relatedOrderId: order.number }),
     sendTemplatedEmail({
       key: "ADMIN_ORDER_UPDATE",
@@ -69,6 +90,7 @@ export async function notifyOrderShipped(orderId: string, actor: AdminActor) {
         updatedAt: formatDhaka(new Date()),
       },
       relatedOrderId: order.number,
+      attachments,
     }),
   ]);
 }
@@ -81,6 +103,7 @@ export async function notifyOrderDelivered(orderId: string, actor: AdminActor) {
     key: "ADMIN_ORDER_DELIVERED",
     vars: { ...orderVars(order, ctx), updatedBy: actorLabel(actor), updatedAt: formatDhaka(new Date()) },
     relatedOrderId: order.number,
+    attachments: await receiptAttachments(order, ctx.store),
   });
 }
 
@@ -92,6 +115,7 @@ export async function notifyOrderUpdated(orderId: string, update: string, actor:
     key: "ADMIN_ORDER_UPDATE",
     vars: { ...orderVars(order, ctx), update, updatedBy: actorLabel(actor), updatedAt: formatDhaka(new Date()) },
     relatedOrderId: order.number,
+    attachments: await receiptAttachments(order, ctx.store),
   });
 }
 
@@ -103,6 +127,7 @@ export async function notifyCancellationRequested(orderId: string, reason: strin
     key: "ADMIN_CANCELLATION_REQUEST",
     vars: { ...orderVars(order, ctx), reason: reason.trim() || "No reason given" },
     relatedOrderId: order.number,
+    attachments: await receiptAttachments(order, ctx.store),
   });
 }
 
@@ -115,6 +140,7 @@ export async function notifyReturnRequested(orderId: string, orderItemIds: strin
     key: "ADMIN_RETURN_REQUEST",
     vars: { ...orderVars(order, ctx), returnItems: itemsList(returned), reason: reason.trim() || "No reason given" },
     relatedOrderId: order.number,
+    attachments: await receiptAttachments(order, ctx.store),
   });
 }
 

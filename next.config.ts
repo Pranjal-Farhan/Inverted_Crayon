@@ -21,6 +21,14 @@ const nextConfig: NextConfig = {
       bodySizeLimit: "60mb",
     },
   },
+  // The PDF receipts attached to order emails (src/lib/receipt-pdf.ts): pdfkit/fontkit read their own
+  // data files at runtime, so they're loaded from node_modules rather than bundled; and the Noto
+  // font files the receipt embeds are read from disk, so they're shipped with every route that can
+  // send an order email (checkout, the admin order actions, the payment callbacks).
+  serverExternalPackages: ["pdfkit", "fontkit"],
+  outputFileTracingIncludes: {
+    "/**": ["./src/assets/fonts/**"],
+  },
   // Moved from src/proxy.ts (perf/reduce-invocations): these were the only thing proxy.ts did,
   // and it ran as a Node-runtime function on every single request (including bot probes) just to
   // set static headers. next.config.ts headers() applies them at the edge/build level with no

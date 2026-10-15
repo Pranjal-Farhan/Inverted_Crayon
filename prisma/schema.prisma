@@ -630,6 +630,8 @@ model EmailLog {
   sentAt         DateTime      @default(now())
   delivery       EmailDelivery @default(LOGGED)
   deliveryError  String?
+  // Names of the files attached to this email (e.g. the PDF receipt) — the files themselves aren't kept.
+  attachmentNames String[]     @default([])
 
   @@index([to])
   @@index([type])

@@ -1,6 +1,6 @@
 import "server-only";
 import { db } from "@/lib/db";
-import { emailProviderConfigured, sendEmail } from "@/lib/email-provider";
+import { emailProviderConfigured, sendEmail, type EmailAttachment } from "@/lib/email-provider";
 import { getStoreInfo } from "@/lib/store-settings";
 import type { $Enums } from "@/generated/prisma/client";
 
@@ -21,6 +21,7 @@ export async function sendMail({
   type,
   relatedOrderId,
   replyToStore = false,
+  attachments,
 }: {
   to: string;
   subject: string;
@@ -29,16 +30,25 @@ export async function sendMail({
   relatedOrderId?: string;
   /** Point replies at the brand's official address (customer-facing emails). */
   replyToStore?: boolean;
+  /** Files to attach, e.g. the PDF receipt. Only their names are kept on the outbox row. */
+  attachments?: EmailAttachment[];
 }) {
   const log = await db.emailLog.create({
-    data: { to, subject, body, type, relatedOrderId },
+    data: { to, subject, body, type, relatedOrderId, attachmentNames: attachments?.map((a) => a.filename) ?? [] },
   });
 
   if (!emailProviderConfigured()) return log;
 
   try {
     const store = await getStoreInfo();
-    await sendEmail({ to, subject, body, storeName: store.name, replyTo: replyToStore ? store.email : undefined });
+    await sendEmail({
+      to,
+      subject,
+      body,
+      storeName: store.name,
+      replyTo: replyToStore ? store.email : undefined,
+      attachments,
+    });
     return await db.emailLog.update({ where: { id: log.id }, data: { delivery: "SENT" } });
   } catch (e) {
     // An email provider hiccup must never break the checkout/signup/admin action that triggered it —

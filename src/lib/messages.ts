@@ -1,6 +1,7 @@
 import "server-only";
 import { db } from "@/lib/db";
 import { sendMail } from "@/lib/mail";
+import type { EmailAttachment } from "@/lib/email-provider";
 import { sendSms } from "@/lib/sms";
 import { getSiteOrigin, PRODUCTION_SITE_URL } from "@/lib/site-url";
 import { getStoreInfo, type StoreInfo } from "@/lib/store-settings";
@@ -85,11 +86,14 @@ export async function sendTemplatedEmail({
   to,
   vars,
   relatedOrderId,
+  attachments,
 }: {
   key: EmailTemplateKey;
   to?: string;
   vars: Record<string, string>;
   relatedOrderId?: string;
+  /** Files to attach — the PDF receipt on order emails (see notifications.ts). */
+  attachments?: EmailAttachment[];
 }) {
   try {
     const def = TEMPLATE_BY_KEY[key];
@@ -111,6 +115,7 @@ export async function sendTemplatedEmail({
       relatedOrderId,
       // A customer who replies to an order email should reach the brand's official mailbox.
       replyToStore: def.audience === "CUSTOMER",
+      attachments,
     });
   } catch (e) {
     console.error(`[messages] sending ${key} failed`, e);

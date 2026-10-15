@@ -72,6 +72,8 @@ function smtpTransport(): Transporter {
   return transport;
 }
 
+export type EmailAttachment = { filename: string; content: Buffer; contentType: string };
+
 export type OutgoingEmail = {
   to: string;
   subject: string;
@@ -80,6 +82,8 @@ export type OutgoingEmail = {
   storeName: string;
   /** Where a customer's reply should go — the brand's official address. */
   replyTo?: string;
+  /** Files to attach (e.g. the PDF receipt). */
+  attachments?: EmailAttachment[];
 };
 
 /** Sends one plain-text email through whichever provider is configured. Throws on any failure. */
@@ -95,6 +99,7 @@ export async function sendEmail(mail: OutgoingEmail): Promise<void> {
       subject: mail.subject,
       text: mail.body,
       replyTo: mail.replyTo,
+      attachments: mail.attachments?.map((a) => ({ filename: a.filename, content: a.content, contentType: a.contentType })),
     });
     return;
   }
@@ -111,6 +116,9 @@ export async function sendEmail(mail: OutgoingEmail): Promise<void> {
       subject: mail.subject,
       text: mail.body,
       ...(mail.replyTo ? { reply_to: mail.replyTo } : {}),
+      ...(mail.attachments?.length
+        ? { attachments: mail.attachments.map((a) => ({ filename: a.filename, content: a.content.toString("base64") })) }
+        : {}),
     }),
   });
   if (!res.ok) {
