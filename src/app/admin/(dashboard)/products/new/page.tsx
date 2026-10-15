@@ -1,3 +1,4 @@
+import { requireAdminPage } from "@/lib/admin-guard";
 import { db } from "@/lib/db";
 import { ProductEditorForm } from "@/components/admin/ProductEditorForm";
 import { parseSizeGuide, type SizeGuideTemplateOption } from "@/lib/size-guide";
@@ -5,6 +6,7 @@ import { getProductLockedCouponOptions } from "@/lib/coupon-options";
 import { getShippingRates } from "@/lib/store-settings";
 
 export default async function NewProductPage() {
+  await requireAdminPage("products");
   const [categories, sizeGuideTemplateRows, couponOptions, rates] = await Promise.all([
     db.category.findMany({ orderBy: [{ gender: "asc" }, { position: "asc" }] }),
     db.sizeGuideTemplate.findMany({ orderBy: { name: "asc" } }),

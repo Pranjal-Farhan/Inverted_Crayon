@@ -1,3 +1,4 @@
+import { requireAdminPage } from "@/lib/admin-guard";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
@@ -11,6 +12,7 @@ import { formatDhaka } from "@/lib/message-vars";
 type Props = { params: Promise<{ id: string }> };
 
 export default async function AdminOrderDetailPage({ params }: Props) {
+  await requireAdminPage("orders");
   const { id } = await params;
   const order = await db.order.findUnique({
     where: { id },

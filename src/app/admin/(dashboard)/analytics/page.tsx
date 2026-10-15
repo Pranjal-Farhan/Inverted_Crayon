@@ -1,9 +1,11 @@
+import { requireAdminPage } from "@/lib/admin-guard";
 import { db } from "@/lib/db";
 import { formatTaka, toNumber } from "@/lib/money";
 import { Kpi } from "@/components/admin/Kpi";
 import { Panel } from "@/components/admin/Panel";
 
 export default async function AdminAnalyticsPage() {
+  await requireAdminPage("analytics");
   // Server Component: runs once per request, not subject to React's
   // client-render purity concerns — safe to read the current time here.
   // eslint-disable-next-line react-hooks/purity

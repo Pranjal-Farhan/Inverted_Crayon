@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { getAdminSession } from "@/lib/session";
+import { requireAdminArea } from "@/lib/admin-guard";
 import { MESSAGE_TEMPLATES_SETTING } from "@/lib/messages";
 import {
   MAX_BODY_LENGTH,
@@ -13,8 +13,7 @@ import {
 } from "@/lib/message-templates";
 
 async function requireAdmin() {
-  const session = await getAdminSession();
-  if (!session) throw new Error("Not authorized.");
+  return requireAdminArea("templates");
 }
 
 type StoredConfig = { body?: string; enabled?: boolean };

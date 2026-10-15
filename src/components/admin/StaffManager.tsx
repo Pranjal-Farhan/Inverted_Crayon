@@ -18,7 +18,11 @@ export function StaffManager({ users, selfId }: { users: StaffUser[]; selfId: st
 
   return (
     <Panel title="Staff roles">
-      <p className="mb-3 text-[13px] text-muted">Admin — full access · Staff — fulfil orders, no refunds or settings.</p>
+      <p className="mb-3 max-w-[78ch] text-[13px] text-muted">
+        <span className="text-paper">Admin</span> — everything. <span className="text-paper">Staff</span> — orders,
+        products, customers, discounts, size guides and categories only (plus their own two-factor setup). No
+        dashboard, finance, analytics, content, footer, emails, SMS, templates, store settings or team accounts.
+      </p>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
         <thead>

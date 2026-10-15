@@ -1,3 +1,4 @@
+import { requireAdminPage } from "@/lib/admin-guard";
 import Image from "next/image";
 import Link from "next/link";
 import { db } from "@/lib/db";
@@ -12,6 +13,7 @@ const COLUMNS = ["Product", "SKU", "Category", "Price", "Stock", "Current vendor
 const SKUS_SHOWN = 3;
 
 export default async function AdminProductsPage({ searchParams }: Props) {
+  await requireAdminPage("products");
   const { q, gender, category } = await searchParams;
   const categories = await db.category.findMany({ orderBy: { position: "asc" } });
 

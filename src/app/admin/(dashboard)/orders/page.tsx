@@ -1,3 +1,4 @@
+import { requireAdminPage } from "@/lib/admin-guard";
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { formatTaka, toNumber } from "@/lib/money";
@@ -24,6 +25,7 @@ const STATUSES: $Enums.OrderStatus[] = [
 const PAYMENT_METHODS: $Enums.PaymentMethod[] = ["BKASH", "SSLCOMMERZ", "COD"];
 
 export default async function AdminOrdersPage({ searchParams }: Props) {
+  await requireAdminPage("orders");
   const { status, payment, q: rawQ } = await searchParams;
   const q = rawQ?.trim();
 

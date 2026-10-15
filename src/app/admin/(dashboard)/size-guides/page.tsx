@@ -1,8 +1,10 @@
+import { requireAdminPage } from "@/lib/admin-guard";
 import { db } from "@/lib/db";
 import { parseSizeGuide, type SizeGuideTemplateOption } from "@/lib/size-guide";
 import { SizeGuideTemplateManager } from "@/components/admin/SizeGuideTemplateManager";
 
 export default async function AdminSizeGuidesPage() {
+  await requireAdminPage("size-guides");
   const rows = await db.sizeGuideTemplate.findMany({ orderBy: { name: "asc" } });
 
   // Defensive: a template's own saveSizeGuideTemplate() action already validates its shape, so

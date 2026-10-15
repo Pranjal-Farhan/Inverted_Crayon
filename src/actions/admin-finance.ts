@@ -2,15 +2,14 @@
 
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
-import { getAdminSession } from "@/lib/session";
+import { getAdminForArea } from "@/lib/admin-guard";
 import { invalidateProduct } from "@/lib/invalidate";
 
 export async function createStockOwner(
   _prev: { ok: boolean; error: string } | null,
   formData: FormData,
 ): Promise<{ ok: boolean; error: string }> {
-  const session = await getAdminSession();
-  if (!session) return { ok: false, error: "Not authorized." };
+  if (!(await getAdminForArea("finance"))) return { ok: false, error: "Not authorized." };
 
   const name = String(formData.get("name") ?? "").trim();
   if (!name) return { ok: false, error: "Owner name is required." };
@@ -26,8 +25,7 @@ export async function recordStockPurchase(
   _prev: { ok: boolean; error: string } | null,
   formData: FormData,
 ): Promise<{ ok: boolean; error: string }> {
-  const session = await getAdminSession();
-  if (!session) return { ok: false, error: "Not authorized." };
+  if (!(await getAdminForArea("finance"))) return { ok: false, error: "Not authorized." };
 
   const ownerId = String(formData.get("ownerId") ?? "");
   const variantId = String(formData.get("variantId") ?? "") || null;

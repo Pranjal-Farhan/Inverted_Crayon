@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
-import { getAdminSession } from "@/lib/session";
+import { requireAdminArea } from "@/lib/admin-guard";
 import { uploadToImgBb } from "@/lib/imgbb";
 import { invalidateContent } from "@/lib/invalidate";
 import type { HeroData } from "@/lib/hero-defaults";
@@ -11,8 +11,7 @@ import type { GenderCardsData } from "@/lib/gender-cards-defaults";
 import { MARQUEE_MIN_LINES, MARQUEE_MAX_LINES, type MarqueeData } from "@/lib/marquee-defaults";
 
 async function requireAdmin() {
-  const session = await getAdminSession();
-  if (!session) throw new Error("Not authorized.");
+  return requireAdminArea("content");
 }
 
 export async function saveHomeHero(data: HeroData) {

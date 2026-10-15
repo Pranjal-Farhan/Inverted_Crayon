@@ -1,3 +1,4 @@
+import { requireAdminPage } from "@/lib/admin-guard";
 import { db } from "@/lib/db";
 import { FooterCmsView } from "@/components/admin/FooterCmsView";
 import { DEFAULT_FOOTER_SOCIAL, type FooterSocialData } from "@/lib/footer-defaults";
@@ -6,6 +7,7 @@ import { DEFAULT_CONTACT_PAGE, type ContactPageData } from "@/lib/footer-default
 import { DEFAULT_PRIVACY_PAGE, DEFAULT_TERMS_PAGE, type LegalPageData } from "@/lib/footer-defaults";
 
 export default async function AdminFooterPage() {
+  await requireAdminPage("footer");
   const [socialBlock, faqBlock, contactBlock, privacyBlock, termsBlock] = await Promise.all([
     db.contentBlock.findUnique({ where: { key: "footer_social" } }),
     db.contentBlock.findUnique({ where: { key: "faq_page" } }),

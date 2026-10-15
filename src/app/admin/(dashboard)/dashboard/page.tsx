@@ -1,3 +1,4 @@
+import { requireAdminPage } from "@/lib/admin-guard";
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { formatTaka, toNumber } from "@/lib/money";
@@ -12,6 +13,7 @@ function startOfDay(d: Date) {
 }
 
 export default async function AdminDashboardPage() {
+  await requireAdminPage("dashboard");
   const now = new Date();
   const todayStart = startOfDay(now);
   const yesterdayStart = new Date(todayStart.getTime() - 86400000);

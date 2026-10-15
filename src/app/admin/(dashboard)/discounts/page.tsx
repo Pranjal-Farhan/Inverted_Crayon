@@ -1,3 +1,4 @@
+import { requireAdminPage } from "@/lib/admin-guard";
 import { db } from "@/lib/db";
 import { toNumber } from "@/lib/money";
 import { couponStatus } from "@/lib/coupon-format";
@@ -8,6 +9,7 @@ import { DiscountManager, type CouponRow } from "@/components/admin/DiscountMana
 const MAX_USES_LISTED = 100;
 
 export default async function AdminDiscountsPage() {
+  await requireAdminPage("discounts");
   const [coupons, totals] = await Promise.all([
     db.discount.findMany({
       orderBy: { createdAt: "desc" },

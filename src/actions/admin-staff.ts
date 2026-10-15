@@ -4,12 +4,11 @@ import { revalidatePath } from "next/cache";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { getAdminSession } from "@/lib/session";
+import { requireAdminArea } from "@/lib/admin-guard";
 
+// Account management is admin-only — a staff login must never be able to create, promote or remove accounts.
 async function requireOwnAdmin() {
-  const session = await getAdminSession();
-  if (!session) throw new Error("Not authorized.");
-  return session;
+  return requireAdminArea("staff");
 }
 
 const schema = z.object({
@@ -43,7 +42,7 @@ export async function inviteStaff(input: z.infer<typeof schema>): Promise<StaffR
 
 export async function updateStaffRole(id: string, role: "ADMIN" | "STAFF") {
   const session = await requireOwnAdmin();
-  if (session.adminId === id && role !== "ADMIN") {
+  if (session.id === id && role !== "ADMIN") {
     throw new Error("You can't demote your own account.");
   }
   await db.adminUser.update({ where: { id }, data: { role } });
@@ -52,7 +51,7 @@ export async function updateStaffRole(id: string, role: "ADMIN" | "STAFF") {
 
 export async function removeStaff(id: string) {
   const session = await requireOwnAdmin();
-  if (session.adminId === id) throw new Error("You can't remove your own account.");
+  if (session.id === id) throw new Error("You can't remove your own account.");
 
   const remainingAdmins = await db.adminUser.count({ where: { role: "ADMIN", id: { not: id } } });
   const target = await db.adminUser.findUniqueOrThrow({ where: { id } });

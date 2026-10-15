@@ -1,3 +1,4 @@
+import { requireAdminPage } from "@/lib/admin-guard";
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { formatTaka, toNumber } from "@/lib/money";
@@ -64,6 +65,7 @@ function searchWhere(q: string): Prisma.CustomerWhereInput {
 }
 
 export default async function AdminCustomersPage({ searchParams }: Props) {
+  await requireAdminPage("customers");
   const { q: rawQ } = await searchParams;
   const q = rawQ?.trim();
 

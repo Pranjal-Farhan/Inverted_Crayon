@@ -1,3 +1,4 @@
+import { requireAdminPage } from "@/lib/admin-guard";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { formatTaka, toNumber } from "@/lib/money";
@@ -14,6 +15,7 @@ const SHIPPING_ZONE_LABEL: Record<string, string> = {
 };
 
 export default async function OrderReceiptPage({ params }: Props) {
+  await requireAdminPage("orders");
   const { id } = await params;
   const [order, store] = await Promise.all([
     db.order.findUnique({ where: { id }, include: { items: true } }),

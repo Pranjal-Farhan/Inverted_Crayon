@@ -7,7 +7,7 @@ import path from "node:path";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { Prisma } from "@/generated/prisma/client";
-import { getAdminSession } from "@/lib/session";
+import { requireAdminArea } from "@/lib/admin-guard";
 import { notifyPreorderShipDate } from "@/lib/notifications";
 import { uploadToImgBb } from "@/lib/imgbb";
 import { ensureMirrorCategories } from "@/actions/admin-categories";
@@ -31,9 +31,7 @@ const MAX_TOTAL_UPLOAD_BYTES = 50 * 1024 * 1024;
 const REJECTED_IMAGE_TYPES = new Set(["image/svg+xml"]);
 
 async function requireAdmin() {
-  const session = await getAdminSession();
-  if (!session) throw new Error("Not authorized.");
-  return session;
+  return requireAdminArea("products");
 }
 
 function randomToken(len: number, upper: boolean): string {

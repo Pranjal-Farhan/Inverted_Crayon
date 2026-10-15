@@ -1,7 +1,9 @@
+import { requireAdminPage } from "@/lib/admin-guard";
 import { db } from "@/lib/db";
 import { CategoryManager } from "@/components/admin/CategoryManager";
 
 export default async function AdminCategoriesPage() {
+  await requireAdminPage("categories");
   const categories = await db.category.findMany({
     orderBy: [{ gender: "asc" }, { position: "asc" }],
     include: { _count: { select: { products: true } } },

@@ -2,13 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
-import { getAdminSession } from "@/lib/session";
+import { requireAdminArea } from "@/lib/admin-guard";
 import { invalidateSettings } from "@/lib/invalidate";
 import type { ChatWidgetSettings, StoreInfo } from "@/lib/store-settings";
 
 async function requireAdmin() {
-  const session = await getAdminSession();
-  if (!session) throw new Error("Not authorized.");
+  return requireAdminArea("store");
 }
 
 export async function saveStoreInfo(info: StoreInfo) {

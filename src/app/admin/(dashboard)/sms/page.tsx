@@ -1,3 +1,4 @@
+import { requireAdminPage } from "@/lib/admin-guard";
 import { db } from "@/lib/db";
 import { Panel } from "@/components/admin/Panel";
 import { TEMPLATES, smsTypeFor } from "@/lib/message-templates";
@@ -10,6 +11,7 @@ const TYPE_LABEL: Record<string, string> = Object.fromEntries(
 type Props = { searchParams: Promise<{ type?: string; q?: string }> };
 
 export default async function AdminSmsPage({ searchParams }: Props) {
+  await requireAdminPage("sms");
   const { type, q } = await searchParams;
 
   const messages = await db.smsLog.findMany({

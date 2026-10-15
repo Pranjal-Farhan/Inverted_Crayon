@@ -2,12 +2,10 @@
 
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
-import { getAdminSession } from "@/lib/session";
+import { requireAdminArea } from "@/lib/admin-guard";
 
 async function requireAdmin() {
-  const session = await getAdminSession();
-  if (!session) throw new Error("Not authorized.");
-  return session;
+  return requireAdminArea("products");
 }
 
 export type ManufacturerLinkRow = { id: string; url: string; position: number; isCurrentVendor: boolean };

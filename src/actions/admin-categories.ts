@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { Prisma } from "@/generated/prisma/client";
-import { getAdminSession } from "@/lib/session";
+import { requireAdminArea } from "@/lib/admin-guard";
 import { slugify } from "@/lib/slugify";
 import { uploadToImgBb } from "@/lib/imgbb";
 import { invalidateCategories } from "@/lib/invalidate";
@@ -14,8 +14,7 @@ function isUniqueConstraintError(e: unknown): boolean {
 }
 
 async function requireAdmin() {
-  const session = await getAdminSession();
-  if (!session) throw new Error("Not authorized.");
+  return requireAdminArea("categories");
 }
 
 const GENDER_LABEL: Record<"MEN" | "WOMEN" | "UNISEX", string> = {

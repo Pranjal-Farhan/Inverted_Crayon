@@ -2,13 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
-import { getAdminSession } from "@/lib/session";
+import { requireAdminArea } from "@/lib/admin-guard";
 import { notifyBackInStock } from "@/lib/notifications";
 import { invalidateProduct } from "@/lib/invalidate";
 
 export async function setVariantStock(variantId: string, stockQty: number) {
-  const session = await getAdminSession();
-  if (!session) throw new Error("Not authorized.");
+  await requireAdminArea("products");
 
   const before = await db.variant.findUniqueOrThrow({ where: { id: variantId }, include: { product: true } });
   const nextQty = Math.max(stockQty, 0);

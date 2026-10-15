@@ -1,5 +1,6 @@
 "use server";
 
+import { homeFor } from "@/lib/admin-areas";
 import { redirect } from "next/navigation";
 import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
@@ -53,7 +54,7 @@ export async function adminLogin(
   }
 
   await setAdminSession({ adminId: user.id, email: user.email, name: user.name, role: user.role });
-  redirect("/admin/dashboard");
+  redirect(homeFor(user.role));
 }
 
 /**
@@ -88,7 +89,7 @@ export async function verifyAdminTwoFactor(
     }
     await clearAdmin2FAPending();
     await setAdminSession({ adminId: user.id, email: user.email, name: user.name, role: user.role });
-    redirect("/admin/dashboard");
+    redirect(homeFor(user.role));
   }
 
   // Not a valid TOTP code — check it against the stored (bcrypt-hashed) backup codes instead.
@@ -103,7 +104,7 @@ export async function verifyAdminTwoFactor(
       });
       await clearAdmin2FAPending();
       await setAdminSession({ adminId: user.id, email: user.email, name: user.name, role: user.role });
-      redirect("/admin/dashboard");
+      redirect(homeFor(user.role));
     }
   }
 

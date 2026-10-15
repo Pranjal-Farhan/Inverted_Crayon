@@ -1,3 +1,4 @@
+import { requireAdminPage } from "@/lib/admin-guard";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { toNumber } from "@/lib/money";
@@ -9,6 +10,7 @@ import { getShippingRates } from "@/lib/store-settings";
 type Props = { params: Promise<{ id: string }> };
 
 export default async function EditProductPage({ params }: Props) {
+  await requireAdminPage("products");
   const { id } = await params;
   const [product, categories, sizeGuideTemplateRows, couponOptions, rates] = await Promise.all([
     db.product.findUnique({

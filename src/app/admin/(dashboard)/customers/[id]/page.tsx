@@ -1,3 +1,4 @@
+import { requireAdminPage } from "@/lib/admin-guard";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
@@ -9,6 +10,7 @@ import { Avatar } from "@/components/ui/Avatar";
 type Props = { params: Promise<{ id: string }> };
 
 export default async function AdminCustomerDetailPage({ params }: Props) {
+  await requireAdminPage("customers");
   const { id } = await params;
   const customer = await db.customer.findUnique({
     where: { id },

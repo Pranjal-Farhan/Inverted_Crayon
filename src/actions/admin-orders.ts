@@ -2,14 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
-import { getAdminSession } from "@/lib/session";
+import { requireAdminArea } from "@/lib/admin-guard";
 import { notifyOrderDelivered, notifyOrderShipped, notifyOrderUpdated } from "@/lib/notifications";
 import { invalidateProduct } from "@/lib/invalidate";
 
 async function requireAdmin() {
-  const session = await getAdminSession();
-  if (!session) throw new Error("Not authorized.");
-  return session;
+  return requireAdminArea("orders");
 }
 
 export async function markOrderShipped(orderId: string, courier: string, trackingRef: string) {

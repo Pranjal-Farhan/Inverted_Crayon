@@ -1,3 +1,4 @@
+import { requireAdminPage } from "@/lib/admin-guard";
 import { db } from "@/lib/db";
 import { Panel } from "@/components/admin/Panel";
 import { TEMPLATES } from "@/lib/message-templates";
@@ -14,6 +15,7 @@ const BRAND_TYPES = TEMPLATES.filter((t) => t.channel === "EMAIL" && t.audience 
 type Props = { searchParams: Promise<{ type?: string; q?: string }> };
 
 export default async function AdminEmailsPage({ searchParams }: Props) {
+  await requireAdminPage("emails");
   const { type, q } = await searchParams;
 
   const emails = await db.emailLog.findMany({

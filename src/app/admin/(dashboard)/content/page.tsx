@@ -1,3 +1,4 @@
+import { requireAdminPage } from "@/lib/admin-guard";
 import { db } from "@/lib/db";
 import { ContentCmsView } from "@/components/admin/ContentCmsView";
 import { DEFAULT_HERO, type HeroData } from "@/lib/hero-defaults";
@@ -6,6 +7,7 @@ import { DEFAULT_GENDER_CARDS, type GenderCardsData } from "@/lib/gender-cards-d
 import { DEFAULT_MARQUEE, type MarqueeData } from "@/lib/marquee-defaults";
 
 export default async function AdminContentPage() {
+  await requireAdminPage("content");
   const [heroBlock, featuredBlock, menHeroBlock, womenHeroBlock, genderCardsBlock, marqueeBlock, products] =
     await Promise.all([
       db.contentBlock.findUnique({ where: { key: "home_hero" } }),

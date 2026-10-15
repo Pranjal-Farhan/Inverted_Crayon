@@ -1,3 +1,4 @@
+import { requireAdminPage } from "@/lib/admin-guard";
 import { db } from "@/lib/db";
 import { formatTaka, toNumber } from "@/lib/money";
 import { Kpi } from "@/components/admin/Kpi";
@@ -5,6 +6,7 @@ import { Panel } from "@/components/admin/Panel";
 import { StockOwnerForm, StockPurchaseForm } from "@/components/admin/FinanceForms";
 
 export default async function AdminFinancePage() {
+  await requireAdminPage("finance");
   const [owners, purchases, variants, paidOrders] = await Promise.all([
     db.stockOwner.findMany({ orderBy: { createdAt: "asc" } }),
     db.stockPurchase.findMany({

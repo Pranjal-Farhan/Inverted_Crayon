@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
-import { getAdminSession } from "@/lib/session";
+import { requireAdminArea } from "@/lib/admin-guard";
 import { invalidateContent } from "@/lib/invalidate";
 import type {
   FooterSocialData,
@@ -12,8 +12,7 @@ import type {
 } from "@/lib/footer-defaults";
 
 async function requireAdmin() {
-  const session = await getAdminSession();
-  if (!session) throw new Error("Not authorized.");
+  return requireAdminArea("footer");
 }
 
 // Footer.tsx and the FAQ/Contact/Privacy/Terms pages all read their block through

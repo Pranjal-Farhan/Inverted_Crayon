@@ -1,3 +1,4 @@
+import { homeFor } from "@/lib/admin-areas";
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { getSiteOrigin } from "@/lib/site-url";
@@ -58,7 +59,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ prov
       }
 
       await setAdminSession({ adminId: account.id, email: account.email, name: account.name, role: account.role });
-      return NextResponse.redirect(`${origin}/admin/dashboard`);
+      return NextResponse.redirect(`${origin}${homeFor(account.role)}`);
     }
 
     let customer =
