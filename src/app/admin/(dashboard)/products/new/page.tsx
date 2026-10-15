@@ -1,11 +1,13 @@
 import { db } from "@/lib/db";
 import { ProductEditorForm } from "@/components/admin/ProductEditorForm";
 import { parseSizeGuide, type SizeGuideTemplateOption } from "@/lib/size-guide";
+import { getProductLockedCouponOptions } from "@/lib/coupon-options";
 
 export default async function NewProductPage() {
-  const [categories, sizeGuideTemplateRows] = await Promise.all([
+  const [categories, sizeGuideTemplateRows, couponOptions] = await Promise.all([
     db.category.findMany({ orderBy: [{ gender: "asc" }, { position: "asc" }] }),
     db.sizeGuideTemplate.findMany({ orderBy: { name: "asc" } }),
+    getProductLockedCouponOptions(),
   ]);
   const sizeGuideTemplates: SizeGuideTemplateOption[] = sizeGuideTemplateRows.flatMap((row) => {
     const data = parseSizeGuide(row.data);
@@ -17,5 +19,13 @@ export default async function NewProductPage() {
   // edit pages via <Link> (soft nav, same route component) reuses the existing instance —
   // React only runs useState's initializer on first mount, so every field (title, tags,
   // variants, images) would keep showing whichever product was open first.
-  return <ProductEditorForm key="new" initial={null} categories={categories} sizeGuideTemplates={sizeGuideTemplates} />;
+  return (
+    <ProductEditorForm
+      key="new"
+      initial={null}
+      categories={categories}
+      sizeGuideTemplates={sizeGuideTemplates}
+      couponOptions={couponOptions}
+    />
+  );
 }

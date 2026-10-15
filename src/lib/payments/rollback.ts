@@ -1,6 +1,7 @@
 import "server-only";
 import { db } from "@/lib/db";
 import { invalidateProduct } from "@/lib/invalidate";
+import { releaseCouponForOrder } from "@/lib/coupon";
 
 /** Used when a gateway payment fails/cancels/errors after the order (and its stock hold) was already created. */
 export async function restockAndCancelOrder(orderId: string) {
@@ -16,9 +17,7 @@ export async function restockAndCancelOrder(orderId: string) {
         if (item.productId) restockedProductIds.add(item.productId);
       }
     }
-    if (order.discountCode) {
-      await tx.discount.updateMany({ where: { code: order.discountCode }, data: { usedCount: { decrement: 1 } } });
-    }
+    await releaseCouponForOrder(tx, order);
     await tx.order.update({ where: { id: orderId }, data: { status: "CANCELLED", paymentStatus: "FAILED" } });
   });
 

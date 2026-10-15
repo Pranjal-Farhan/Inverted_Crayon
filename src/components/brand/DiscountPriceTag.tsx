@@ -45,6 +45,49 @@ export function DiscountPriceTag({
   );
 }
 
+/**
+ * A delivery charge cut by a free-delivery coupon, in the same crayon language as DiscountPriceTag:
+ * the normal charge struck through in red crayon (when there was one to cut) beside a "FREE
+ * DELIVERY" label on the same rough crayon patch the discounted prices sit on.
+ */
+export function FreeDeliveryTag({
+  id,
+  shippingCost,
+  size = "md",
+}: {
+  /** Unique within the page — seeds the crayon texture filters, same convention as HandDrawnMark. */
+  id: string;
+  /** The charge that would have applied — struck through; 0 means there was nothing to cut. */
+  shippingCost: number;
+  size?: "sm" | "md" | "lg";
+}) {
+  const sizeClass = size === "lg" ? "text-xl" : size === "sm" ? "text-[13px]" : "text-[15px]";
+
+  return (
+    <span className="discount-tag relative inline-flex items-center gap-2.5">
+      {shippingCost > 0 && (
+        <span className={`relative inline-block text-muted-2 ${sizeClass}`}>
+          {formatTaka(shippingCost)}
+          <HandDrawnMark
+            id={`${id}-strike`}
+            kind="strike"
+            color="#ff4d4d"
+            duration={550}
+            stretch
+            className="pointer-events-none absolute -inset-x-[6%] inset-y-[15%] z-[2]"
+          />
+        </span>
+      )}
+      <span
+        className={`discount-tag-badge relative inline-flex items-center whitespace-nowrap font-sans font-bold uppercase text-ink ${sizeClass}`}
+      >
+        <CrayonPatch id={`${id}-patch`} className="absolute -inset-x-1.5 -inset-y-1 -z-10" />
+        <span className="relative px-0.5">Free delivery</span>
+      </span>
+    </span>
+  );
+}
+
 function CrayonPatch({ id, className }: { id: string; className?: string }) {
   let h = 0;
   for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;

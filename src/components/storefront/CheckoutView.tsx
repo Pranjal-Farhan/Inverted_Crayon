@@ -9,6 +9,8 @@ import { placeOrder, captureAbandonedCheckout } from "@/actions/checkout";
 import { usePromoValidation } from "@/lib/use-promo";
 import { formatTaka } from "@/lib/money";
 import { Button } from "@/components/ui/Button";
+import { CouponBox } from "@/components/storefront/CouponBox";
+import { DiscountPriceTag, FreeDeliveryTag } from "@/components/brand/DiscountPriceTag";
 import { resolveShippingCost, type ShippingZoneKey } from "@/lib/shipping";
 import type { PaymentGatewaySettings, ShippingRates } from "@/lib/store-settings";
 
@@ -86,11 +88,18 @@ export function CheckoutView({
   );
   const [preorderShipMode, setPreorderShipMode] = useState<"together" | "split">("together");
 
-  const { result: promoResult } = usePromoValidation(cart.promoCode, subtotal);
-  const freeShipping = promoResult?.ok && promoResult.type === "FREE_SHIPPING";
-  const discountAmount = promoResult?.ok ? promoResult.amount : 0;
-  const shippingCost = freeShipping ? 0 : resolveShippingCost(cart.lines, zone, rates);
+  // The one coupon check for this page: the box shows its outcome and the summary below prices the
+  // order from it. Only a coupon that's currently valid is ever applied or sent with the order.
+  const { result: promoResult, loading: promoLoading } = usePromoValidation(cart.promoCode, cart.lines);
+  const coupon = promoResult?.ok ? promoResult : null;
+  const freeShipping = coupon?.freeShipping ?? false;
+  const discountAmount = coupon?.itemDiscount ?? 0;
+  const regularShippingCost = resolveShippingCost(cart.lines, zone, rates);
+  const shippingCost = freeShipping ? 0 : regularShippingCost;
   const total = Math.max(subtotal - discountAmount + shippingCost, 0);
+  // What the order would cost with no coupon — the figure that gets crossed out when one applies.
+  const totalBeforeCoupon = subtotal + regularShippingCost;
+  const couponSaves = coupon != null && total < totalBeforeCoupon;
 
   const hasPreorder = cartHasPreorder(cart);
   const hasInStock = cartHasInStock(cart);
@@ -167,6 +176,10 @@ export function CheckoutView({
 
   function submit() {
     setError(null);
+    if (promoLoading) {
+      setError("Checking your coupon — give it a second, then place the order.");
+      return;
+    }
     if (!validate()) {
       setError("That didn't go through. Check the fields in red and try again.");
       return;
@@ -178,7 +191,7 @@ export function CheckoutView({
         shipping: { fullName, phone: shipPhone, line1, area, district, postcode, country },
         shippingZone: zone,
         paymentMethod,
-        promoCode: promoResult?.ok ? cart.promoCode : null,
+        promoCode: coupon ? cart.promoCode : null,
         preorderShipMode,
         lines: cart.lines.map((l) => ({ variantId: l.variantId, qty: l.qty })),
       });
@@ -347,21 +360,33 @@ export function CheckoutView({
             <span>{formatTaka(l.unitPrice * l.qty)}</span>
           </div>
         ))}
-        {promoResult?.ok && (
+        <CouponBox result={promoResult} loading={promoLoading} />
+        {coupon && discountAmount > 0 && (
           <div className="flex justify-between py-1.5 text-sm text-lime">
-            <span>Promo ({promoResult.code})</span>
-            <span>
-              {promoResult.type === "FREE_SHIPPING" ? "Free shipping" : `−${formatTaka(discountAmount)}`}
-            </span>
+            <span>Coupon · {coupon.code}</span>
+            <span>−{formatTaka(discountAmount)}</span>
           </div>
         )}
-        <div className="flex justify-between py-1.5 text-sm text-[#ddd]">
+        <div className="flex items-start justify-between gap-3 py-1.5 text-sm text-[#ddd]">
           <span>Shipping ({rates[zone].label})</span>
-          <span>{shippingCost === 0 ? "Free" : formatTaka(shippingCost)}</span>
+          {freeShipping ? (
+            <span className="text-right">
+              <FreeDeliveryTag id="checkout-shipping" shippingCost={regularShippingCost} size="sm" />
+              <span className="mt-1 block text-[12px] text-lime">Coupon · {coupon?.code}</span>
+            </span>
+          ) : (
+            <span>{shippingCost === 0 ? "Free" : formatTaka(shippingCost)}</span>
+          )}
         </div>
-        <div className="mt-2 flex justify-between border-t border-line pt-3">
+        <div className="mt-2 flex items-center justify-between border-t border-line pt-3">
           <span className="font-impact text-xl">Total</span>
-          <span className="price text-xl">{formatTaka(total)}</span>
+          <span className="price text-xl">
+            {couponSaves ? (
+              <DiscountPriceTag id="checkout-total" basePrice={totalBeforeCoupon} salePrice={total} size="lg" />
+            ) : (
+              formatTaka(total)
+            )}
+          </span>
         </div>
         {hasPreorder && (
           <p className="mt-2 border-t border-dashed border-line-2 pt-2 text-[13px] text-yellow">{PREORDER_NOTE}.</p>

@@ -63,7 +63,7 @@ Google/Facebook sign-in for **admin and staff accounts** only ever logs in to an
 - **Don't run `npx prisma db seed` against production** — it's a demo dataset with known test-account passwords (see the table above) and refuses to run when `NODE_ENV=production` unless you explicitly set `ALLOW_PRODUCTION_SEED=true` (and, for the admin account specifically, `ADMIN_EMAIL`/`ADMIN_PASSWORD` of your choosing). Run `npx prisma migrate deploy` to apply the schema instead, then create your real admin user by hand.
 - **Admin/customer login lock out after 5 failed attempts** for 15 minutes per account (`src/lib/login-lockout.ts`) — there's no rate limiting in front of the app otherwise (no WAF/CDN assumed), so this is the only brute-force guard.
 - **Security headers** (`X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, a permissive-by-default `Permissions-Policy`, and HSTS when served over HTTPS) are set for every response in `src/proxy.ts`. No CSP is set — add one if you need it, testing carefully since a wrong CSP silently breaks pages rather than erroring.
-- **Checkout is safe under concurrent load**: stock decrements and discount-code redemptions use guarded atomic updates inside the order transaction (not read-then-write), so two simultaneous checkouts for the last unit of stock (or the last use of a limited coupon) can't both succeed — one gets a clear "not enough stock" / "code fully redeemed" error instead of silently overselling.
+- **Checkout is safe under concurrent load**: stock decrements and coupon redemptions use guarded atomic updates inside the order transaction (not read-then-write), so two simultaneous checkouts for the last unit of stock (or the last use of a limited coupon) can't both succeed — one gets a clear "not enough stock" / "code fully redeemed" error instead of silently overselling.
 - **Product photo uploads use ImgBB** when `IMGBB_API_KEY` is configured (up to 20 images per product). The homepage logo and hero-carousel uploads under `/admin/content` use the same ImgBB integration. Existing Base64 or legacy local-file URLs remain readable, but new uploads are stored as CDN URLs.
 
 ## Project structure
@@ -72,7 +72,7 @@ Google/Facebook sign-in for **admin and staff accounts** only ever logs in to an
 prisma/schema.prisma          data model (§10 of the spec, extended)
 prisma/seed.ts                catalog + orders + accounts + journal posts seed
 src/app/(storefront)/         public site — home, PLP/PDP, cart, checkout, account, journal, legal
-src/app/admin/                admin app — dashboard, orders, products, inventory, CRM, journal, emails, settings
+src/app/admin/                admin app — dashboard, orders, products, CRM, journal, emails, settings
 src/actions/                  server actions (checkout, admin CRUD, auth, mail-triggering events)
 src/components/                brand, ui, layout, storefront, admin component libraries
 src/lib/                      domain logic — tag/pricing derivation, cart, sessions, settings, mail
@@ -82,7 +82,7 @@ src/lib/                      domain logic — tag/pricing derivation, cart, ses
 
 Both P1 (launch-critical) and P2 (fast-follow) from the spec's §13 checklist are implemented in full, including every item originally listed but not elaborated on in the page-by-page spec (journal/blog, abandoned-checkout + lifecycle emails, staff roles management):
 
-- **P1**: design system, storefront browse/PDP, cart → guest checkout → confirmation → track order, admin dashboard/orders/products/inventory/categories/settings (including Tax and Email-template tabs), all legal/utility pages.
+- **P1**: design system, storefront browse/PDP, cart → guest checkout → confirmation → track order, admin dashboard/orders/products/categories/settings (including Tax and Email-template tabs), all legal/utility pages.
 - **P2**: customer accounts (register/login/orders/returns/wishlist/back-in-stock — guest orders auto-claim on registration), drops/collections landing, lookbook, journal/blog, live search suggestions, a "recently viewed" rail, a swipeable multi-image PDP gallery, admin CRM/discounts/campaigns/content CMS/analytics/staff-roles CRUD, and the full lifecycle email set (order confirmed/shipped, back-in-stock, preorder ship-date changes, newsletter welcome, contact acknowledgement, abandoned-checkout reminders).
 
 ## Homepage CMS
@@ -156,7 +156,7 @@ Two editorial banners are admin-uploadable from `/admin/content`, no code deploy
 
 ## Auto-generated slug and SKU
 
-Neither field is manually typed by the admin, though both are kept — slug is the product's actual `/product/<slug>` URL (can't be dropped without breaking every product link), SKU is what Inventory search and Finance's variant picker key off of (dropping it would lose that, so it's generated instead). The **Slug** field under Status & SEO auto-fills from the title as it's typed, until the admin edits the slug directly — from then on (and always, when editing an already-saved product) it stops auto-syncing, so renaming a product later never silently changes a URL that might already be shared or indexed.
+Neither field is manually typed by the admin, though both are kept — slug is the product's actual `/product/<slug>` URL (can't be dropped without breaking every product link), SKU is what the products list and Finance's variant picker key off of (dropping it would lose that, so it's generated instead). The **Slug** field under Status & SEO auto-fills from the title as it's typed, until the admin edits the slug directly — from then on (and always, when editing an already-saved product) it stops auto-syncing, so renaming a product later never silently changes a URL that might already be shared or indexed.
 
 **SKU** isn't an input at all — the variant table shows it as plain text. For a brand-new (unsaved) variant row, a title/size/color-derived candidate (e.g. `CRIMSO-M-BLA-N1LD`) appears the instant the row exists, built from a per-row random-looking token that's assigned once and then stays fixed while the preview's human-readable parts keep tracking the title/size/color as they're edited. That token comes from `useId()` (React's SSR/hydration-stable id primitive) rather than `Math.random()`, since the form's first render happens once on the server and once again during client hydration — a value that differed between those two passes would trip a hydration mismatch.
 
@@ -185,7 +185,7 @@ A floating chat button (bottom-right, every storefront page) offers direct Whats
 
 ## Inventory finance
 
-`/admin/finance` tracks who actually paid for stock and what it cost, separately from the day-to-day stock-quantity edits on `/admin/inventory`:
+`/admin/finance` tracks who actually paid for stock and what it cost, separately from the day-to-day stock-quantity edits in the product editor:
 
 - **Stock owners** — the people/entities who fund inventory purchases.
 - **Stock purchases** — recording one (owner, product variant, quantity, unit cost, supplier, date) both logs the purchase and increments that variant's stock in the same transaction, so it's the accountable way stock goes up.

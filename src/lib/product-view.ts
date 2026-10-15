@@ -97,6 +97,22 @@ export function bestSalePrice(
   return candidates.length > 0 ? Math.min(...candidates) : null;
 }
 
+/**
+ * A cart line's authoritative unit price: the variant's own override (or the product's base
+ * price), marked down by whichever of an active Campaign / the product's direct discount is
+ * lower. The one rule checkout.ts and coupon pricing (src/lib/coupon.ts) both price a line by, so
+ * a coupon is always computed from exactly the number the order is charged.
+ */
+export function variantUnitPrice(
+  variant: Pick<Variant, "priceOverride">,
+  product: Pick<Product, "id" | "categoryId" | "discountType" | "discountValue" | "basePrice">,
+  campaigns: Campaign[],
+  now: Date = new Date(),
+): number {
+  const base = variant.priceOverride != null ? toNumber(variant.priceOverride) : toNumber(product.basePrice);
+  return bestSalePrice(product, base, campaigns, now) ?? base;
+}
+
 export function deriveProductDisplay(
   product: ProductWithRelations,
   campaigns: Campaign[],

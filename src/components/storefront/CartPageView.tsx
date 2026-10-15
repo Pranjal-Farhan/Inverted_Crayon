@@ -5,7 +5,6 @@ import { useCart } from "@/context/cart-context";
 import { Monogram } from "@/components/brand/Monogram";
 import { PlaceholderFrame } from "@/components/ui/PlaceholderFrame";
 import { Button } from "@/components/ui/Button";
-import { PromoCodeField } from "@/components/storefront/PromoCodeField";
 import { formatTaka } from "@/lib/money";
 import { pickAccent } from "@/lib/accent-color";
 import { preorderLineNote } from "@/lib/cart-types";
@@ -82,7 +81,6 @@ export function CartPageView() {
         {cart.lines.length > 0 && (
           <div className="summary h-fit border border-line bg-panel p-5">
             <h3 className="font-impact mb-3.5 text-xl tracking-[0.5px]">Summary</h3>
-            <PromoCodeField subtotal={subtotal} />
             <div className="flex justify-between py-1.5 text-sm text-[#ddd]">
               <span>Subtotal</span>
               <span className="price">{formatTaka(subtotal)}</span>
@@ -95,6 +93,7 @@ export function CartPageView() {
               <span className="font-impact text-xl">Total</span>
               <span className="price text-xl">{formatTaka(subtotal)}</span>
             </div>
+            <p className="mt-2 text-[12px] text-muted-2">Got a coupon? You can apply it at checkout.</p>
             <Button href="/checkout" prefetch={false} className="mt-4 w-full">
               Checkout
             </Button>

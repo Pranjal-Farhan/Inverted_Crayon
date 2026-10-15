@@ -68,7 +68,6 @@ export async function setVariantStock(variantId: string, stockQty: number) {
     }
   }
 
-  revalidatePath("/admin/inventory");
   revalidatePath("/admin/products");
   // Stock drives the sold-out/preorder badges on every public listing + the PDP itself.
   invalidateProduct({ id: before.productId, slug: before.product.slug });

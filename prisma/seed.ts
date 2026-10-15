@@ -304,7 +304,7 @@ async function main() {
   await db.discount.upsert({
     where: { code: "INVERT10" },
     update: {},
-    create: { code: "INVERT10", type: "PERCENT", value: 10, minSpend: 1500, usedCount: 142, active: true },
+    create: { code: "INVERT10", type: "PERCENT", value: 10, maxDiscountAmount: 500, minSpend: 1500, usedCount: 142, active: true },
   });
   await db.discount.upsert({
     where: { code: "FREESHIP" },

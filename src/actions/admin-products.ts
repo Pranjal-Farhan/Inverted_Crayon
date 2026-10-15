@@ -134,6 +134,9 @@ const productSchema = z.object({
   preorderShipDate: z.string().optional(),
   tagLimited: z.boolean().default(false),
   tagBestseller: z.boolean().default(false),
+  // Product-locked coupons valid on this product (see Discount.scope). Anything that isn't
+  // actually a product-locked coupon is ignored when saving — global coupons need no attaching.
+  couponIds: z.array(z.string()).default([]),
   variants: z.array(variantSchema).min(1),
   sizeGuide: z
     .object({
@@ -324,9 +327,10 @@ export async function saveProduct(input: ProductFormInput): Promise<ProductSaveR
             color: v.color,
             colorHex: v.colorHex,
             // stockQty deliberately omitted: this form loads stock at page-open time, and a
-            // customer purchase (or an inventory-page edit) between then and save would get
-            // silently overwritten by that stale value. Stock changes go through the Inventory
-            // page's setVariantStock instead; new variants still get their initial count below.
+            // customer purchase (or a stepper edit) between then and save would get silently
+            // overwritten by that stale value. Stock changes go through the editor's
+            // VariantStockStepper (setVariantStock) instead; new variants still get their
+            // initial count below.
             lowStockThreshold: v.lowStockThreshold,
             priceOverride: v.priceOverride ?? null,
             preorderAdvanceAmount: v.preorderAdvanceAmount ?? null,
@@ -367,6 +371,21 @@ export async function saveProduct(input: ProductFormInput): Promise<ProductSaveR
           });
         }
       }
+
+      // product-locked coupons: only PRODUCT-scope coupons are ever (dis)connected, so a coupon
+      // that's been switched to global and back keeps its attachments rather than losing them to
+      // an editor that couldn't show it.
+      const productLocked = await tx.discount.findMany({ where: { scope: "PRODUCT" }, select: { id: true } });
+      const wanted = new Set(data.couponIds);
+      await tx.product.update({
+        where: { id: productRecord.id },
+        data: {
+          coupons: {
+            connect: productLocked.filter((c) => wanted.has(c.id)).map((c) => ({ id: c.id })),
+            disconnect: productLocked.filter((c) => !wanted.has(c.id)).map((c) => ({ id: c.id })),
+          },
+        },
+      });
 
       return productRecord;
     }, { timeout: 15000 }));

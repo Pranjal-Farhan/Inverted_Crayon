@@ -19,12 +19,15 @@ const STATUS_TONE: Record<string, keyof typeof TONE> = {
   Active: "paid",
   Scheduled: "pend",
   Draft: "pend",
+  // Coupon states (Inactive falls through to the default "pend" tone, like Draft).
+  Expired: "ref",
+  "Used up": "ref",
 };
 
 export function StatusBadge({ status }: { status: string }) {
   const tone = STATUS_TONE[status] ?? "pend";
   // ADMIN_STATUS_LABEL only has entries for OrderStatus values — every other status this shared
-  // badge renders (discount/campaign/journal/product states) falls through to the raw text.
+  // badge renders (discount/coupon/campaign/journal/product states) falls through to the raw text.
   const label = ADMIN_STATUS_LABEL[status as keyof typeof ADMIN_STATUS_LABEL] ?? status;
   return (
     <span className={`font-label inline-block px-2.5 py-0.5 text-[12px] tracking-[0.8px] ${TONE[tone]}`}>

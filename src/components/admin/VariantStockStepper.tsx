@@ -1,11 +1,10 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { setVariantStock } from "@/actions/admin-inventory";
+import { setVariantStock } from "@/actions/admin-stock";
 
 /** Live stock editor for an already-saved variant — writes straight to the database per
- * click/edit via setVariantStock (the same action Inventory uses), instead of going through
- * the product form's own bulk save (which deliberately never touches stockQty for existing
+ * click/edit via setVariantStock, instead of going through the product form's own bulk save (which deliberately never touches stockQty for existing
  * variants, to avoid clobbering a live count with a stale page-load snapshot). */
 export function VariantStockStepper({ variantId, initialStock }: { variantId: string; initialStock: number }) {
   const [value, setValue] = useState(initialStock);

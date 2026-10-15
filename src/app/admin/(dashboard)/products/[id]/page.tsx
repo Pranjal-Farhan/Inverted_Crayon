@@ -3,12 +3,13 @@ import { db } from "@/lib/db";
 import { toNumber } from "@/lib/money";
 import { ProductEditorForm } from "@/components/admin/ProductEditorForm";
 import { parseSizeGuide, type SizeGuideTemplateOption } from "@/lib/size-guide";
+import { getProductLockedCouponOptions } from "@/lib/coupon-options";
 
 type Props = { params: Promise<{ id: string }> };
 
 export default async function EditProductPage({ params }: Props) {
   const { id } = await params;
-  const [product, categories, sizeGuideTemplateRows] = await Promise.all([
+  const [product, categories, sizeGuideTemplateRows, couponOptions] = await Promise.all([
     db.product.findUnique({
       where: { id },
       include: {
@@ -16,10 +17,12 @@ export default async function EditProductPage({ params }: Props) {
         tags: { include: { tag: true } },
         images: { orderBy: { position: "asc" } },
         manufacturerLinks: { orderBy: { position: "asc" } },
+        coupons: { select: { id: true } },
       },
     }),
     db.category.findMany({ orderBy: [{ gender: "asc" }, { position: "asc" }] }),
     db.sizeGuideTemplate.findMany({ orderBy: { name: "asc" } }),
+    getProductLockedCouponOptions(),
   ]);
   if (!product) notFound();
 
@@ -59,6 +62,7 @@ export default async function EditProductPage({ params }: Props) {
         preorderShipDate: preorderMeta?.shipDate ?? "",
         tagLimited: product.tags.some((t) => t.tag.type === "LIMITED"),
         tagBestseller: product.tags.some((t) => t.tag.type === "BESTSELLER"),
+        couponIds: product.coupons.map((c) => c.id),
         variants: product.variants.map((v) => ({
           id: v.id,
           sku: v.sku,
@@ -76,6 +80,7 @@ export default async function EditProductPage({ params }: Props) {
       }}
       categories={categories}
       sizeGuideTemplates={sizeGuideTemplates}
+      couponOptions={couponOptions}
     />
   );
 }

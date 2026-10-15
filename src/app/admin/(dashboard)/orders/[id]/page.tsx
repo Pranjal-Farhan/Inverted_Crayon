@@ -13,7 +13,11 @@ export default async function AdminOrderDetailPage({ params }: Props) {
   const { id } = await params;
   const order = await db.order.findUnique({
     where: { id },
-    include: { items: { include: { product: { select: { slug: true } } } }, customer: true },
+    include: {
+      items: { include: { product: { select: { slug: true } } } },
+      customer: true,
+      couponRedemption: { include: { discount: { select: { code: true, type: true } } } },
+    },
   });
   if (!order) notFound();
 
@@ -74,6 +78,21 @@ export default async function AdminOrderDetailPage({ params }: Props) {
             </table>
           </div>
           <div className="mt-3 border-t border-line pt-3">
+            {order.discountCode && (
+              <div className="mb-2 flex justify-between text-sm">
+                <span className="text-muted">
+                  Coupon ·{" "}
+                  <Link href="/admin/discounts" className="text-cyan hover:underline">
+                    {order.discountCode}
+                  </Link>
+                </span>
+                <span className="text-lime">
+                  {order.couponRedemption?.discount.type === "FREE_SHIPPING"
+                    ? `Free delivery (${formatTaka(toNumber(order.couponRedemption.amount))} waived)`
+                    : `−${formatTaka(toNumber(order.couponRedemption?.amount ?? order.discountAmount))}`}
+                </span>
+              </div>
+            )}
             <div className="flex justify-between text-paper">
               <span className="font-impact">Order total</span>
               <span className="font-impact">{formatTaka(toNumber(order.total))}</span>

@@ -2,14 +2,14 @@
 
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { Prisma } from "@/generated/prisma/client";
+import { Prisma, type Discount } from "@/generated/prisma/client";
 import { formatTaka, toNumber } from "@/lib/money";
 import { generateOrderNumber } from "@/lib/order-number";
-import { validateDiscountCode } from "@/lib/discount";
+import { claimCouponUse, evaluateCoupon, isFirstOrder } from "@/lib/coupon";
 import { getShippingRates } from "@/lib/store-settings";
 import { resolveShippingCost } from "@/lib/shipping";
 import { getCustomerSession } from "@/lib/session";
-import { bestSalePrice } from "@/lib/product-view";
+import { variantUnitPrice } from "@/lib/product-view";
 import { sendMail } from "@/lib/mail";
 import { sendOrderConfirmationSms } from "@/lib/sms";
 import { getSiteOrigin } from "@/lib/site-url";
@@ -81,6 +81,7 @@ export async function placeOrder(input: CheckoutInput): Promise<CheckoutResult> 
   let subtotal = 0;
   let hasPreorder = false;
   let preorderHoldback = 0; // sum of (unitPrice - advance) * qty across preorder lines — the only part that can become COD
+  const couponLines: { productId: string; lineTotal: number }[] = [];
   const orderItemsData: {
     productId: string;
     variantId: string;
@@ -105,11 +106,11 @@ export async function placeOrder(input: CheckoutInput): Promise<CheckoutResult> 
       return { ok: false, error: `Not enough stock for ${product.title} (${variant.size}/${variant.color}).` };
     }
 
-    const base = variant.priceOverride != null ? toNumber(variant.priceOverride) : toNumber(product.basePrice);
-    const unitPrice = bestSalePrice(product, base, campaigns, now) ?? base;
+    const unitPrice = variantUnitPrice(variant, product, campaigns, now);
 
     const lineTotal = Math.round(unitPrice * line.qty * 100) / 100;
     subtotal += lineTotal;
+    couponLines.push({ productId: product.id, lineTotal });
     hasPreorder = hasPreorder || isPreorder;
 
     // Clamp defensively — an advance can never exceed the unit price even if misconfigured.
@@ -137,24 +138,19 @@ export async function placeOrder(input: CheckoutInput): Promise<CheckoutResult> 
 
   let discountAmount = 0;
   let freeShipping = false;
-  let appliedCode: string | null = null;
-  let appliedUsageLimit: number | null = null;
+  let appliedCoupon: Discount | null = null;
   if (data.promoCode) {
-    let isFirstOrder = true;
-    if (session?.customerId) {
-      isFirstOrder = (await db.order.count({ where: { customerId: session.customerId } })) === 0;
-    } else {
-      // Guest checkout: no session to key off, so fall back to order history for this email —
-      // otherwise anyone can reuse a first-order-only code indefinitely by simply staying logged out.
-      isFirstOrder = (await db.order.count({ where: { email: data.email } })) === 0;
-    }
-    const result = await validateDiscountCode(data.promoCode, subtotal, isFirstOrder);
-    if (result.ok) {
-      discountAmount = result.amount;
-      freeShipping = result.discount.type === "FREE_SHIPPING";
-      appliedCode = result.discount.code;
-      appliedUsageLimit = result.discount.usageLimit;
-    }
+    // The customer saw this coupon's effect on the page before paying, so a coupon that no longer
+    // holds is an error to surface — never something to silently drop and charge a different total.
+    const evaluation = await evaluateCoupon({
+      code: data.promoCode,
+      lines: couponLines,
+      isFirstOrder: await isFirstOrder(session?.customerId, data.email),
+    });
+    if (!evaluation.ok) return { ok: false, error: evaluation.reason };
+    discountAmount = evaluation.itemDiscount;
+    freeShipping = evaluation.freeShipping;
+    appliedCoupon = evaluation.coupon;
   }
 
   // Per-product shipping override (admin-products.ts) — a cart mixing several such products ships
@@ -170,7 +166,8 @@ export async function placeOrder(input: CheckoutInput): Promise<CheckoutResult> 
         variant.product.deliveryChargeOutsideDhaka != null ? toNumber(variant.product.deliveryChargeOutsideDhaka) : null,
     };
   });
-  const shippingCost = freeShipping ? 0 : resolveShippingCost(deliveryOverrides, data.shippingZone, rates);
+  const regularShippingCost = resolveShippingCost(deliveryOverrides, data.shippingZone, rates);
+  const shippingCost = freeShipping ? 0 : regularShippingCost;
   const total = Math.max(Math.round((subtotal - discountAmount + shippingCost) * 100) / 100, 0);
 
   // advanceAmount is "how much was actually captured online" — for COD, that's always 0 (nothing
@@ -218,20 +215,10 @@ export async function placeOrder(input: CheckoutInput): Promise<CheckoutResult> 
           }
         }
 
-        // Same guarded-update pattern for usage-limited codes, so two concurrent redemptions of
-        // the last slot can't both slip through.
-        if (appliedCode) {
-          if (appliedUsageLimit != null) {
-            const updated = await tx.discount.updateMany({
-              where: { code: appliedCode, usedCount: { lt: appliedUsageLimit } },
-              data: { usedCount: { increment: 1 } },
-            });
-            if (updated.count === 0) {
-              throw new CheckoutConflictError("That promo code just reached its redemption limit. Remove it and try again.");
-            }
-          } else {
-            await tx.discount.update({ where: { code: appliedCode }, data: { usedCount: { increment: 1 } } });
-          }
+        // The coupon's shared usage budget — claimed with a guarded update so two checkouts racing
+        // for its last remaining use can't both win.
+        if (appliedCoupon && !(await claimCouponUse(tx, appliedCoupon))) {
+          throw new CheckoutConflictError("That coupon just ran out or was switched off. Remove it and try again.");
         }
 
         await tx.order.create({
@@ -260,7 +247,13 @@ export async function placeOrder(input: CheckoutInput): Promise<CheckoutResult> 
             shippingCountry: data.shipping.country,
             isPreorder: hasPreorder,
             preorderShipMode: hasPreorder ? data.preorderShipMode : null,
-            discountCode: appliedCode,
+            discountCode: appliedCoupon?.code ?? null,
+            // One ledger row per coupon order: the value of the benefit — what came off the items,
+            // or the delivery charge a free-delivery coupon waived (Order.discountAmount stays 0
+            // for those, the waiver is just a shippingCost of 0).
+            couponRedemption: appliedCoupon
+              ? { create: { discountId: appliedCoupon.id, amount: freeShipping ? regularShippingCost : discountAmount } }
+              : undefined,
             items: { create: orderItemsData },
           },
         });

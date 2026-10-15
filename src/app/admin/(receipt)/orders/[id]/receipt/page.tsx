@@ -127,10 +127,11 @@ export default async function OrderReceiptPage({ params }: Props) {
               <span className="text-ink/60">Subtotal</span>
               <span>{formatTaka(toNumber(order.subtotal))}</span>
             </div>
-            {toNumber(order.discountAmount) > 0 && (
+            {(toNumber(order.discountAmount) > 0 || order.discountCode) && (
               <div className="flex justify-between py-1">
                 <span className="text-ink/60">Coupon{order.discountCode ? ` · ${order.discountCode}` : ""}</span>
-                <span>-{formatTaka(toNumber(order.discountAmount))}</span>
+                {/* A free-delivery coupon takes nothing off the items — its effect is the shipping line below. */}
+                <span>{toNumber(order.discountAmount) > 0 ? `-${formatTaka(toNumber(order.discountAmount))}` : "Free delivery"}</span>
               </div>
             )}
             <div className="flex justify-between py-1">

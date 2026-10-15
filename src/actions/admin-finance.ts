@@ -71,7 +71,6 @@ export async function recordStockPurchase(
   ]);
 
   revalidatePath("/admin/finance");
-  revalidatePath("/admin/inventory");
   // A stock purchase increments stockQty, which can flip a sold-out/preorder badge.
   invalidateProduct({ id: variant.productId, slug: variant.product.slug });
   return { ok: true, error: "" };

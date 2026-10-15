@@ -75,6 +75,13 @@ enum DiscountType {
   FREE_SHIPPING
 }
 
+// Whether a coupon works on every product (GLOBAL) or only on products the admin explicitly
+// attaches it to in the product editor (PRODUCT) — see Discount.products.
+enum CouponScope {
+  GLOBAL
+  PRODUCT
+}
+
 // Separate from the coupon-code DiscountType above (which also has FIXED/FREE_SHIPPING, meant
 // for the cart-level Discount model) — this one is just the two shapes a per-product markdown
 // can take: a straight percent off, or a flat amount off.
@@ -136,6 +143,9 @@ model Product {
   wishlistedBy      WishlistItem[]
   stockPurchases    StockPurchase[]
   manufacturerLinks ManufacturerLink[]
+  // Product-locked coupons attached to this product (Discount.scope = PRODUCT). Global coupons
+  // never appear here — they apply everywhere without being attached.
+  coupons           Discount[]         @relation("CouponProducts")
 
   publishedAt DateTime?
   createdAt   DateTime  @default(now())
@@ -311,8 +321,9 @@ model Order {
   trackingRef     String?
   internalNotes   String?
 
-  items   OrderItem[]
-  returns ReturnRequest[]
+  items            OrderItem[]
+  returns          ReturnRequest[]
+  couponRedemption DiscountRedemption?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -368,20 +379,51 @@ model ReturnItem {
 
 // ---------- marketing ----------
 
+// A coupon code. type: PERCENT (value is a %), FIXED (value is a flat ৳ amount) or FREE_SHIPPING
+// (value unused). usageLimit is the global redemption budget across all customers — one customer
+// may redeem the same code repeatedly, only this shared counter ever runs out (usedCount, bumped
+// atomically at checkout with a guarded update, see redeemCoupon in src/lib/coupon.ts). startsAt/
+// endsAt both null = no time limit. One coupon per order, enforced by DiscountRedemption.orderId
+// being unique.
 model Discount {
-  id             String       @id @default(cuid())
-  code           String       @unique
-  type           DiscountType
-  value          Decimal      @default(0) @db.Decimal(10, 2)
-  minSpend       Decimal?     @db.Decimal(10, 2)
-  categoryId     String?
-  firstOrderOnly Boolean      @default(false)
-  usageLimit     Int?
-  usedCount      Int          @default(0)
-  startsAt       DateTime?
-  endsAt         DateTime?
-  active         Boolean      @default(true)
-  createdAt      DateTime     @default(now())
+  id                String               @id @default(cuid())
+  code              String               @unique
+  type              DiscountType
+  value             Decimal              @default(0) @db.Decimal(10, 2)
+  // Ceiling on what a PERCENT coupon can take off one order ("10% off, up to ৳500"). Null =
+  // uncapped. Meaningless for FIXED (the amount itself is the ceiling) and FREE_SHIPPING.
+  maxDiscountAmount Decimal?             @db.Decimal(10, 2)
+  minSpend          Decimal?             @db.Decimal(10, 2)
+  categoryId        String?
+  firstOrderOnly    Boolean              @default(false)
+  usageLimit        Int?
+  usedCount         Int                  @default(0)
+  startsAt          DateTime?
+  endsAt            DateTime?
+  active            Boolean              @default(true)
+  scope             CouponScope          @default(GLOBAL)
+  // Only consulted when scope is PRODUCT: the products this coupon is valid on. Managed from each
+  // product's editor ("Coupons" panel), not from the coupon form.
+  products          Product[]            @relation("CouponProducts")
+  redemptions       DiscountRedemption[]
+  createdAt         DateTime             @default(now())
+}
+
+// One row per order that used a coupon — the usage ledger the Discounts admin page reads (who,
+// which order, how much it saved). `amount` is the value of the benefit: the item discount for
+// PERCENT/FIXED, or the delivery charge waived for FREE_SHIPPING (Order.discountAmount stays 0
+// for those, since the waived shipping is just a shippingCost of 0). orderId is unique — a coupon
+// per order, never two.
+model DiscountRedemption {
+  id         String   @id @default(cuid())
+  discountId String
+  discount   Discount @relation(fields: [discountId], references: [id])
+  orderId    String   @unique
+  order      Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  amount     Decimal  @db.Decimal(10, 2)
+  createdAt  DateTime @default(now())
+
+  @@index([discountId, createdAt])
 }
 
 model Campaign {

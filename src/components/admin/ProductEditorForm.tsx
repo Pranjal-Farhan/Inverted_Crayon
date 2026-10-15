@@ -21,6 +21,8 @@ import { DEFAULT_SIZE_GUIDE_COLUMNS, type SizeGuideRow, type SizeGuideTemplateOp
 import { slugify } from "@/lib/slugify";
 import { detectSizingMode, sizesForMode, type SizingMode } from "@/lib/sizes";
 import { formatTaka } from "@/lib/money";
+import { COUPON_STATUS_LABEL } from "@/lib/coupon-format";
+import type { CouponOption } from "@/lib/coupon-options";
 
 type StagedImage = { file: File; previewUrl: string };
 type Branch = "MEN" | "WOMEN" | "UNISEX";
@@ -138,6 +140,7 @@ export function ProductEditorForm({
   initial,
   categories,
   sizeGuideTemplates = [],
+  couponOptions = [],
 }: {
   initial:
     | (ProductFormInput & {
@@ -148,6 +151,8 @@ export function ProductEditorForm({
     | null;
   categories: CategoryOption[];
   sizeGuideTemplates?: SizeGuideTemplateOption[];
+  /** Every product-locked coupon — the "Coupons" panel's checklist. */
+  couponOptions?: CouponOption[];
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -210,6 +215,7 @@ export function ProductEditorForm({
   const [preorderShipDate, setPreorderShipDate] = useState(initial?.preorderShipDate ?? "");
   const [tagLimited, setTagLimited] = useState(initial?.tagLimited ?? false);
   const [tagBestseller, setTagBestseller] = useState(initial?.tagBestseller ?? false);
+  const [couponIds, setCouponIds] = useState<string[]>(initial?.couponIds ?? []);
   // A saved product's mode is read straight off its own data (any "One Size" variant means
   // one-size); a brand-new product has no variants yet to read, so the admin picks explicitly.
   // The picker only matters before the first color exists — see its render guard below.
@@ -467,6 +473,7 @@ export function ProductEditorForm({
           preorderShipDate,
           tagLimited,
           tagBestseller,
+          couponIds,
           variants: variantsPayload,
           sizeGuide: sgRows.length > 0 ? { columns: sgColumns, rows: sgRows } : null,
         });
@@ -628,11 +635,7 @@ export function ProductEditorForm({
             Every color gets the full, permanent size set automatically — {sizingMode === "ONE_SIZE" ? "the single \"One Size\"" : "all 6 of S, M, L, XL, XXL, XXXL"} — there&apos;s no
             adding or removing individual sizes any more. Stock for an existing variant updates live with the +/−
             stepper (or edit the number directly) — it saves immediately, independent of the Save product button
-            below. The same count can also be managed in bulk from{" "}
-            <a href="/admin/inventory" className="text-cyan hover:underline">
-              Inventory
-            </a>
-            . <strong className="text-paper">Preorder ৳</strong> turns on preorder for this size once it sells out
+            below. <strong className="text-paper">Preorder ৳</strong> turns on preorder for this size once it sells out
             (blank = just sold out, no preorder offered; any value, including 0, enables it). The amount itself
             isn&apos;t shown or charged to the customer — they just see &quot;Preorder Now and Our Sales Agent Will
             Reach Out&quot; and our sales agent follows up directly.
@@ -924,6 +927,48 @@ export function ProductEditorForm({
             <Field label="Preorder ship date" className="mt-2.5">
               <input value={preorderShipDate} onChange={(e) => setPreorderShipDate(e.target.value)} placeholder="15 Oct" className={inputClass} />
             </Field>
+          )}
+        </Panel>
+
+        <Panel title="Coupons" className="mt-4.5">
+          <p className="mb-2.5 text-[12px] text-muted-2">
+            Tick the product-locked coupons customers can use on this product. Global coupons already work on every
+            product, so they aren&apos;t listed here.
+          </p>
+          {couponOptions.length === 0 ? (
+            <p className="text-[13px] text-muted-2">
+              No product-locked coupons yet — create one in{" "}
+              <a href="/admin/discounts" className="text-cyan hover:underline">
+                Discounts
+              </a>{" "}
+              and choose &ldquo;Product-locked&rdquo;.
+            </p>
+          ) : (
+            <div className="flex flex-col gap-1.5">
+              {couponOptions.map((c) => {
+                const checked = couponIds.includes(c.id);
+                return (
+                  <label
+                    key={c.id}
+                    className={`flex cursor-pointer items-center gap-3 border px-3 py-2 text-sm ${checked ? "border-lime" : "border-line-2"}`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={(e) =>
+                        setCouponIds((prev) => (e.target.checked ? [...prev, c.id] : prev.filter((id) => id !== c.id)))
+                      }
+                      className="accent-lime"
+                    />
+                    <span className="font-impact tracking-[0.5px]">{c.code}</span>
+                    <span className="text-muted">{c.benefit}</span>
+                    {c.status !== "ACTIVE" && (
+                      <span className="ml-auto text-[12px] text-yellow">{COUPON_STATUS_LABEL[c.status]}</span>
+                    )}
+                  </label>
+                );
+              })}
+            </div>
           )}
         </Panel>
 
