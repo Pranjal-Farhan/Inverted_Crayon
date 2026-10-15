@@ -146,6 +146,10 @@ From then on every email shows **SENT** or **FAILED** (with the mail server's re
 
 Text-message sending has been taken out of the app for now: no texts are sent or recorded, the `/admin/sms` page and the SMS tab in Templates are gone, and there are no SMS settings. The old `SmsLog` table and its rows are left untouched in the database, and the code is in git history (commit `ce02f89`) if SMS is wanted again.
 
+## Customers (admin)
+
+`/admin/customers` lists everyone who has ordered — **registered customers and guest buyers** (people who checked out without an account) — with their full personal details (name, email, every phone number, addresses, sign-in methods, notes) and their orders split into **current** (still in progress) and **past** (delivered, cancelled, refunded, returned), each with the items. Use the **Everyone / Registered customers / Guest buyers** tabs and the search box (name, email, phone, address, order number, product, amount or date). "Open full profile" gives the complete page for a person. A registered customer's orders placed while logged out (same email) are included and tagged "guest checkout".
+
 ## Order tracking — admin, account, and public
 
 Every order gets a unique number at checkout (`generateOrderNumber()`, retried on the rare collision) and is visible from three places:
