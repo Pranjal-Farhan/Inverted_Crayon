@@ -33,18 +33,22 @@ export async function notifyOrderPlaced(orderNumber: string) {
   if (!order) return;
   const vars = orderVars(order, ctx);
 
-  await sendTemplatedEmail({ key: "ORDER_CONFIRMED", to: order.email, vars, relatedOrderId: order.number });
-  await sendTemplatedEmail({
-    key: order.isPreorder ? "ADMIN_NEW_PREORDER" : "ADMIN_NEW_ORDER",
-    vars,
-    relatedOrderId: order.number,
-  });
-  await sendTemplatedSms({
-    key: `SMS_${classifyOrderSmsType(order)}` as Extract<TemplateKey, `SMS_${string}`>,
-    to: order.phone,
-    vars,
-    relatedOrderId: order.number,
-  });
+  // Independent of each other, so sent together — with a real mail server each send is a network
+  // round trip, and the customer is waiting on the checkout page for all of them.
+  await Promise.all([
+    sendTemplatedEmail({ key: "ORDER_CONFIRMED", to: order.email, vars, relatedOrderId: order.number }),
+    sendTemplatedEmail({
+      key: order.isPreorder ? "ADMIN_NEW_PREORDER" : "ADMIN_NEW_ORDER",
+      vars,
+      relatedOrderId: order.number,
+    }),
+    sendTemplatedSms({
+      key: `SMS_${classifyOrderSmsType(order)}` as Extract<TemplateKey, `SMS_${string}`>,
+      to: order.phone,
+      vars,
+      relatedOrderId: order.number,
+    }),
+  ]);
 }
 
 /** An admin marked the order as sent for delivery: tell the customer (email + SMS) and the brand. */
@@ -53,18 +57,20 @@ export async function notifyOrderShipped(orderId: string, actor: AdminActor) {
   if (!order) return;
   const vars = orderVars(order, ctx);
 
-  await sendTemplatedEmail({ key: "ORDER_SHIPPED", to: order.email, vars, relatedOrderId: order.number });
-  await sendTemplatedSms({ key: "SMS_ORDER_SHIPPED", to: order.phone, vars, relatedOrderId: order.number });
-  await sendTemplatedEmail({
-    key: "ADMIN_ORDER_UPDATE",
-    vars: {
-      ...vars,
-      update: `Sent for delivery via ${order.trackingCourier ?? "courier"}, tracking ${order.trackingRef ?? "—"}`,
-      updatedBy: actorLabel(actor),
-      updatedAt: formatDhaka(new Date()),
-    },
-    relatedOrderId: order.number,
-  });
+  await Promise.all([
+    sendTemplatedEmail({ key: "ORDER_SHIPPED", to: order.email, vars, relatedOrderId: order.number }),
+    sendTemplatedSms({ key: "SMS_ORDER_SHIPPED", to: order.phone, vars, relatedOrderId: order.number }),
+    sendTemplatedEmail({
+      key: "ADMIN_ORDER_UPDATE",
+      vars: {
+        ...vars,
+        update: `Sent for delivery via ${order.trackingCourier ?? "courier"}, tracking ${order.trackingRef ?? "—"}`,
+        updatedBy: actorLabel(actor),
+        updatedAt: formatDhaka(new Date()),
+      },
+      relatedOrderId: order.number,
+    }),
+  ]);
 }
 
 /** An admin marked the order delivered — the brand hears about it (the customer isn't messaged). */

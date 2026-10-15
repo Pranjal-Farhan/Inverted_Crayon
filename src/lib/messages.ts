@@ -109,6 +109,8 @@ export async function sendTemplatedEmail({
       body: renderTemplate(config.body, allVars),
       type: emailTypeFor(key) as $Enums.EmailType,
       relatedOrderId,
+      // A customer who replies to an order email should reach the brand's official mailbox.
+      replyToStore: def.audience === "CUSTOMER",
     });
   } catch (e) {
     console.error(`[messages] sending ${key} failed`, e);

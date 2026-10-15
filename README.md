@@ -11,7 +11,7 @@ Streetwear storefront + admin, built from the [Build Specification v1.0](.) — 
 - **Styling**: Tailwind CSS v4, design tokens in `src/app/globals.css` matching Build Spec §02–§04
 - **Auth**: Signed JWT session cookies (`jose`) — separate admin and customer sessions. Email/password always works; Google and Facebook sign-in work too once you add OAuth credentials (see below) — until then the buttons bounce back with a clear message instead of erroring. Admin/staff accounts can additionally turn on TOTP two-factor authentication (Google Authenticator-compatible) from `/admin/settings` → Security.
 - **Payments**: **cash on delivery is the only payment method**, in every shipping zone and for every order including preorders (nothing is captured online for a preorder either — see "Preorders" below). There are no payment settings. The bKash/SSLCommerz integration code is still in the repo (`src/lib/payments/*`) but unreachable — checkout never offers it and `placeOrder()` rejects it.
-- **Emails & SMS**: Every "send" always writes to an outbox first (`EmailLog` at `/admin/emails`, `SmsLog` at `/admin/sms`); add a Resend key and/or SSL Wireless credentials (see below) and it also actually sends. What each message says is editable at `/admin/templates`. See "Emails & SMS" below and `src/lib/notifications.ts`.
+- **Emails & SMS**: Every "send" always writes to an outbox first (`EmailLog` at `/admin/emails`, `SmsLog` at `/admin/sms`); connect your official mailbox (SMTP) or Resend for email and/or SSL Wireless for SMS (see "Email setup" and the table below) and it also actually sends. What each message says is editable at `/admin/templates`. See "Emails & SMS" below and `src/lib/notifications.ts`.
 - **Image hosting**: Product photos, the CMS logo, and hero images upload to ImgBB when `IMGBB_API_KEY` is set. The database stores the returned CDN URL instead of Base64 or local files.
 
 ## Getting started
@@ -48,7 +48,8 @@ Everything below is fully wired in code and falls back to a safe mock when its e
 | Facebook sign-in | `FACEBOOK_CLIENT_ID`, `FACEBOOK_CLIENT_SECRET` | Facebook Developers → your app's Facebook Login product. Valid OAuth redirect URI: `<your-site>/api/auth/facebook/callback` |
 | bKash payments | `BKASH_APP_KEY`, `BKASH_APP_SECRET`, `BKASH_USERNAME`, `BKASH_PASSWORD`, optional `BKASH_BASE_URL` | bKash merchant/PGW onboarding. Defaults to bKash's sandbox host |
 | Card / mobile banking | `SSLCOMMERZ_STORE_ID`, `SSLCOMMERZ_STORE_PASSWORD`, optional `SSLCOMMERZ_SANDBOX=false` for production | SSLCommerz merchant account. Sandbox credentials work against the sandbox host by default |
-| Real email delivery | `RESEND_API_KEY`, `EMAIL_FROM` | resend.com — `EMAIL_FROM` must be a verified sender/domain on that account |
+| Real email delivery (your own mailbox) | `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`, optional `SMTP_PORT` (default 465), `SMTP_SECURE`, `EMAIL_FROM` | Your mailbox's SMTP details — for Gmail, `smtp.gmail.com` and an app password. See "Email setup" below |
+| Real email delivery (Resend) | `RESEND_API_KEY`, `EMAIL_FROM` | resend.com — needs a verified sending **domain**; can't send from a `@gmail.com` address. Ignored if SMTP is set |
 | Real SMS delivery | `SSLWIRELESS_SMS_API_TOKEN`, `SSLWIRELESS_SMS_SID`, optional `SSLWIRELESS_SMS_BASE_URL` | SSL Wireless SMS Plus — `SSLWIRELESS_SMS_SID` is your approved Sender ID |
 | Image hosting | `IMGBB_API_KEY` | imgbb.com — create an API key in your account settings |
 | Payment-gateway callback URLs | `SITE_URL` (e.g. `https://yourstore.com`) | Recommended in production so callback URLs are stable and correct behind any proxy; without it the app derives the origin from request headers |
@@ -106,6 +107,30 @@ No advance payment is ever shown to or charged against the customer — the **Pr
 
 Delivery cost is set on each product, in its editor: **Delivery charge ৳ (Inside/Outside Dhaka)** — the real cost to ship an item genuinely varies product to product. A box left blank uses the standard rate (৳60 inside Dhaka, ৳120 outside; shown as the placeholder in the box). There is no shipping tab in Settings. When a cart mixes several products with their own charges, the highest applies (they ship together as one shipment); `resolveShippingCost()` (`src/lib/shipping.ts`) is the one place both the checkout page and the server's actual charge compute this from, so the number shown always matches what's billed.
 
+## Email setup (sending from your official mailbox)
+
+The site sends from, and your team's notifications go to, your official mailbox. Two things are involved, and they are separate:
+
+1. **Where notifications and replies go** — the **email** in `/admin/settings` → Store. Set it to the official address.
+2. **Which account sends the mail** — connected with environment variables on the server (never stored in the database).
+
+**Using a Gmail / Google Workspace address (recommended to start):**
+
+1. On the official Google account, turn on **2-Step Verification** (Google Account → Security).
+2. Create an **app password**: Google Account → Security → 2-Step Verification → **App passwords** (or open myaccount.google.com/apppasswords). Name it "Inverted Crayon site" and copy the 16-character password. Use this — **not** the account's normal password.
+3. In your hosting (Vercel → Project → Settings → Environment Variables) add:
+   - `SMTP_HOST` = `smtp.gmail.com`
+   - `SMTP_PORT` = `465`
+   - `SMTP_USER` = the official Gmail address
+   - `SMTP_PASS` = the app password
+   - optionally `EMAIL_FROM` = `Inverted Crayon <the official address>` (without it, the mail goes out as the store's name from `SMTP_USER`)
+4. **Redeploy** (environment changes only apply to a new deployment).
+5. Open `/admin/emails`: the **Email delivery** panel should say **LIVE** with the sender. Use **Send test email** to send one to yourself — if something is wrong (a wrong password, an unreachable host) it says exactly what.
+
+From then on every email shows **SENT** or **FAILED** (with the mail server's reason) in the outbox, and customers' replies to order emails land in the official mailbox. An order is never held up or lost because mail failed — the failure is just recorded. Gmail allows roughly 500 recipients a day (about 2,000 on Workspace), plenty for a small store; the messages also appear in the mailbox's **Sent** folder.
+
+**Using a domain mailbox** (e.g. `hello@yourdomain.com` on cPanel, Zoho, Outlook…): the same variables, with that provider's SMTP host/port/username/password. **Resend** is an alternative if you'd rather use an API service, but it needs a verified domain and cannot send from a `@gmail.com` address.
+
 ## Order tracking — admin, account, and public
 
 Every order gets a unique number at checkout (`generateOrderNumber()`, retried on the rare collision) and is visible from three places:
@@ -118,7 +143,7 @@ Every order gets a unique number at checkout (`generateOrderNumber()`, retried o
 
 ## Emails & SMS
 
-Every message the site sends is one entry in `src/lib/message-templates.ts`, sent through `src/lib/messages.ts`; *when* each goes out is defined in one file, `src/lib/notifications.ts`. Messages are mocked by default (every "send" lands in the `/admin/emails` or `/admin/sms` outbox) and switch to real delivery once `RESEND_API_KEY` + `EMAIL_FROM` and/or `SSLWIRELESS_SMS_API_TOKEN` + `SSLWIRELESS_SMS_SID` are set (see above).
+Every message the site sends is one entry in `src/lib/message-templates.ts`, sent through `src/lib/messages.ts`; *when* each goes out is defined in one file, `src/lib/notifications.ts`. Messages are mocked by default (every "send" lands in the `/admin/emails` or `/admin/sms` outbox) and switch to real delivery once an email provider (SMTP or Resend) and/or `SSLWIRELESS_SMS_API_TOKEN` + `SSLWIRELESS_SMS_SID` are set (see above).
 
 **To customers — email:** order confirmed, order shipped, back in stock, pre-order ship date changed, newsletter welcome, contact-form acknowledgement.
 **To customers — SMS:** order confirmation (cash on delivery / paid), pre-order requested, account registration, order shipped. The order texts go to the "Phone (delivery SMS)" number from checkout; the registration text goes to the phone given at sign-up (a phone number is required when registering with email — Google/Facebook sign-ups have no phone, so no SMS).

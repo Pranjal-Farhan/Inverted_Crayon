@@ -10,7 +10,7 @@ Written for a reader who knows web development but has never seen this repo. Eve
 
 A full streetwear e-commerce site — storefront + admin panel — for a brand called **Inverted Crayon**. One Next.js app, one Postgres database, no microservices, no separate API layer. Customers browse, buy, track orders, wishlist, and get emailed. Admins manage catalog, inventory, orders, marketing, and site content, all from `/admin`.
 
-Payments (bKash, card via SSLCommerz), email (Resend), and social login (Google, Facebook) are all **wired for real** but gracefully fall back to safe mocks when their credentials aren't configured — see §14 and §21. This is the single most important architectural idea running through the whole codebase, so it gets called out early: **every third-party integration is built to its real shape first, with a mock fallback, never the other way around.** Nothing here is a stub that merely *looks* real; the bKash/SSLCommerz/Resend/OAuth code paths are the actual integration code a production deploy would use.
+Payments (bKash, card via SSLCommerz), email (SMTP or Resend), and social login (Google, Facebook) are all **wired for real** but gracefully fall back to safe mocks when their credentials aren't configured — see §14 and §21. This is the single most important architectural idea running through the whole codebase, so it gets called out early: **every third-party integration is built to its real shape first, with a mock fallback, never the other way around.** Nothing here is a stub that merely *looks* real; the bKash/SSLCommerz/Resend/OAuth code paths are the actual integration code a production deploy would use.
 
 ---
 
@@ -147,7 +147,7 @@ src/
     totp.ts                     RFC 6238 TOTP (Google Authenticator-compatible 2FA) — hand-rolled, no dependency
     oauth/                      google.ts, facebook.ts — provider-specific OAuth code
     payments/                   bkash.ts, sslcommerz.ts, rollback.ts
-    email-provider.ts           Resend integration
+    email-provider.ts           real email delivery: SMTP (the official mailbox, via nodemailer) or Resend
     sms-provider.ts             SSL Wireless SMS Plus integration
     site-url.ts                 resolves the app's own origin for callback URLs
     hero-defaults.ts            homepage CMS default content + types
@@ -598,7 +598,7 @@ A normal click on a row opens its link in a new tab (`target="_blank"`) — via 
 
 ### 10.14 Emails (`/admin/emails`)
 
-A read-only view of the `EmailLog` table — the outbox. Every email the app has ever "sent," whether or not a real provider delivered it.
+The outbox (`EmailLog`) — every email the app has ever "sent," with a **Delivery** column: **SENT**, **FAILED** (with the mail server's reason) or **NOT SENT** (recorded only, no provider connected). At the top, an **Email delivery** panel shows whether a provider is connected, who mail is sent as and where replies/notifications go, and — once connected — a **Send test email** form (`sendTestEmail` in `admin-email.ts`) that sends one real message straight through the provider and reports the exact result or error (wrong app password, unreachable host…); test sends deliberately don't go through the outbox. `AdminArea` `emails` (admin only).
 
 ### 10.15 SMS (`/admin/sms`)
 
@@ -672,7 +672,7 @@ Every email and SMS is one entry in a catalog (`src/lib/message-templates.ts`): 
 
 1. **`notifications.ts`** is the single place that decides *when* something is sent — each `notify*()` function is called from the action/route where the event happens (`checkout.ts`, the two payment callbacks, `admin-orders.ts`, `contact.ts`, `back-in-stock.ts`, `customer-auth.ts`, `customer-orders.ts`, the OAuth callback, `admin-auth.ts`, …) and sends everything that event triggers.
 2. **`messages.ts`** (`sendTemplatedEmail` / `sendTemplatedSms`) loads the admin's overrides from the `message_templates` `StoreSetting` (falling back to the catalog default, and to the old `email_templates` on/off flags for anything not yet re-saved), skips the message if its switch is off, fills in the `{placeholders}`, picks the recipient (the customer, or the store's official address — `getStoreInfo().email`, Settings → Store), and hands it on. It never throws: a failed message must not break the order, signup or admin action that triggered it.
-3. **`mail.ts` / `sms.ts`** (`sendMail` / `sendSms`) are the low-level outboxes. They always, unconditionally, write an `EmailLog` / `SmsLog` row first — visible at `/admin/emails` and `/admin/sms`, and the ground truth for "did this fire" whether or not real delivery is configured. If `emailProviderConfigured()` (`src/lib/email-provider.ts` — `RESEND_API_KEY` + `EMAIL_FROM`) / `smsProviderConfigured()` (`src/lib/sms-provider.ts` — `SSLWIRELESS_SMS_API_TOKEN` + `SSLWIRELESS_SMS_SID`) is true they *also* really send (Resend REST / SSL Wireless SMS Plus); a provider failure is logged, never thrown.
+3. **`mail.ts` / `sms.ts`** (`sendMail` / `sendSms`) are the low-level outboxes. They always, unconditionally, write an `EmailLog` / `SmsLog` row first — visible at `/admin/emails` and `/admin/sms`, and the ground truth for "did this fire" whether or not real delivery is configured. If `emailProviderConfigured()` (`src/lib/email-provider.ts` — SMTP via `SMTP_HOST`/`SMTP_USER`/`SMTP_PASS`, else Resend via `RESEND_API_KEY` + `EMAIL_FROM`) / `smsProviderConfigured()` (`src/lib/sms-provider.ts` — `SSLWIRELESS_SMS_API_TOKEN` + `SSLWIRELESS_SMS_SID`) is true they *also* really send; a provider failure never throws into the order/signup/admin action that triggered it. For email the outcome is recorded on the outbox row (`EmailLog.delivery`: `LOGGED` = no provider connected, `SENT`, or `FAILED` with the provider's own error in `deliveryError`). Customer-facing emails carry `Reply-To: <the store email>`, so a customer's reply reaches the official mailbox.
 
 Message bodies are edited at `/admin/templates` (§10.16); dates inside messages are formatted in Asia/Dhaka. `message-vars.ts` builds the order placeholders, including `{receipt}` — an itemised plain-text receipt (items, subtotal, discount/coupon, shipping, total, payment).
 
@@ -811,7 +811,8 @@ Every non-trivial claim in this document — the stock-race guard actually preve
 | `FACEBOOK_CLIENT_ID`, `FACEBOOK_CLIENT_SECRET` | No | Facebook OAuth |
 | `BKASH_APP_KEY`, `BKASH_APP_SECRET`, `BKASH_USERNAME`, `BKASH_PASSWORD`, `BKASH_BASE_URL` | No | Real bKash payments (base URL defaults to bKash's sandbox) |
 | `SSLCOMMERZ_STORE_ID`, `SSLCOMMERZ_STORE_PASSWORD`, `SSLCOMMERZ_SANDBOX` | No | Real card/mobile-banking payments |
-| `RESEND_API_KEY`, `EMAIL_FROM` | No | Real email delivery — customer emails and the notifications to the brand |
+| `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`, `SMTP_PORT` (default 465), `SMTP_SECURE`, `EMAIL_FROM` | No | Real email delivery through the brand's own mailbox (Gmail: `smtp.gmail.com` + an app password). Takes precedence over Resend; `EMAIL_FROM` is optional here (defaults to the store name on `SMTP_USER`) |
+| `RESEND_API_KEY`, `EMAIL_FROM` | No | Real email delivery through Resend — needs a verified sending domain, can't send from `@gmail.com` |
 | `SSLWIRELESS_SMS_API_TOKEN`, `SSLWIRELESS_SMS_SID`, `SSLWIRELESS_SMS_BASE_URL` | No | Real SMS delivery (base URL defaults to SSL Wireless's SMS Plus host) |
 | `IMGBB_API_KEY` | Yes, for image uploads | All product/site image uploads go through ImgBB (§12) — without it, `uploadToImgBb()` throws and the upload action returns an error |
 

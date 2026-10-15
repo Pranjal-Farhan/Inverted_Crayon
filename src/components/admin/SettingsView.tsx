@@ -113,8 +113,9 @@ export function SettingsView({
               />
               {key === "email" && (
                 <p className="mt-1 text-[12px] text-muted-2">
-                  Also the address your team&apos;s notifications go to — new orders, contact messages, return and
-                  cancellation requests and so on. Edit what they say under Templates.
+                  Use your official mailbox. It&apos;s where your team&apos;s notifications go — new orders, contact
+                  messages, return and cancellation requests and so on (edit what they say under Templates) — and
+                  where customers&apos; replies to the site&apos;s emails land. Sending is set up on the Emails page.
                 </p>
               )}
             </div>

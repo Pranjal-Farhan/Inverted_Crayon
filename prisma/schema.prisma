@@ -608,14 +608,24 @@ enum EmailType {
   ADMIN_NOTIFY_ME
 }
 
+// What became of an email once the outbox row was written: LOGGED = recorded only (no provider is
+// connected), SENT = handed to the provider, FAILED = the provider refused it (see deliveryError).
+enum EmailDelivery {
+  LOGGED
+  SENT
+  FAILED
+}
+
 model EmailLog {
-  id             String    @id @default(cuid())
+  id             String        @id @default(cuid())
   to             String
   subject        String
   body           String
   type           EmailType
   relatedOrderId String?
-  sentAt         DateTime  @default(now())
+  sentAt         DateTime      @default(now())
+  delivery       EmailDelivery @default(LOGGED)
+  deliveryError  String?
 
   @@index([to])
   @@index([type])
