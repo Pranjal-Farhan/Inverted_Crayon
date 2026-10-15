@@ -312,7 +312,7 @@ export async function placeOrder(input: CheckoutInput): Promise<CheckoutResult> 
     }
   }
 
-  // The customer's confirmation email + SMS, and the brand's new-order/preorder email (with the
+  // The customer's confirmation email, and the brand's new-order/preorder email (with the
   // receipt). Best-effort: none of it can fail the order that was just placed.
   await notifyOrderPlaced(orderNumber);
 

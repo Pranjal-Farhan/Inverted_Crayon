@@ -2,7 +2,6 @@ import "server-only";
 import { db } from "@/lib/db";
 import { sendMail } from "@/lib/mail";
 import type { EmailAttachment } from "@/lib/email-provider";
-import { sendSms } from "@/lib/sms";
 import { getSiteOrigin, PRODUCTION_SITE_URL } from "@/lib/site-url";
 import { getStoreInfo, type StoreInfo } from "@/lib/store-settings";
 import {
@@ -10,7 +9,6 @@ import {
   TEMPLATE_BY_KEY,
   emailTypeFor,
   renderTemplate,
-  smsTypeFor,
   type TemplateKey,
 } from "@/lib/message-templates";
 import type { $Enums } from "@/generated/prisma/client";
@@ -19,7 +17,7 @@ import type { $Enums } from "@/generated/prisma/client";
  * How message templates are stored and sent. Admin edits live in the `message_templates`
  * StoreSetting as `{ [key]: { body?, enabled? } }` — only what was changed; anything absent falls
  * back to the default in the catalog, so a template the admin never touched keeps following the
- * code's wording. Sending never throws: a failed email or SMS must not break the order, signup or
+ * code's wording. Sending never throws: a failed email must not break the order, signup or
  * admin action that triggered it (the failure is logged, and the outbox row is written first).
  */
 
@@ -28,9 +26,6 @@ const LEGACY_EMAIL_TEMPLATES_SETTING = "email_templates";
 
 export type TemplateConfig = { body: string; enabled: boolean };
 type StoredConfig = { body?: string; enabled?: boolean };
-
-type EmailTemplateKey = Exclude<TemplateKey, `SMS_${string}`>;
-type SmsTemplateKey = Extract<TemplateKey, `SMS_${string}`>;
 
 export async function getTemplateConfigs(): Promise<Record<TemplateKey, TemplateConfig>> {
   const [row, legacyRow] = await Promise.all([
@@ -88,7 +83,7 @@ export async function sendTemplatedEmail({
   relatedOrderId,
   attachments,
 }: {
-  key: EmailTemplateKey;
+  key: TemplateKey;
   to?: string;
   vars: Record<string, string>;
   relatedOrderId?: string;
@@ -116,36 +111,6 @@ export async function sendTemplatedEmail({
       // A customer who replies to an order email should reach the brand's official mailbox.
       replyToStore: def.audience === "CUSTOMER",
       attachments,
-    });
-  } catch (e) {
-    console.error(`[messages] sending ${key} failed`, e);
-    return null;
-  }
-}
-
-/** The SMS counterpart: renders the template and sends it to the customer's phone. */
-export async function sendTemplatedSms({
-  key,
-  to,
-  vars,
-  relatedOrderId,
-}: {
-  key: SmsTemplateKey;
-  to: string | null | undefined;
-  vars: Record<string, string>;
-  relatedOrderId?: string;
-}) {
-  try {
-    if (!to || to.replace(/\D/g, "").length < 6) return null;
-    const config = await getTemplateConfig(key);
-    if (!config.enabled) return null;
-
-    const allVars = { ...(await baseVars()), ...vars };
-    return await sendSms({
-      to,
-      body: renderTemplate(config.body, allVars),
-      type: smsTypeFor(key) as $Enums.SmsType,
-      relatedOrderId,
     });
   } catch (e) {
     console.error(`[messages] sending ${key} failed`, e);

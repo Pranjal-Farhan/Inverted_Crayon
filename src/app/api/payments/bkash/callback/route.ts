@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
 
   await db.order.update({ where: { id: order.id }, data: { paymentStatus: "PAID", status: "PAID" } });
 
-  // Payment cleared — now the order counts as placed: customer email + SMS, and the brand's new-order email.
+  // Payment cleared — now the order counts as placed: customer email, and the brand's new-order email.
   await notifyOrderPlaced(order.number);
 
   return NextResponse.redirect(`${origin}/order/${order.number}`);

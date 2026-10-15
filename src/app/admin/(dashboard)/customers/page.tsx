@@ -132,7 +132,7 @@ export default async function AdminCustomersPage({ searchParams }: Props) {
                     ? [lastOrder.shippingArea, lastOrder.shippingDistrict].filter(Boolean).join(", ")
                     : "";
                 const locked = c.lockedUntil != null && c.lockedUntil > new Date();
-                const signIn = [c.passwordHash && "Email", c.googleId && "Google", c.facebookId && "Facebook"].filter(
+                const signIn = [c.passwordHash && "Email", c.googleId && "Google"].filter(
                   Boolean,
                 ) as string[];
 

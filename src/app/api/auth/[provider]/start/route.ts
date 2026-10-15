@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 import { getSiteOrigin } from "@/lib/site-url";
 import { googleConfigured, googleAuthUrl } from "@/lib/oauth/google";
-import { facebookConfigured, facebookAuthUrl } from "@/lib/oauth/facebook";
 
 const STATE_COOKIE_OPTS = {
   httpOnly: true,
@@ -24,9 +23,6 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ prov
   if (provider === "google") {
     if (!googleConfigured()) return NextResponse.redirect(`${origin}${loginPath}?oauth=not_configured`);
     authUrl = googleAuthUrl({ redirectUri, state });
-  } else if (provider === "facebook") {
-    if (!facebookConfigured()) return NextResponse.redirect(`${origin}${loginPath}?oauth=not_configured`);
-    authUrl = facebookAuthUrl({ redirectUri, state });
   } else {
     return NextResponse.redirect(`${origin}${loginPath}?oauth=error`);
   }

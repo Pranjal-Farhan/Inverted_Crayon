@@ -5,7 +5,6 @@ import { getSiteOrigin } from "@/lib/site-url";
 import { db } from "@/lib/db";
 import { setCustomerSession, setAdminSession, setAdmin2FAPending } from "@/lib/session";
 import { googleExchangeCode } from "@/lib/oauth/google";
-import { facebookExchangeCode } from "@/lib/oauth/facebook";
 import { notifyAccountRegistered } from "@/lib/notifications";
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ provider: string }> }) {
@@ -22,7 +21,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ prov
 
   const loginPath = intent === "admin" ? "/admin/login" : "/account/login";
 
-  if (rawProvider !== "google" && rawProvider !== "facebook") {
+  if (rawProvider !== "google") {
     return NextResponse.redirect(`${origin}${loginPath}?oauth=error`);
   }
   const provider = rawProvider;
@@ -33,32 +32,25 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ prov
 
   try {
     const redirectUri = `${origin}/api/auth/${provider}/callback`;
-    const profile =
-      provider === "google" ? await googleExchangeCode({ code, redirectUri }) : await facebookExchangeCode({ code, redirectUri });
+    const profile = await googleExchangeCode({ code, redirectUri });
     const email = profile.email.toLowerCase();
 
     if (intent === "admin") {
       // Admin/staff OAuth only ever signs in to an account that already exists (matched first by
       // provider id, then by email) — it never self-registers a new admin account. That would be
-      // a privilege-escalation path: anyone with a Google/Facebook account could otherwise grant
+      // a privilege-escalation path: anyone with a Google account could otherwise grant
       // themselves store-admin access just by hitting this callback.
-      let account =
-        provider === "google"
-          ? await db.adminUser.findFirst({ where: { googleId: profile.id } })
-          : await db.adminUser.findFirst({ where: { facebookId: profile.id } });
+      let account = await db.adminUser.findFirst({ where: { googleId: profile.id } });
 
       if (!account) {
         account = await db.adminUser.findUnique({ where: { email } });
         if (!account) {
           return NextResponse.redirect(`${origin}${loginPath}?oauth=no_account`);
         }
-        account =
-          provider === "google"
-            ? await db.adminUser.update({ where: { id: account.id }, data: { googleId: profile.id } })
-            : await db.adminUser.update({ where: { id: account.id }, data: { facebookId: profile.id } });
+        account = await db.adminUser.update({ where: { id: account.id }, data: { googleId: profile.id } });
       }
 
-      // Signing in with Google/Facebook proves who they are, not that they hold the authenticator —
+      // Signing in with Google proves who they are, not that they hold the authenticator —
       // an account with two-factor on still has to pass the code step, exactly as with a password.
       if (account.twoFactorEnabled) {
         await setAdmin2FAPending({ adminId: account.id });
@@ -69,42 +61,30 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ prov
       return NextResponse.redirect(`${origin}${homeFor(account.role)}`);
     }
 
-    let customer =
-      provider === "google"
-        ? await db.customer.findFirst({ where: { googleId: profile.id } })
-        : await db.customer.findFirst({ where: { facebookId: profile.id } });
+    let customer = await db.customer.findFirst({ where: { googleId: profile.id } });
 
     if (!customer) {
       const existing = await db.customer.findUnique({ where: { email } });
       if (existing) {
-        customer =
-          provider === "google"
-            ? await db.customer.update({
-                where: { id: existing.id },
-                // Picking up an avatar on a pre-existing (e.g. password) account the first time it
-                // links Google — but never overwriting one the customer already has (an avatarUrl
-                // they set some other way, or linked from Google previously).
-                data: { googleId: profile.id, avatarUrl: existing.avatarUrl ?? profile.picture ?? undefined },
-              })
-            : await db.customer.update({ where: { id: existing.id }, data: { facebookId: profile.id } });
+        customer = await db.customer.update({
+          where: { id: existing.id },
+          // Picking up an avatar on a pre-existing (e.g. password) account the first time it links
+          // Google — but never overwriting one the customer already has (an avatarUrl they set some
+          // other way, or linked from Google previously).
+          data: { googleId: profile.id, avatarUrl: existing.avatarUrl ?? profile.picture ?? undefined },
+        });
       } else {
         customer = await db.customer.create({
-          data: {
-            email,
-            name: profile.name,
-            avatarUrl: provider === "google" ? profile.picture : null,
-            googleId: provider === "google" ? profile.id : undefined,
-            facebookId: provider === "facebook" ? profile.id : undefined,
-          },
+          data: { email, name: profile.name, avatarUrl: profile.picture, googleId: profile.id },
         });
         // Guest orders placed under this email before signing up get claimed, same as password registration.
         const claimed = await db.order.updateMany({ where: { email, customerId: null }, data: { customerId: customer.id } });
-        // A brand-new account: tell the brand (no phone from Google/Facebook, so no SMS goes out).
+        // A brand-new account: tell the brand (Google gives no phone number).
         await notifyAccountRegistered({
           name: customer.name,
           email: customer.email,
           phone: null,
-          method: provider === "google" ? "Google" : "Facebook",
+          method: "Google",
           claimedOrders: claimed.count,
         });
       }

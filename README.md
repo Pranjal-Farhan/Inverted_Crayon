@@ -9,9 +9,9 @@ Streetwear storefront + admin, built from the [Build Specification v1.0](.) — 
 - **Framework**: Next.js 16 (App Router, Turbopack, Server Actions)
 - **Database**: PostgreSQL via Prisma 7 (`@prisma/adapter-pg` driver adapter)
 - **Styling**: Tailwind CSS v4, design tokens in `src/app/globals.css` matching Build Spec §02–§04
-- **Auth**: Signed JWT session cookies (`jose`) — separate admin and customer sessions. Email/password always works; Google and Facebook sign-in work too once you add OAuth credentials (see below) — until then the buttons bounce back with a clear message instead of erroring. Admin/staff accounts can additionally turn on TOTP two-factor authentication (Google Authenticator-compatible) from `/admin/settings` → Security.
+- **Auth**: Signed JWT session cookies (`jose`) — separate admin and customer sessions. Email/password always works; Google sign-in works too once you add OAuth credentials (see "Google sign-in setup") — until then the buttons bounce back with a clear message instead of erroring. Admin/staff accounts can additionally turn on TOTP two-factor authentication (Google Authenticator-compatible) from `/admin/settings` → Security.
 - **Payments**: **cash on delivery is the only payment method**, in every shipping zone and for every order including preorders (nothing is captured online for a preorder either — see "Preorders" below). There are no payment settings. The bKash/SSLCommerz integration code is still in the repo (`src/lib/payments/*`) but unreachable — checkout never offers it and `placeOrder()` rejects it.
-- **Emails & SMS**: Every "send" always writes to an outbox first (`EmailLog` at `/admin/emails`, `SmsLog` at `/admin/sms`); connect your official mailbox (SMTP) or Resend for email and/or SSL Wireless for SMS (see "Email setup", "SMS setup" and the table below) and it also actually sends. What each message says is editable at `/admin/templates`. See "Emails & SMS" below and `src/lib/notifications.ts`.
+- **Emails**: Every "send" always writes to an outbox first (`EmailLog` at `/admin/emails`); connect your official mailbox (SMTP) or Resend (see "Email setup") and it also actually sends. What each message says is editable at `/admin/templates`. See "Emails" below and `src/lib/notifications.ts`. (Text-message/SMS sending has been switched off — see "SMS is switched off".)
 - **Image hosting**: Product photos, the CMS logo, and hero images upload to ImgBB when `IMGBB_API_KEY` is set. The database stores the returned CDN URL instead of Base64 or local files.
 
 ## Getting started
@@ -45,16 +45,14 @@ Everything below is fully wired in code and falls back to a safe mock when its e
 | Feature | Env vars | Where to get them |
 | --- | --- | --- |
 | Google sign-in | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Google Cloud Console → OAuth client. Authorized redirect URI: `<your-site>/api/auth/google/callback` |
-| Facebook sign-in | `FACEBOOK_CLIENT_ID`, `FACEBOOK_CLIENT_SECRET` | Facebook Developers → your app's Facebook Login product. Valid OAuth redirect URI: `<your-site>/api/auth/facebook/callback` |
 | bKash payments | `BKASH_APP_KEY`, `BKASH_APP_SECRET`, `BKASH_USERNAME`, `BKASH_PASSWORD`, optional `BKASH_BASE_URL` | bKash merchant/PGW onboarding. Defaults to bKash's sandbox host |
 | Card / mobile banking | `SSLCOMMERZ_STORE_ID`, `SSLCOMMERZ_STORE_PASSWORD`, optional `SSLCOMMERZ_SANDBOX=false` for production | SSLCommerz merchant account. Sandbox credentials work against the sandbox host by default |
 | Real email delivery (your own mailbox) | `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`, optional `SMTP_PORT` (default 465), `SMTP_SECURE`, `EMAIL_FROM` | Your mailbox's SMTP details — for Gmail, `smtp.gmail.com` and an app password. See "Email setup" below |
 | Real email delivery (Resend) | `RESEND_API_KEY`, `EMAIL_FROM` | resend.com — needs a verified sending **domain**; can't send from a `@gmail.com` address. Ignored if SMTP is set |
-| Real SMS delivery | `SSLWIRELESS_SMS_API_TOKEN`, `SSLWIRELESS_SMS_SID`, optional `SSLWIRELESS_SMS_BASE_URL` | SSL Wireless SMS Plus — `SSLWIRELESS_SMS_SID` is your approved Sender ID |
 | Image hosting | `IMGBB_API_KEY` | imgbb.com — create an API key in your account settings |
 | Payment-gateway callback URLs | `SITE_URL` (e.g. `https://yourstore.com`) | Recommended in production so callback URLs are stable and correct behind any proxy; without it the app derives the origin from request headers |
 
-Google/Facebook sign-in for **admin and staff accounts** only ever logs in to an account that already exists (matched by email) — it never self-registers a new admin, so there's no privilege-escalation path from someone else's OAuth login. Customer sign-in, by contrast, creates a new customer account on first login, same as registering with a password.
+Google sign-in for **admin and staff accounts** only ever logs in to an account that already exists (matched by email) — it never self-registers a new admin, so there's no privilege-escalation path from someone else's OAuth login. Customer sign-in, by contrast, creates a new customer account on first login, same as registering with a password.
 
 ## Deploying to a real server
 
@@ -99,7 +97,7 @@ The homepage's "New In" grid loads 20 products on first render and a **Load more
 
 Any size/color becomes a preorder **the moment it sells out**, if you've turned preorder on for it in that product's editor (the **Preorder ৳** field, per row in the variant table) — blank means it just stays "sold out", any value set (including `0`) means it keeps selling. This covers two cases with one mechanism: a genuinely pre-launch product (every size starts at 0 stock, tag it **Preorder** in the Tags panel too for the ship-date banner) and an ordinary product where one size just ran out (no tag needed — it flashes a "Preorder it and our sales agent will reach out" banner and stays purchasable automatically).
 
-No advance payment is ever shown to or charged against the customer — the **Preorder ৳** field is purely an on/off switch (kept under that name so a future bKash/SSLCommerz reactivation has a per-unit amount ready to use again). Every customer-facing surface — the PDP, cart, checkout, order confirmation, SMS, email, and the receipt — shows one fixed line instead: **"Preorder Now and Our Sales Agent Will Reach Out."** At checkout, a cart with a preorder item shows a blinking golden "Preorder" tag beside the "CHECKOUT" heading, a **"Preorder Process"** step with that fixed line, and the submit button reads **PreOrder** instead of Place order.
+No advance payment is ever shown to or charged against the customer — the **Preorder ৳** field is purely an on/off switch (kept under that name so a future bKash/SSLCommerz reactivation has a per-unit amount ready to use again). Every customer-facing surface — the PDP, cart, checkout, order confirmation, email, and the receipt — shows one fixed line instead: **"Preorder Now and Our Sales Agent Will Reach Out."** At checkout, a cart with a preorder item shows a blinking golden "Preorder" tag beside the "CHECKOUT" heading, a **"Preorder Process"** step with that fixed line, and the submit button reads **PreOrder** instead of Place order.
 
 > **bKash / card checkout is currently commented out.** `CheckoutView.tsx` only ever offers **Cash on delivery**, and `placeOrder()` rejects a direct `BKASH`/`SSLCOMMERZ` submission server-side too — both reversibly, pending re-enabling. COD works for every cart, preorders included.
 
@@ -129,42 +127,43 @@ The site sends from, and your team's notifications go to, your official mailbox.
 
 From then on every email shows **SENT** or **FAILED** (with the mail server's reason) in the outbox, and customers' replies to order emails land in the official mailbox. An order is never held up or lost because mail failed — the failure is just recorded. Gmail allows roughly 500 recipients a day (about 2,000 on Workspace), plenty for a small store; the messages also appear in the mailbox's **Sent** folder.
 
-**PDF receipts on order emails.** Every order-related email — to the customer (order confirmed, order shipped, cancellation request received, order cancelled) and to the official address (new order, new pre-order, shipping/refund updates, delivered, cancellation request, return request) — carries the order's receipt as an attached PDF named `Receipt-<order number>.pdf`: the same layout as the printable receipt at `/admin/orders/<id>/receipt` (items, coupon / free-delivery line, shipping, total, ship-to, tracking). It is generated on the server at send time, so it always reflects the order's current status. Bangla names and addresses and the ৳ sign are supported (Noto Sans + Noto Sans Bengali are bundled in `src/assets/fonts/`). If a receipt ever can't be generated, the email is still sent without it. Attachments are listed under each message in `/admin/emails` (📎). SMS has no attachments.
+**PDF receipts on order emails.** Every order-related email — to the customer (order confirmed, order shipped, cancellation request received, order cancelled) and to the official address (new order, new pre-order, shipping/refund updates, delivered, cancellation request, return request) — carries the order's receipt as an attached PDF named `Receipt-<order number>.pdf`: the same layout as the printable receipt at `/admin/orders/<id>/receipt` (items, coupon / free-delivery line, shipping, total, ship-to, tracking). It is generated on the server at send time, so it always reflects the order's current status. Bangla names and addresses and the ৳ sign are supported (Noto Sans + Noto Sans Bengali are bundled in `src/assets/fonts/`). If a receipt ever can't be generated, the email is still sent without it. Attachments are listed under each message in `/admin/emails` (📎).
 
 **Using a domain mailbox** (e.g. `hello@yourdomain.com` on cPanel, Zoho, Outlook…): the same variables, with that provider's SMTP host/port/username/password. **Resend** is an alternative if you'd rather use an API service, but it needs a verified domain and cannot send from a `@gmail.com` address.
 
-## SMS setup (texts to customers)
+## Google sign-in setup
 
-Order confirmations, "pre-order requested", "order shipped" and the registration text are sent through **SSL Wireless SMS Plus** once it is connected; until then they are only recorded at `/admin/sms`.
+"Continue with Google" appears on the customer login/register pages and the admin login page. It does nothing until the site has a Google OAuth client:
 
-1. **Get the details from SSL Wireless**: an account on SMS Plus, its **API token**, and a **Sender ID** (the name or number a text appears to come from). Sender IDs have to be approved before they work, which can take a few business days — ask SSL Wireless.
-2. **Add them to the server's environment** (Vercel → Project → Settings → Environment Variables, then redeploy):
-   - `SSLWIRELESS_SMS_API_TOKEN` = the API token
-   - `SSLWIRELESS_SMS_SID` = the approved Sender ID
-   - (`SSLWIRELESS_SMS_BASE_URL` is optional — only if SSL Wireless gives you a different endpoint)
-3. Open `/admin/sms`: the **SMS delivery** panel should say **LIVE** with the Sender ID. Use **Send test SMS** with your own number — if something is wrong (a refused token or Sender ID, no balance, an unreachable gateway) it shows the gateway's own message. A test costs one SMS and is not added to the outbox.
+1. Go to [Google Cloud Console](https://console.cloud.google.com/) → create (or pick) a project → **APIs & Services → OAuth consent screen**. Choose **External**, fill in the app name (Inverted Crayon), your support email and developer email, and save. The default scopes (`openid`, `email`, `profile`) are all it uses. While the app is in **Testing** only the Google accounts you list as test users can sign in — click **Publish app** when you're ready for everyone (this basic sign-in needs no Google review).
+2. **APIs & Services → Credentials → Create credentials → OAuth client ID** → application type **Web application**. Under **Authorized redirect URIs** add exactly `https://<your-domain>/api/auth/google/callback` (and `http://localhost:3000/api/auth/google/callback` if you test locally). If the site is reachable on more than one domain (e.g. a `.vercel.app` address as well as your own), add each one.
+3. Copy the **Client ID** and **Client secret** into the server's environment as `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` (Vercel → Project → Settings → Environment Variables), set `SITE_URL` to your public address (e.g. `https://yourdomain.com`, no trailing slash), then redeploy.
+4. Try "Continue with Google" on `/account/login`. A new customer account is created on first sign-in; a customer who already registered with the same email is linked to it (Google must have verified that email).
 
-From then on every text shows **SENT** (with the gateway's reference), **FAILED** (with the reason) or **NOT SENT** (recorded only — no gateway connected) in the outbox. A failed text never holds up or loses the order; the failure is just recorded. Numbers are accepted the way people type them (`01712-345678`, `+880 1712 345678`, `8801712345678`); anything that isn't a Bangladeshi mobile number is marked FAILED without being sent. Each text is billed per message part (160 characters in plain English, 70 with Bangla or the ৳ sign), so keep the wording in Templates short.
+**Admin and staff** can also sign in with Google, but only into an account that already exists with the same email (add it under Settings → Roles first) — it never creates an admin. If that account has two-factor authentication on, the authenticator code is still asked for afterwards.
+
+## SMS is switched off
+
+Text-message sending has been taken out of the app for now: no texts are sent or recorded, the `/admin/sms` page and the SMS tab in Templates are gone, and there are no SMS settings. The old `SmsLog` table and its rows are left untouched in the database, and the code is in git history (commit `ce02f89`) if SMS is wanted again.
 
 ## Order tracking — admin, account, and public
 
 Every order gets a unique number at checkout (`generateOrderNumber()`, retried on the rare collision) and is visible from three places:
 
 - **Admin** (`/admin/orders`) — every order, chronologically, regardless of who placed it. Each one's **Customer** panel shows "HAS ACCOUNT" with a link to that customer's CRM record, or "GUEST ORDER — NO ACCOUNT" with just what they typed at checkout. Fulfillment is a simple two-state toggle: **Not Cleared Yet** (received, not packed) → **Mark Sent For Delivery** (prompts for courier + tracking ref) → **Sent For Delivery**. These are presentation labels over the existing `OrderStatus` enum (`src/lib/order-status.ts`), not a new state machine — PAID/DELIVERED/CANCELLED/REFUNDED/RETURNED all still work as before.
-- **Customer account** (`/account/orders`) — every order the logged-in customer has placed, with date/total/status. Clicking one opens its own page: every item (size, color, qty, line total), each title linking to that product's page, and a plain-English status line — "Your Order Is Being Processed." or "Your Order Has Been Dispatched. You Will Receive SMS Containing The Delivery Details Soon." — above the existing step-by-step progress graphic.
+- **Customer account** (`/account/orders`) — every order the logged-in customer has placed, with date/total/status. Clicking one opens its own page: every item (size, color, qty, line total), each title linking to that product's page, and a plain-English status line — "Your Order Is Being Processed." or "Your Order Has Been Dispatched." — above the existing step-by-step progress graphic.
 - **Homepage "Track your order"** (`/order-status`) — paste an order number, no login needed, and see that order's items/status/total. Deliberately shows **only** that order's contents: no email, phone, name, or address, since a bare number doesn't prove it's actually yours — just enough to answer "where's my stuff." Full details (exact delivery address, etc.) are only ever shown on the logged-in account view above, which checks session ownership first.
 
 **Checking out while logged in prefills the form from your account** — email, phone, full name, and (if you've saved one) your default address, with the page reading "Returning customer · `<you>`" instead of "Guest checkout." Every field stays editable; this only changes what the form starts with, not how `placeOrder()` processes it (it already linked the order to your account either way).
 
-## Emails & SMS
+## Emails
 
-Every message the site sends is one entry in `src/lib/message-templates.ts`, sent through `src/lib/messages.ts`; *when* each goes out is defined in one file, `src/lib/notifications.ts`. Messages are mocked by default (every "send" lands in the `/admin/emails` or `/admin/sms` outbox) and switch to real delivery once an email provider (SMTP or Resend) and/or `SSLWIRELESS_SMS_API_TOKEN` + `SSLWIRELESS_SMS_SID` are set (see above).
+Every message the site sends is one entry in `src/lib/message-templates.ts`, sent through `src/lib/messages.ts`; *when* each goes out is defined in one file, `src/lib/notifications.ts`. Messages are mocked by default (every "send" lands in the `/admin/emails` outbox) and switch to real delivery once an email provider (SMTP or Resend) is set (see above).
 
 **To customers — email:** order confirmed, order shipped, cancellation request received and order cancelled (all with the PDF receipt attached), back in stock, pre-order ship date changed, newsletter welcome, contact-form acknowledgement.
-**To customers — SMS:** order confirmation (cash on delivery / paid), pre-order requested, account registration, order shipped. The order texts go to the "Phone (delivery SMS)" number from checkout; the registration text goes to the phone given at sign-up (a phone number is required when registering with email — Google/Facebook sign-ups have no phone, so no SMS).
 **To the brand — email** (always to the address in Settings → Store): contact messages, new orders and new pre-orders (with the full receipt, customer details and admin links), order updates (sent for delivery / refunded / COD balance collected), order delivered, cancellation requests, return requests, new account registrations, login lockouts (customer, admin and staff — once, when the lock trips), and "notify me" sign-ups. Every order-related brand email (everything about a specific order) also carries the PDF receipt.
 
-**Templates (`/admin/templates`)** lists every message in three tabs (emails to customers, emails to the brand, SMS to customers) as editable boxes: change the body text, drop in `{placeholders}` (order number, items, receipt, customer details…), see a live preview, switch a message off, or reset it to the default. Subjects and recipients are fixed.
+**Templates (`/admin/templates`)** lists every message in two tabs (emails to customers, emails to the brand) as editable boxes: change the body text, drop in `{placeholders}` (order number, items, receipt, customer details…), see a live preview, switch a message off, or reset it to the default. Subjects and recipients are fixed.
 
 **Pre-order ship date.** In the product editor (Tags → Preorder → "Preorder ship date"), changing the date and saving emails every customer with an open (not yet shipped) pre-order containing that product; saving the same date again sends nothing. Edit that email under Templates → "Pre-order ship date changed".
 
@@ -224,7 +223,7 @@ A floating chat button styled to match the site (lime square with a pink offset 
 
 ## Admin and staff roles
 
-**Admin** can use everything. **Staff** can use only Orders, Products, Customers, Discounts, Size guides and Categories (plus their own two-factor setup under Settings → "My security"); the Dashboard, Finance, Analytics, Content CMS, Footer, Emails, SMS, Templates, store settings and team accounts are admin-only. This is enforced on the server — every admin action and page checks the account's role, read fresh from the database, so demoting or removing an account takes effect immediately. A staff login lands on Orders. Admins manage accounts at `/admin/settings` → Roles. The rules live in `src/lib/admin-areas.ts`.
+**Admin** can use everything. **Staff** can use only Orders, Products, Customers, Discounts, Size guides and Categories (plus their own two-factor setup under Settings → "My security"); the Dashboard, Finance, Analytics, Content CMS, Footer, Emails, Templates, store settings and team accounts are admin-only. This is enforced on the server — every admin action and page checks the account's role, read fresh from the database, so demoting or removing an account takes effect immediately. A staff login lands on Orders. Admins manage accounts at `/admin/settings` → Roles. The rules live in `src/lib/admin-areas.ts`.
 
 **Changing your own password:** every admin and staff member can do it at `/admin/settings` → Security (staff: "My security") → **Change password**. It asks for the current password (a wrong one counts toward the same 5-attempt lockout as logging in), and on success signs the account out on every *other* device while keeping the current one signed in. Nobody can change another person's password from there; an admin who needs to reset someone else removes and re-invites that account under Roles.
 
@@ -232,7 +231,7 @@ A floating chat button styled to match the site (lime square with a pink offset 
 
 `/admin/settings` → **Security** lets any admin or staff account turn on TOTP-based 2FA (compatible with Google Authenticator, Authy, 1Password, etc.) for their own login — scan the QR code (generated locally via the `qrcode` package; the secret is never sent to any third party) or enter the manual key, confirm with a 6-digit code, and save the one-time backup codes shown afterward. Everything is tied to the account that is signed in: its secret, backup codes and spent-code marker live on that account's own row, no action takes an account id, and the secret is never sent to the browser again after setup.
 
-Once enabled, **every** way of signing in needs the second step — email/password and Google/Facebook alike: a live 6-digit code or an unused backup code. How it is protected:
+Once enabled, **every** way of signing in needs the second step — email/password and Google alike: a live 6-digit code or an unused backup code. How it is protected:
 - **Codes are single-use.** A code is only accepted for a 30-second step later than the last one used, so a code that was already used (or seen over a shoulder) can't be replayed; a backup code is removed the moment it works.
 - **Guessing is capped.** Wrong codes count against the same 5-attempt / 15-minute lockout as passwords, and a correct password does *not* reset that counter — it only resets when the code step succeeds — so knowing the password doesn't give unlimited tries at the code.
 - **Turning it off takes the password *and* a current code** (or a backup code), so neither a stolen session nor a stolen password alone can strip it. Turning it on or off signs out every other device.

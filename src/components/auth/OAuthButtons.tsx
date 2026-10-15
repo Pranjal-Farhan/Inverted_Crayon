@@ -8,12 +8,6 @@ export function OAuthButtons({ intent }: { intent: "customer" | "admin" }) {
         >
           <GoogleIcon className="h-[18px] w-[18px]" /> Continue with Google
         </a>
-        <a
-          href={`/api/auth/facebook/start?intent=${intent}`}
-          className="flex items-center justify-center gap-2.5 border border-line-2 py-2.5 text-sm font-medium transition-colors hover:border-lime hover:text-lime"
-        >
-          <FacebookIcon className="h-[18px] w-[18px]" /> Continue with Facebook
-        </a>
       </div>
       <div className="my-4 flex items-center gap-3 text-[11px] tracking-[1px] text-muted-2">
         <span className="h-px flex-1 bg-line" /> OR <span className="h-px flex-1 bg-line" />
@@ -45,10 +39,3 @@ function GoogleIcon({ className }: { className?: string }) {
   );
 }
 
-function FacebookIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" className={className} fill="#1877F2">
-      <path d="M24 12.07C24 5.4 18.63 0 12 0S0 5.4 0 12.07C0 18.1 4.39 23.1 10.13 24v-8.44H7.08v-3.49h3.05V9.41c0-3.02 1.79-4.69 4.53-4.69 1.31 0 2.68.24 2.68.24v2.97h-1.51c-1.49 0-1.95.93-1.95 1.89v2.25h3.32l-.53 3.49h-2.79V24C19.61 23.1 24 18.1 24 12.07z" />
-    </svg>
-  );
-}

@@ -34,7 +34,7 @@ export const CUSTOMER_STATUS_MESSAGE: Record<OrderStatus, string> = {
   PENDING: "Your Order Is Being Processed.",
   PAID: "Your Order Is Being Processed.",
   PROCESSING: "Your Order Is Being Processed.",
-  SHIPPED: "Your Order Has Been Dispatched. You Will Receive SMS Containing The Delivery Details Soon.",
+  SHIPPED: "Your Order Has Been Dispatched. We Have Emailed You The Delivery Details.",
   DELIVERED: "Your Order Has Been Delivered. Enjoy!",
   CANCELLED: "This Order Was Cancelled.",
   REFUNDED: "This Order Was Refunded.",

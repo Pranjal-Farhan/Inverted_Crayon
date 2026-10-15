@@ -16,7 +16,6 @@ const TITLES: [string, string][] = [
   ["/admin/content", "Content CMS"],
   ["/admin/analytics", "Analytics"],
   ["/admin/emails", "Emails"],
-  ["/admin/sms", "SMS"],
   ["/admin/templates", "Message templates"],
   ["/admin/settings", "Settings"],
 ];

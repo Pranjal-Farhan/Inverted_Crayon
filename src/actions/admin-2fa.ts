@@ -102,7 +102,7 @@ export async function disableTwoFactor(
   if (!admin.twoFactorEnabled) return { ok: false, error: "Two-factor authentication isn't turned on." };
   if (isLocked(admin.lockedUntil)) return { ok: false, error: lockoutMessage(admin.lockedUntil!) };
 
-  // An account that signs in with Google/Facebook has no password — for it the code alone proves it.
+  // An account that signs in with Google has no password — for it the code alone proves it.
   const passwordOk = admin.passwordHash ? await bcrypt.compare(password, admin.passwordHash) : true;
   // The code is only spent once the password is right.
   const factor = passwordOk ? await consumeSecondFactor(admin, code) : null;

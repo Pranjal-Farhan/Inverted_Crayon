@@ -44,7 +44,7 @@ export async function customerLogin(
 const registerSchema = z.object({
   name: z.string().min(1),
   email: z.email(),
-  // Needed for the welcome SMS (and it's the number order updates will be texted to).
+  // The number we (or the courier) can reach them on.
   phone: z.string().trim().min(6),
   password: z.string().min(8),
 });
@@ -65,7 +65,7 @@ export async function customerRegister(
   const email = parsed.data.email.toLowerCase();
 
   // Refuse to touch an account that already exists — every Customer row already has a way to
-  // log in (a passwordHash from an earlier registration, or a googleId/facebookId from OAuth),
+  // log in (a passwordHash from an earlier registration, or a googleId from OAuth),
   // so silently overwriting it here would let anyone take over any account just by knowing its
   // email address. Guest orders (customerId: null) never create a Customer row, so this can't
   // block the legitimate "claim my guest orders" case below.

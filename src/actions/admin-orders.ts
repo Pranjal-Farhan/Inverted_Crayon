@@ -18,7 +18,7 @@ export async function markOrderShipped(orderId: string, courier: string, trackin
     where: { id: orderId },
     data: { status: "SHIPPED", trackingCourier: courier, trackingRef },
   });
-  // Customer: shipped email + SMS. Brand: an order-update email.
+  // Customer: shipped email. Brand: an order-update email.
   await notifyOrderShipped(orderId, admin);
   revalidatePath(`/admin/orders/${orderId}`);
   revalidatePath("/admin/orders");

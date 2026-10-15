@@ -1,13 +1,12 @@
 /**
- * The catalog of every email and SMS the site sends — client-safe (no database, no server-only
+ * The catalog of every email the site sends — client-safe (no database, no server-only
  * imports) so the admin Templates editor can use it for live previews. What actually gets sent,
  * and when, lives in src/lib/notifications.ts; how an edited body is stored and sent lives in
  * src/lib/messages.ts.
  *
- * Three groups, matching the admin Templates page:
+ * Two groups, matching the admin Templates page:
  *   CUSTOMER emails  → to the customer
  *   BRAND emails     → to the official address (Settings → Store → email): what the team is told
- *   SMS              → to the customer's phone
  *
  * Only the BODY of a message is editable (that's what the admin asked for). Subjects are fixed
  * here — brand-email subjects carry placeholders so the inbox stays scannable ("New order #IC-… —
@@ -15,7 +14,6 @@
  * rejects anything else so a typo can't silently ship as literal "{ordernumber}" text.
  */
 
-export type MessageChannel = "EMAIL" | "SMS";
 export type MessageAudience = "CUSTOMER" | "BRAND";
 
 /** Every placeholder that exists anywhere, with the one-line meaning shown in the editor. */
@@ -62,7 +60,7 @@ export const PLACEHOLDERS = {
   updatedAt: "When the change was made (Dhaka time)",
   reason: "The reason the customer gave",
   returnItems: "The items the customer wants to return, one per line",
-  signUpMethod: "Email & password, Google, or Facebook",
+  signUpMethod: "Email & password, or Google",
   registeredAt: "When the account was created (Dhaka time)",
   claimedOrders: "How many earlier guest orders were linked to the new account",
   accountEmail: "The email of the account that was locked",
@@ -120,17 +118,10 @@ export type TemplateKey =
   | "ADMIN_LOGIN_LOCKOUT"
   | "ADMIN_ORDER_DELIVERED"
   | "ADMIN_RETURN_REQUEST"
-  | "ADMIN_NOTIFY_ME"
-  // SMS to customers
-  | "SMS_ORDER_CONFIRMED_COD"
-  | "SMS_ORDER_CONFIRMED_PAID"
-  | "SMS_ORDER_CONFIRMED_PARTIAL"
-  | "SMS_ACCOUNT_REGISTERED"
-  | "SMS_ORDER_SHIPPED";
+  | "ADMIN_NOTIFY_ME";
 
 export type TemplateDef = {
   key: TemplateKey;
-  channel: MessageChannel;
   audience: MessageAudience;
   title: string;
   /** Plain-language description of exactly when this goes out. */
@@ -141,8 +132,8 @@ export type TemplateDef = {
   placeholders: PlaceholderName[];
 };
 
-/** Longest body the editor accepts — SMS is capped at roughly four 160-character messages. */
-export const MAX_BODY_LENGTH: Record<MessageChannel, number> = { EMAIL: 6000, SMS: 640 };
+/** Longest body the editor accepts. */
+export const MAX_BODY_LENGTH = 6000;
 
 const BRAND_ORDER_BODY = (heading: string, extra = "") => `${heading}
 
@@ -161,7 +152,6 @@ export const TEMPLATES: TemplateDef[] = [
   // ------------------------------------------------------------------ emails to customers
   {
     key: "ORDER_CONFIRMED",
-    channel: "EMAIL",
     audience: "CUSTOMER",
     title: "Order confirmed",
     when: "Right after a customer places an order.",
@@ -175,7 +165,6 @@ export const TEMPLATES: TemplateDef[] = [
   },
   {
     key: "ORDER_SHIPPED",
-    channel: "EMAIL",
     audience: "CUSTOMER",
     title: "Order shipped",
     when: "When an admin marks an order as sent for delivery.",
@@ -185,7 +174,6 @@ export const TEMPLATES: TemplateDef[] = [
   },
   {
     key: "ORDER_CANCELLATION_REQUESTED",
-    channel: "EMAIL",
     audience: "CUSTOMER",
     title: "Cancellation request received",
     when: "Right after a customer asks to cancel an order that hasn't shipped (from their account's order page) — an acknowledgement that we got it.",
@@ -204,7 +192,6 @@ Questions? Just reply to this email or write to {storeEmail}.`,
   },
   {
     key: "ORDER_CANCELLED",
-    channel: "EMAIL",
     audience: "CUSTOMER",
     title: "Order cancelled",
     when: "When an order is cancelled by an admin (Cancel order, or a Refund on an unshipped order the customer asked to cancel) — confirms the cancellation to the customer.",
@@ -223,7 +210,6 @@ Questions? Just reply to this email or write to {storeEmail}.`,
   },
   {
     key: "BACK_IN_STOCK",
-    channel: "EMAIL",
     audience: "CUSTOMER",
     title: "Back in stock",
     when: "When a sold-out size is restocked — to everyone who clicked “notify me” for it and everyone who wishlisted the product.",
@@ -233,7 +219,6 @@ Questions? Just reply to this email or write to {storeEmail}.`,
   },
   {
     key: "PREORDER_SHIP_UPDATE",
-    channel: "EMAIL",
     audience: "CUSTOMER",
     title: "Preorder ship date update",
     when: "When an admin sets or changes a preorder product's ship date — to customers with an open preorder for it.",
@@ -243,7 +228,6 @@ Questions? Just reply to this email or write to {storeEmail}.`,
   },
   {
     key: "WELCOME",
-    channel: "EMAIL",
     audience: "CUSTOMER",
     title: "Newsletter welcome",
     when: "When someone subscribes to the newsletter with an email that isn't on the list yet.",
@@ -253,7 +237,6 @@ Questions? Just reply to this email or write to {storeEmail}.`,
   },
   {
     key: "CONTACT_RECEIVED",
-    channel: "EMAIL",
     audience: "CUSTOMER",
     title: "Contact form acknowledgement",
     when: "When someone submits the contact form — a receipt for their message.",
@@ -265,7 +248,6 @@ Questions? Just reply to this email or write to {storeEmail}.`,
   // ------------------------------------------------------------------ emails to the brand
   {
     key: "ADMIN_CONTACT_MESSAGE",
-    channel: "EMAIL",
     audience: "BRAND",
     title: "Contact message",
     when: "When a customer sends a message through the contact form.",
@@ -280,7 +262,6 @@ Received: {receivedAt}
   },
   {
     key: "ADMIN_NEW_ORDER",
-    channel: "EMAIL",
     audience: "BRAND",
     title: "New order",
     when: "When a customer places an order (preorders have their own message below).",
@@ -290,7 +271,6 @@ Received: {receivedAt}
   },
   {
     key: "ADMIN_NEW_PREORDER",
-    channel: "EMAIL",
     audience: "BRAND",
     title: "New preorder",
     when: "When a customer places an order that includes a preorder item.",
@@ -300,7 +280,6 @@ Received: {receivedAt}
   },
   {
     key: "ADMIN_ORDER_UPDATE",
-    channel: "EMAIL",
     audience: "BRAND",
     title: "Order update",
     when: "When an order changes — sent for delivery, refunded, or its cash-on-delivery balance collected. (Delivered has its own message.)",
@@ -330,7 +309,6 @@ Open in admin: {adminOrderUrl}`,
   },
   {
     key: "ADMIN_CANCELLATION_REQUEST",
-    channel: "EMAIL",
     audience: "BRAND",
     title: "Cancellation request",
     when: "When a customer asks to cancel an order that hasn't shipped yet (from their account's order page).",
@@ -350,10 +328,9 @@ Review it in admin: {adminOrderUrl}`,
   },
   {
     key: "ADMIN_ACCOUNT_REGISTERED",
-    channel: "EMAIL",
     audience: "BRAND",
     title: "New account",
-    when: "When someone creates a customer account (by email, Google or Facebook).",
+    when: "When someone creates a customer account (by email or Google).",
     subject: "New account: {customerName}",
     defaultBody: `A new customer account was created.
 
@@ -367,7 +344,6 @@ Earlier guest orders linked to it: {claimedOrders}`,
   },
   {
     key: "ADMIN_LOGIN_LOCKOUT",
-    channel: "EMAIL",
     audience: "BRAND",
     title: "Login lockout",
     when: "When repeated wrong passwords lock a customer, admin or staff account.",
@@ -380,7 +356,6 @@ If that wasn't the account's owner, someone may be guessing the password.`,
   },
   {
     key: "ADMIN_ORDER_DELIVERED",
-    channel: "EMAIL",
     audience: "BRAND",
     title: "Order delivered",
     when: "When an admin marks an order as delivered.",
@@ -406,7 +381,6 @@ Open in admin: {adminOrderUrl}`,
   },
   {
     key: "ADMIN_RETURN_REQUEST",
-    channel: "EMAIL",
     audience: "BRAND",
     title: "Return request",
     when: "When a customer requests a return on a delivered order.",
@@ -428,7 +402,6 @@ Review it in admin: {adminOrderUrl}`,
   },
   {
     key: "ADMIN_NOTIFY_ME",
-    channel: "EMAIL",
     audience: "BRAND",
     title: "“Notify me” sign-up",
     when: "When someone asks to be told when a sold-out size is back in stock.",
@@ -443,56 +416,6 @@ In stock right now: {stockNow}
 {productUrl}`,
     placeholders: ["productName", "variantLabel", "productUrl", "stockNow", "customerEmail", "accountType", ...STORE],
   },
-
-  // ------------------------------------------------------------------ SMS to customers
-  {
-    key: "SMS_ORDER_CONFIRMED_COD",
-    channel: "SMS",
-    audience: "CUSTOMER",
-    title: "Order confirmation — cash on delivery",
-    when: "Right after a customer places a cash-on-delivery order.",
-    defaultBody:
-      "{storeName}: Order #{orderNumber} confirmed ({itemsSummary}). Total {total} — pay cash on delivery to {location}. We'll text you when it ships. Help: {storePhone}",
-    placeholders: ["orderNumber", "itemsSummary", "total", "location", "paymentMethod", "customerName", "storeName", "storePhone", "siteUrl"],
-  },
-  {
-    key: "SMS_ORDER_CONFIRMED_PAID",
-    channel: "SMS",
-    audience: "CUSTOMER",
-    title: "Order confirmation — paid online",
-    when: "Right after an order is paid for online (bKash or card — only used once those are switched on).",
-    defaultBody:
-      "{storeName}: Order #{orderNumber} confirmed ({itemsSummary}). {total} paid in full. Shipping to {location}. We'll text you when it ships. Help: {storePhone}",
-    placeholders: ["orderNumber", "itemsSummary", "total", "location", "paymentMethod", "customerName", "storeName", "storePhone", "siteUrl"],
-  },
-  {
-    key: "SMS_ORDER_CONFIRMED_PARTIAL",
-    channel: "SMS",
-    audience: "CUSTOMER",
-    title: "Pre-order requested",
-    when: "Right after a customer places an order that includes a preorder item.",
-    defaultBody:
-      "{storeName}: Order #{orderNumber} confirmed ({itemsSummary}, preorder). Preorder now and our sales agent will reach out. Shipping to {location}. Help: {storePhone}",
-    placeholders: ["orderNumber", "itemsSummary", "total", "location", "paymentMethod", "customerName", "storeName", "storePhone", "siteUrl"],
-  },
-  {
-    key: "SMS_ACCOUNT_REGISTERED",
-    channel: "SMS",
-    audience: "CUSTOMER",
-    title: "Account registration",
-    when: "When someone creates an account with email and password (Google/Facebook sign-ups have no phone number).",
-    defaultBody: "{storeName}: Welcome, {customerName}! Your account is ready — track your orders any time at {siteUrl}/account. Help: {storePhone}",
-    placeholders: ["customerName", "storeName", "storePhone", "siteUrl"],
-  },
-  {
-    key: "SMS_ORDER_SHIPPED",
-    channel: "SMS",
-    audience: "CUSTOMER",
-    title: "Order shipped",
-    when: "When an admin marks an order as sent for delivery.",
-    defaultBody: "{storeName}: Order #{orderNumber} is on its way via {courier}, tracking {trackingRef}. Help: {storePhone}",
-    placeholders: ["orderNumber", "courier", "trackingRef", "itemsSummary", "location", "customerName", "storeName", "storePhone", "siteUrl"],
-  },
 ];
 
 export const TEMPLATE_BY_KEY = Object.fromEntries(TEMPLATES.map((t) => [t.key, t])) as Record<TemplateKey, TemplateDef>;
@@ -500,11 +423,6 @@ export const TEMPLATE_BY_KEY = Object.fromEntries(TEMPLATES.map((t) => [t.key, t
 /** The email-outbox type each email template is logged under (EmailType in the schema). */
 export function emailTypeFor(key: TemplateKey): string {
   return key;
-}
-
-/** The SMS-outbox type each SMS template is logged under (SmsType in the schema). */
-export function smsTypeFor(key: TemplateKey): string {
-  return key.replace(/^SMS_/, "");
 }
 
 /** Replaces {placeholders} with values; anything unknown is left exactly as written. */
@@ -519,13 +437,6 @@ export function findUnknownPlaceholders(text: string, allowed: readonly string[]
     if (!allowed.includes(m[1])) unknown.add(m[1]);
   }
   return [...unknown];
-}
-
-/** How many 160-character SMS parts a message needs (non-ASCII text such as ৳ drops this to 70). */
-export function smsParts(text: string): { chars: number; parts: number; unicode: boolean } {
-  const unicode = /[^\x00-\x7F]/.test(text);
-  const perPart = unicode ? (text.length <= 70 ? 70 : 67) : text.length <= 160 ? 160 : 153;
-  return { chars: text.length, parts: Math.max(1, Math.ceil(text.length / perPart)), unicode };
 }
 
 /** Realistic fake values for every placeholder, so the editor can show what a message will look like. */

@@ -11,7 +11,7 @@ export function AdminLoginForm() {
   const [codeState, codeFormAction, codePending] = useActionState(verifyAdminTwoFactor, null);
   const searchParams = useSearchParams();
 
-  // Either the password step just asked for a code, or Google/Facebook sign-in sent us here for one.
+  // Either the password step just asked for a code, or Google sign-in sent us here for one.
   if (state?.needsTwoFactor || searchParams.get("step") === "2fa") {
     return (
       <form action={codeFormAction}>

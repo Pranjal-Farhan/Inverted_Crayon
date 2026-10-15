@@ -250,7 +250,6 @@ model Customer {
   failedLoginCount Int       @default(0)
   lockedUntil      DateTime?
   googleId         String?   @unique
-  facebookId       String?   @unique
 
   addresses       Address[]
   orders          Order[]
@@ -534,7 +533,7 @@ model StockPurchase {
 model AdminUser {
   id               String    @id @default(cuid())
   email            String    @unique
-  // Nullable: an admin/staff account can be OAuth-only (Google/Facebook). OAuth sign-in for admin
+  // Nullable: an admin/staff account can be OAuth-only (Google). OAuth sign-in for admin
   // accounts only ever signs in to an account that already exists (matched by email) — it never
   // self-registers a new admin, so this being nullable doesn't open a privilege-escalation path.
   passwordHash     String?
@@ -543,7 +542,6 @@ model AdminUser {
   failedLoginCount Int       @default(0)
   lockedUntil      DateTime?
   googleId         String?   @unique
-  facebookId       String?   @unique
   // When this account's password was last changed by its owner. Any login session issued before
   // this moment is rejected (see getCurrentAdmin in src/lib/admin-guard.ts), so changing the
   // password — or turning two-factor on or off — signs the account out everywhere else.
@@ -642,7 +640,9 @@ model EmailLog {
   @@index([type])
 }
 
-// ---------- sms (mocked outbox) ----------
+// ---------- sms (SWITCHED OFF — nothing reads or writes these now) ----------
+// SMS sending was taken out of the app. The table and its rows are kept untouched so it can be
+// brought back (the code is in git history, commit ce02f89) without losing the old outbox.
 // Same "always log, optionally really send" pattern as EmailLog. relatedOrderId is a plain string
 // (the human-facing order number), not a real FK — same reasoning as EmailLog: the log should
 // survive an order later being deleted.

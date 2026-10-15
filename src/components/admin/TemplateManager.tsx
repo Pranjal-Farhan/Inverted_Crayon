@@ -9,7 +9,6 @@ import {
   TEMPLATES,
   findUnknownPlaceholders,
   renderTemplate,
-  smsParts,
   type TemplateDef,
   type TemplateKey,
 } from "@/lib/message-templates";
@@ -21,19 +20,13 @@ const GROUPS: { id: string; label: string; blurb: string; match: (t: TemplateDef
     id: "customer-email",
     label: "Emails to customers",
     blurb: "Sent to the customer's own email address.",
-    match: (t) => t.channel === "EMAIL" && t.audience === "CUSTOMER",
+    match: (t) => t.audience === "CUSTOMER",
   },
   {
     id: "brand-email",
     label: "Emails to the brand",
     blurb: "What your team is told. All of these go to your official address.",
-    match: (t) => t.channel === "EMAIL" && t.audience === "BRAND",
-  },
-  {
-    id: "sms",
-    label: "SMS to customers",
-    blurb: "Texted to the phone number the customer gave.",
-    match: (t) => t.channel === "SMS",
+    match: (t) => t.audience === "BRAND",
   },
 ];
 
@@ -115,10 +108,9 @@ function TemplateCard({ def, initial }: { def: TemplateDef; initial: Config }) {
   const unknown = findUnknownPlaceholders(body, def.placeholders);
   const dirty = trimmed !== saved.body.trim() || enabled !== saved.enabled;
   const isDefault = trimmed === def.defaultBody;
-  const max = MAX_BODY_LENGTH[def.channel];
+  const max = MAX_BODY_LENGTH;
 
   const preview = renderTemplate(body, SAMPLE_VALUES);
-  const sms = def.channel === "SMS" ? smsParts(preview) : null;
 
   function insert(name: string) {
     const ta = taRef.current;
@@ -199,7 +191,7 @@ function TemplateCard({ def, initial }: { def: TemplateDef; initial: Config }) {
             setBody(e.target.value);
             setStatus(null);
           }}
-          rows={Math.min(18, Math.max(def.channel === "SMS" ? 3 : 4, body.split("\n").length + 1))}
+          rows={Math.min(18, Math.max(4, body.split("\n").length + 1))}
           className={`w-full resize-y border bg-ink px-3 py-2.5 font-mono text-[13px] leading-relaxed outline-none focus:border-lime ${
             unknown.length > 0 ? "border-error" : "border-line-2"
           }`}
@@ -208,12 +200,6 @@ function TemplateCard({ def, initial }: { def: TemplateDef; initial: Config }) {
           <span>
             {trimmed.length} / {max} characters typed
           </span>
-          {sms && (
-            <span className={sms.parts > 3 ? "text-yellow" : undefined}>
-              About {sms.chars} characters once filled in · {sms.parts} SMS {sms.parts === 1 ? "part" : "parts"}
-              {sms.unicode ? " (the ৳ sign makes each part shorter)" : ""}
-            </span>
-          )}
         </div>
         {unknown.length > 0 && (
           <p className="mt-1.5 text-[13px] text-error">

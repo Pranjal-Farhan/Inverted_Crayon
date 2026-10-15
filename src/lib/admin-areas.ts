@@ -24,7 +24,6 @@ export type AdminArea =
   | "content"
   | "footer"
   | "emails"
-  | "sms"
   | "templates"
   | "store" // Settings -> Store info and Chat
   | "staff"; // Settings -> Roles: inviting, re-roling and removing accounts

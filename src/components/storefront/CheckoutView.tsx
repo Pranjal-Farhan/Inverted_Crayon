@@ -190,7 +190,7 @@ export function CheckoutView({
               className={inputClass(fieldErrors.email)}
             />
           </Field>
-          <Field label="Phone (delivery SMS)" error={fieldErrors.phone}>
+          <Field label="Phone" error={fieldErrors.phone}>
             <input value={phone} onChange={(e) => setPhone(e.target.value)} className={inputClass(fieldErrors.phone)} />
           </Field>
         </Step>

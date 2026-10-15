@@ -32,7 +32,7 @@ export async function changeOwnPassword(_prev: ChangePasswordResult | null, form
   const user = await db.adminUser.findUnique({ where: { id: admin.id } });
   if (!user) return { ok: false, message: "Account not found." };
   if (!user.passwordHash) {
-    return { ok: false, message: "This account signs in with Google or Facebook, so it has no password to change." };
+    return { ok: false, message: "This account signs in with Google, so it has no password to change." };
   }
   if (isLocked(user.lockedUntil)) return { ok: false, message: lockoutMessage(user.lockedUntil!) };
 

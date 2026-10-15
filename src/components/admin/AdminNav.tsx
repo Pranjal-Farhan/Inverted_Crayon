@@ -32,7 +32,6 @@ const NAV: { group: string; items: NavItem[] }[] = [
     group: "System",
     items: [
       { href: "/admin/emails", label: "Emails", icon: "✉", area: "emails" },
-      { href: "/admin/sms", label: "SMS", icon: "☏", area: "sms" },
       { href: "/admin/templates", label: "Templates", icon: "✎", area: "templates" },
       { href: "/admin/settings", label: "Settings", icon: "⚙", area: "security" },
     ],

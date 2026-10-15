@@ -9,11 +9,11 @@ import { EmailTestForm } from "@/components/admin/EmailTestForm";
 // Labels come from the template catalog so a new message type shows up here automatically; the
 // retired abandoned-bag reminder keeps a label only so old outbox rows still read properly.
 const TYPE_LABEL: Record<string, string> = {
-  ...Object.fromEntries(TEMPLATES.filter((t) => t.channel === "EMAIL").map((t) => [t.key, t.title])),
+  ...Object.fromEntries(TEMPLATES.map((t) => [t.key, t.title])),
   ABANDONED_CHECKOUT: "Abandoned checkout (retired)",
 };
-const CUSTOMER_TYPES = TEMPLATES.filter((t) => t.channel === "EMAIL" && t.audience === "CUSTOMER");
-const BRAND_TYPES = TEMPLATES.filter((t) => t.channel === "EMAIL" && t.audience === "BRAND");
+const CUSTOMER_TYPES = TEMPLATES.filter((t) => t.audience === "CUSTOMER");
+const BRAND_TYPES = TEMPLATES.filter((t) => t.audience === "BRAND");
 
 type Props = { searchParams: Promise<{ type?: string; q?: string }> };
 

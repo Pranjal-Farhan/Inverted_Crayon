@@ -51,9 +51,9 @@ export async function saveMessageTemplate(input: { key: string; body: string; en
   if (!body) {
     return { ok: false, error: "The message can't be empty. Use “Reset to default” to go back to the original, or switch it off." };
   }
-  const max = MAX_BODY_LENGTH[def.channel];
+  const max = MAX_BODY_LENGTH;
   if (body.length > max) {
-    return { ok: false, error: `That's ${body.length} characters — the limit for ${def.channel === "SMS" ? "an SMS" : "an email"} is ${max}.` };
+    return { ok: false, error: `That's ${body.length} characters — the limit is ${max}.` };
   }
   const unknown = findUnknownPlaceholders(body, def.placeholders);
   if (unknown.length > 0) {

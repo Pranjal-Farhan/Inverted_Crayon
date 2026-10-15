@@ -42,7 +42,7 @@ export function formatDhaka(date: Date): string {
   });
 }
 
-/** "2x Crown Jeans & 1 more item" — the one-liner SMS and subject lines use. */
+/** "2x Crown Jeans & 1 more item" — the one-liner subject lines and short summaries use. */
 export function summarizeItems(items: Pick<OrderItem, "qty" | "productTitleSnapshot">[]): string {
   if (items.length === 0) return "your order";
   if (items.length <= 2) return items.map((i) => `${i.qty}x ${i.productTitleSnapshot}`).join(", ");

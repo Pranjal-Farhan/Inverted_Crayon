@@ -1,20 +1,18 @@
 import "server-only";
 import { db } from "@/lib/db";
-import { classifyOrderSmsType } from "@/lib/sms";
-import { getMessageContext, sendTemplatedEmail, sendTemplatedSms } from "@/lib/messages";
+import { getMessageContext, sendTemplatedEmail } from "@/lib/messages";
 import { formatDhaka, itemsList, orderVars } from "@/lib/message-vars";
 import { buildReceiptPdf, type ReceiptOrder } from "@/lib/receipt-pdf";
 import type { EmailAttachment } from "@/lib/email-provider";
 import type { StoreInfo } from "@/lib/store-settings";
-import type { TemplateKey } from "@/lib/message-templates";
 
 /**
- * WHEN each email and SMS goes out. Every function here is called from the place the event
+ * WHEN each email goes out. Every function here is called from the place the event
  * happens (checkout, an admin action, a signup) and is safe to `await` without a try/catch —
  * sending is best-effort and never throws (see messages.ts). WHAT each message says is the
  * admin-editable template in src/lib/message-templates.ts; this file only supplies the values.
  *
- * Three audiences: the customer (email and/or SMS), and the brand's official address.
+ * Two audiences: the customer, and the brand's official address.
  */
 
 type AdminActor = { name: string | null; email: string; role: "ADMIN" | "STAFF" };
@@ -62,16 +60,10 @@ export async function notifyOrderPlaced(orderNumber: string) {
       relatedOrderId: order.number,
       attachments,
     }),
-    sendTemplatedSms({
-      key: `SMS_${classifyOrderSmsType(order)}` as Extract<TemplateKey, `SMS_${string}`>,
-      to: order.phone,
-      vars,
-      relatedOrderId: order.number,
-    }),
   ]);
 }
 
-/** An admin marked the order as sent for delivery: tell the customer (email + SMS) and the brand. */
+/** An admin marked the order as sent for delivery: tell the customer and the brand. */
 export async function notifyOrderShipped(orderId: string, actor: AdminActor) {
   const [order, ctx] = await Promise.all([loadOrder({ id: orderId }), getMessageContext()]);
   if (!order) return;
@@ -80,7 +72,6 @@ export async function notifyOrderShipped(orderId: string, actor: AdminActor) {
 
   await Promise.all([
     sendTemplatedEmail({ key: "ORDER_SHIPPED", to: order.email, vars, relatedOrderId: order.number, attachments }),
-    sendTemplatedSms({ key: "SMS_ORDER_SHIPPED", to: order.phone, vars, relatedOrderId: order.number }),
     sendTemplatedEmail({
       key: "ADMIN_ORDER_UPDATE",
       vars: {
@@ -232,12 +223,12 @@ export async function notifyPreorderShipDate(input: { to: string; productName: s
 
 // ---------------------------------------------------------------------------- accounts and security
 
-/** A customer account was created: tell the brand, and (when we have their phone) text the customer. */
+/** A customer account was created: tell the brand. */
 export async function notifyAccountRegistered(input: {
   name: string | null;
   email: string;
   phone: string | null;
-  method: "Email & password" | "Google" | "Facebook";
+  method: "Email & password" | "Google";
   claimedOrders: number;
 }) {
   const name = input.name ?? input.email;
@@ -252,7 +243,6 @@ export async function notifyAccountRegistered(input: {
       claimedOrders: String(input.claimedOrders),
     },
   });
-  await sendTemplatedSms({ key: "SMS_ACCOUNT_REGISTERED", to: input.phone, vars: { customerName: name } });
 }
 
 /** An account was locked by repeated failed logins — sent once, at the moment the lock starts. */
