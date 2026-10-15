@@ -11,7 +11,7 @@ Streetwear storefront + admin, built from the [Build Specification v1.0](.) — 
 - **Styling**: Tailwind CSS v4, design tokens in `src/app/globals.css` matching Build Spec §02–§04
 - **Auth**: Signed JWT session cookies (`jose`) — separate admin and customer sessions. Email/password always works; Google and Facebook sign-in work too once you add OAuth credentials (see below) — until then the buttons bounce back with a clear message instead of erroring. Admin/staff accounts can additionally turn on TOTP two-factor authentication (Google Authenticator-compatible) from `/admin/settings` → Security.
 - **Payments**: **cash on delivery is the only payment method**, in every shipping zone and for every order including preorders (nothing is captured online for a preorder either — see "Preorders" below). There are no payment settings. The bKash/SSLCommerz integration code is still in the repo (`src/lib/payments/*`) but unreachable — checkout never offers it and `placeOrder()` rejects it.
-- **Emails & SMS**: Every "send" always writes to an outbox first (`EmailLog` at `/admin/emails`, `SmsLog` at `/admin/sms`); connect your official mailbox (SMTP) or Resend for email and/or SSL Wireless for SMS (see "Email setup" and the table below) and it also actually sends. What each message says is editable at `/admin/templates`. See "Emails & SMS" below and `src/lib/notifications.ts`.
+- **Emails & SMS**: Every "send" always writes to an outbox first (`EmailLog` at `/admin/emails`, `SmsLog` at `/admin/sms`); connect your official mailbox (SMTP) or Resend for email and/or SSL Wireless for SMS (see "Email setup", "SMS setup" and the table below) and it also actually sends. What each message says is editable at `/admin/templates`. See "Emails & SMS" below and `src/lib/notifications.ts`.
 - **Image hosting**: Product photos, the CMS logo, and hero images upload to ImgBB when `IMGBB_API_KEY` is set. The database stores the returned CDN URL instead of Base64 or local files.
 
 ## Getting started
@@ -132,6 +132,19 @@ From then on every email shows **SENT** or **FAILED** (with the mail server's re
 **PDF receipts on order emails.** Every order-related email — to the customer (order confirmed, order shipped, cancellation request received, order cancelled) and to the official address (new order, new pre-order, shipping/refund updates, delivered, cancellation request, return request) — carries the order's receipt as an attached PDF named `Receipt-<order number>.pdf`: the same layout as the printable receipt at `/admin/orders/<id>/receipt` (items, coupon / free-delivery line, shipping, total, ship-to, tracking). It is generated on the server at send time, so it always reflects the order's current status. Bangla names and addresses and the ৳ sign are supported (Noto Sans + Noto Sans Bengali are bundled in `src/assets/fonts/`). If a receipt ever can't be generated, the email is still sent without it. Attachments are listed under each message in `/admin/emails` (📎). SMS has no attachments.
 
 **Using a domain mailbox** (e.g. `hello@yourdomain.com` on cPanel, Zoho, Outlook…): the same variables, with that provider's SMTP host/port/username/password. **Resend** is an alternative if you'd rather use an API service, but it needs a verified domain and cannot send from a `@gmail.com` address.
+
+## SMS setup (texts to customers)
+
+Order confirmations, "pre-order requested", "order shipped" and the registration text are sent through **SSL Wireless SMS Plus** once it is connected; until then they are only recorded at `/admin/sms`.
+
+1. **Get the details from SSL Wireless**: an account on SMS Plus, its **API token**, and a **Sender ID** (the name or number a text appears to come from). Sender IDs have to be approved before they work, which can take a few business days — ask SSL Wireless.
+2. **Add them to the server's environment** (Vercel → Project → Settings → Environment Variables, then redeploy):
+   - `SSLWIRELESS_SMS_API_TOKEN` = the API token
+   - `SSLWIRELESS_SMS_SID` = the approved Sender ID
+   - (`SSLWIRELESS_SMS_BASE_URL` is optional — only if SSL Wireless gives you a different endpoint)
+3. Open `/admin/sms`: the **SMS delivery** panel should say **LIVE** with the Sender ID. Use **Send test SMS** with your own number — if something is wrong (a refused token or Sender ID, no balance, an unreachable gateway) it shows the gateway's own message. A test costs one SMS and is not added to the outbox.
+
+From then on every text shows **SENT** (with the gateway's reference), **FAILED** (with the reason) or **NOT SENT** (recorded only — no gateway connected) in the outbox. A failed text never holds up or loses the order; the failure is just recorded. Numbers are accepted the way people type them (`01712-345678`, `+880 1712 345678`, `8801712345678`); anything that isn't a Bangladeshi mobile number is marked FAILED without being sent. Each text is billed per message part (160 characters in plain English, 70 with Bangla or the ৳ sign), so keep the wording in Templates short.
 
 ## Order tracking — admin, account, and public
 

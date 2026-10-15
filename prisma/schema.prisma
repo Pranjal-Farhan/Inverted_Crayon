@@ -657,13 +657,25 @@ enum SmsType {
   ORDER_SHIPPED
 }
 
+// What became of a text once its outbox row was written: LOGGED = recorded only (no SMS gateway is
+// connected), SENT = the gateway accepted it, FAILED = it didn't (see deliveryError).
+enum SmsDelivery {
+  LOGGED
+  SENT
+  FAILED
+}
+
 model SmsLog {
-  id             String   @id @default(cuid())
+  id             String      @id @default(cuid())
   to             String
   body           String
   type           SmsType
   relatedOrderId String?
-  sentAt         DateTime @default(now())
+  sentAt         DateTime    @default(now())
+  delivery       SmsDelivery @default(LOGGED)
+  deliveryError  String?
+  // The gateway's own id for the message, when it gives one — what its support will ask for.
+  providerRef    String?
 
   @@index([to])
   @@index([type])
