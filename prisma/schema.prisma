@@ -177,6 +177,7 @@ model Variant {
   orderItems      OrderItem[]
   backInStockSubs BackInStockSubscription[]
   stockPurchases  StockPurchase[]
+  manualSaleItems ManualSaleItem[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -318,6 +319,10 @@ model Order {
   trackingCourier String?
   trackingRef     String?
   internalNotes   String?
+
+  // When the order was marked delivered — for COD this is when the cash was collected, so it is the
+  // date a sale counts in the finance reports (see src/lib/finance.ts).
+  deliveredAt DateTime?
 
   // Set when the customer asks (from their account's order page) to cancel an order that hasn't
   // shipped yet. Only a flag + their reason for the admin to act on — the admin still decides and
@@ -499,7 +504,8 @@ model StockOwner {
   notes     String?
   createdAt DateTime @default(now())
 
-  purchases StockPurchase[]
+  purchases   StockPurchase[]
+  investments Investment[]
 }
 
 model StockPurchase {
@@ -531,17 +537,17 @@ model StockPurchase {
 // ---------- admin / CMS ----------
 
 model AdminUser {
-  id               String    @id @default(cuid())
-  email            String    @unique
+  id                String    @id @default(cuid())
+  email             String    @unique
   // Nullable: an admin/staff account can be OAuth-only (Google). OAuth sign-in for admin
   // accounts only ever signs in to an account that already exists (matched by email) — it never
   // self-registers a new admin, so this being nullable doesn't open a privilege-escalation path.
-  passwordHash     String?
-  name             String
-  role             AdminRole @default(STAFF)
-  failedLoginCount Int       @default(0)
-  lockedUntil      DateTime?
-  googleId         String?   @unique
+  passwordHash      String?
+  name              String
+  role              AdminRole @default(STAFF)
+  failedLoginCount  Int       @default(0)
+  lockedUntil       DateTime?
+  googleId          String?   @unique
   // When this account's password was last changed by its owner. Any login session issued before
   // this moment is rejected (see getCurrentAdmin in src/lib/admin-guard.ts), so changing the
   // password — or turning two-factor on or off — signs the account out everywhere else.
@@ -624,17 +630,17 @@ enum EmailDelivery {
 }
 
 model EmailLog {
-  id             String        @id @default(cuid())
-  to             String
-  subject        String
-  body           String
-  type           EmailType
-  relatedOrderId String?
-  sentAt         DateTime      @default(now())
-  delivery       EmailDelivery @default(LOGGED)
-  deliveryError  String?
+  id              String        @id @default(cuid())
+  to              String
+  subject         String
+  body            String
+  type            EmailType
+  relatedOrderId  String?
+  sentAt          DateTime      @default(now())
+  delivery        EmailDelivery @default(LOGGED)
+  deliveryError   String?
   // Names of the files attached to this email (e.g. the PDF receipt) — the files themselves aren't kept.
-  attachmentNames String[]     @default([])
+  attachmentNames String[]      @default([])
 
   @@index([to])
   @@index([type])
@@ -679,4 +685,97 @@ model SmsLog {
 
   @@index([to])
   @@index([type])
+}
+
+// ---------- finance: manual entries ----------
+// The money side of the business that isn't an online order: what was spent, what the owners put
+// in, and sales made outside the website. Online orders and stock purchases are read from their own
+// tables — src/lib/finance.ts stitches everything into one ledger.
+
+enum FinanceMethod {
+  CASH
+  BKASH
+  NAGAD
+  BANK
+  CARD
+  OTHER
+}
+
+// A day-to-day cost of running the business (rent, ads, packaging, courier fees…). Not stock —
+// inventory is bought through StockPurchase and only becomes a cost when it's sold.
+model Expense {
+  id             String        @id @default(cuid())
+  date           DateTime
+  amount         Decimal       @db.Decimal(12, 2)
+  category       String
+  title          String
+  paidTo         String?
+  method         FinanceMethod @default(CASH)
+  notes          String?
+  createdByEmail String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@index([date])
+}
+
+// Money an owner/partner puts into the business.
+model Investment {
+  id             String        @id @default(cuid())
+  date           DateTime
+  amount         Decimal       @db.Decimal(12, 2)
+  ownerId        String
+  owner          StockOwner    @relation(fields: [ownerId], references: [id])
+  description    String?
+  method         FinanceMethod @default(CASH)
+  notes          String?
+  createdByEmail String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@index([date])
+  @@index([ownerId])
+}
+
+// A sale made outside the website (Instagram DM, in person…), typed in by hand. `total` is stored
+// (items − discount + delivery) so a later change to a product's price can't rewrite history.
+model ManualSale {
+  id              String        @id @default(cuid())
+  number          String        @unique
+  date            DateTime
+  customerName    String
+  customerPhone   String?
+  customerEmail   String?
+  customerAddress String?
+  method          FinanceMethod @default(CASH)
+  // false = sold but the money isn't in yet; only paid sales count as revenue.
+  paid            Boolean       @default(true)
+  discount        Decimal       @default(0) @db.Decimal(12, 2)
+  deliveryCharge  Decimal       @default(0) @db.Decimal(12, 2)
+  total           Decimal       @db.Decimal(12, 2)
+  notes           String?
+  createdByEmail  String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  items ManualSaleItem[]
+
+  @@index([date])
+}
+
+model ManualSaleItem {
+  id            String     @id @default(cuid())
+  saleId        String
+  sale          ManualSale @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  description   String
+  // Optional link to a catalogue variant — gives the cost price from stock purchases and lets the
+  // sale take its units off the shelf. Free-typed items have neither.
+  variantId     String?
+  variant       Variant?   @relation(fields: [variantId], references: [id], onDelete: SetNull)
+  qty           Int
+  unitPrice     Decimal    @db.Decimal(12, 2)
+  // What one unit cost the business, when known (typed, or the variant's average purchase cost).
+  unitCost      Decimal?   @db.Decimal(12, 2)
+  // True when this line took `qty` off the variant's stock — so deleting/editing the sale puts it back.
+  stockDeducted Boolean    @default(false)
 }

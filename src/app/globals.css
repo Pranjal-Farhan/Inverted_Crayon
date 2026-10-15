@@ -510,3 +510,19 @@ button {
   transform-origin: center;
   animation: discount-tag-in 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) 0.3s both;
 }
+
+/* Printing an admin page (e.g. a finance statement) gives plain black-on-white paper, not the dark
+   screen theme — and the sidebar/top bar (print:hidden in their own markup) stay off the page. */
+@media print {
+  .admin-shell,
+  .admin-shell * {
+    background: #fff !important;
+    color: #000 !important;
+    border-color: #bbb !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+  .admin-shell .print-keep-color {
+    color: #000 !important;
+  }
+}

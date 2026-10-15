@@ -18,6 +18,8 @@ const TITLES: [string, string][] = [
   ["/admin/emails", "Emails"],
   ["/admin/templates", "Message templates"],
   ["/admin/settings", "Settings"],
+  ["/admin/finance", "Finance"],
+  ["/admin/size-guides", "Size guides"],
 ];
 
 function titleFor(pathname: string): string {
@@ -30,7 +32,7 @@ export function AdminTopbar({ name, role }: { name: string; role: AdminRole }) {
   const today = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 
   return (
-    <div className="sticky top-0 z-20 flex items-center gap-3 border-b border-line bg-ink/94 px-4 py-3 backdrop-blur-sm desktop:gap-3.5 desktop:px-6.5 desktop:py-3.5">
+    <div className="sticky top-0 z-20 flex items-center print:!hidden gap-3 border-b border-line bg-ink/94 px-4 py-3 backdrop-blur-sm desktop:gap-3.5 desktop:px-6.5 desktop:py-3.5">
       <AdminMobileMenu name={name} role={role} />
       <h1 className="min-w-0 truncate font-impact text-xl uppercase tracking-[0.5px] desktop:text-2xl">{titleFor(pathname)}</h1>
       <div className="ml-auto flex shrink-0 items-center gap-3 text-sm text-muted">

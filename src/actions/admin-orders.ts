@@ -26,7 +26,8 @@ export async function markOrderShipped(orderId: string, courier: string, trackin
 
 export async function markOrderDelivered(orderId: string) {
   const admin = await requireAdmin();
-  await db.order.update({ where: { id: orderId }, data: { status: "DELIVERED" } });
+  // deliveredAt is the day the sale (and, for cash on delivery, the money) counts in the finance reports.
+  await db.order.update({ where: { id: orderId }, data: { status: "DELIVERED", deliveredAt: new Date() } });
   await notifyOrderDelivered(orderId, admin);
   revalidatePath(`/admin/orders/${orderId}`);
   revalidatePath("/admin/orders");

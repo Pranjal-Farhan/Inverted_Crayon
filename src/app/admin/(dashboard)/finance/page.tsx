@@ -1,199 +1,253 @@
+import Link from "next/link";
 import { requireAdminPage } from "@/lib/admin-guard";
-import { db } from "@/lib/db";
-import { formatTaka, toNumber } from "@/lib/money";
 import { Kpi } from "@/components/admin/Kpi";
 import { Panel } from "@/components/admin/Panel";
-import { StockOwnerForm, StockPurchaseForm } from "@/components/admin/FinanceForms";
+import { RangeBar } from "@/components/admin/finance/RangeBar";
+import { Money } from "@/components/admin/finance/ui";
+import { formatTaka, formatTakaSigned } from "@/lib/money";
+import { loadFinance, monthly, outstanding, ownerSummary, statement, summarize } from "@/lib/finance";
+import { monthLabel, resolveRange, shiftMonth, dhakaMonth, todayDhaka, monthStart, type DateRange } from "@/lib/finance-dates";
 
-export default async function AdminFinancePage() {
+type Props = { searchParams: Promise<{ range?: string; from?: string; to?: string }> };
+
+const Row = ({ label, children, strong = false, indent = false }: { label: React.ReactNode; children: React.ReactNode; strong?: boolean; indent?: boolean }) => (
+  <div className={`flex items-baseline justify-between gap-4 border-b border-line py-2 text-sm ${strong ? "font-medium" : ""} ${indent ? "pl-4 text-muted" : ""}`}>
+    <span>{label}</span>
+    <span className="tabular-nums">{children}</span>
+  </div>
+);
+
+export default async function FinanceOverviewPage({ searchParams }: Props) {
   await requireAdminPage("finance");
-  const [owners, purchases, variants, paidOrders] = await Promise.all([
-    db.stockOwner.findMany({ orderBy: { createdAt: "asc" } }),
-    db.stockPurchase.findMany({
-      include: { owner: true },
-      orderBy: { purchaseDate: "desc" },
-      take: 200,
-    }),
-    db.variant.findMany({ include: { product: true }, orderBy: { sku: "asc" } }),
-    db.order.findMany({
-      where: { paymentStatus: "PAID" },
-      include: { items: true },
-    }),
-  ]);
+  const range = resolveRange(await searchParams);
+  const data = await loadFinance();
+  const sum = summarize(data, range);
+  const out = outstanding(data);
+  const cash = statement(data, { from: null, to: range.to, preset: "custom", label: "" });
+  const owners = ownerSummary(data);
 
-  // Weighted-average unit cost per variant, from every purchase on record for it.
-  const costBasis = new Map<string, { totalQty: number; totalCost: number }>();
-  for (const p of purchases) {
-    if (!p.variantId) continue;
-    const entry = costBasis.get(p.variantId) ?? { totalQty: 0, totalCost: 0 };
-    entry.totalQty += p.quantity;
-    entry.totalCost += toNumber(p.totalCost);
-    costBasis.set(p.variantId, entry);
-  }
-  const avgCost = (variantId: string) => {
-    const entry = costBasis.get(variantId);
-    return entry && entry.totalQty > 0 ? entry.totalCost / entry.totalQty : null;
-  };
-
-  // Revenue + COGS from every item on a paid order. Units of a variant with no purchase history
-  // have no known cost basis, so they're counted toward revenue but flagged out of COGS.
-  let revenue = 0;
-  let cogs = 0;
-  let unitsSoldWithoutCostBasis = 0;
-  for (const order of paidOrders) {
-    revenue += toNumber(order.total);
-    for (const item of order.items) {
-      if (!item.variantId) {
-        unitsSoldWithoutCostBasis += item.qty;
-        continue;
-      }
-      const cost = avgCost(item.variantId);
-      if (cost === null) {
-        unitsSoldWithoutCostBasis += item.qty;
-        continue;
-      }
-      cogs += cost * item.qty;
-    }
-  }
-  const grossProfit = revenue - cogs;
-  const grossMargin = revenue > 0 ? (grossProfit / revenue) * 100 : 0;
-
-  // Capital invested per owner, and current inventory value at cost (remaining stock * avg cost).
-  const capitalByOwner = new Map<string, number>();
-  let totalCapital = 0;
-  for (const p of purchases) {
-    const amt = toNumber(p.totalCost);
-    capitalByOwner.set(p.ownerId, (capitalByOwner.get(p.ownerId) ?? 0) + amt);
-    totalCapital += amt;
-  }
-
-  let inventoryValue = 0;
-  let variantsWithoutCostBasis = 0;
-  for (const v of variants) {
-    const cost = avgCost(v.id);
-    if (cost === null) {
-      if (v.stockQty > 0) variantsWithoutCostBasis++;
-      continue;
-    }
-    inventoryValue += cost * v.stockQty;
-  }
-
-  const ownerRows = owners
-    .map((o) => {
-      const capital = capitalByOwner.get(o.id) ?? 0;
-      const share = totalCapital > 0 ? capital / totalCapital : 0;
-      return { ...o, capital, share, profitShare: grossProfit * share };
-    })
-    .sort((a, b) => b.capital - a.capital);
-
-  const variantOptions = variants.map((v) => ({
-    id: v.id,
-    label: `${v.product.title} — ${v.size}/${v.color} (${v.sku})`,
-  }));
+  // The monthly table shows the last 12 months when the chosen period is a single month or shorter.
+  const short = ["this-month", "last-month", "30d", "90d"].includes(range.preset);
+  const monthRange: DateRange = short ? { from: monthStart(shiftMonth(dhakaMonth(new Date()), -11)), to: todayDhaka(), preset: "custom", label: "Last 12 months" } : range;
+  const months = monthly(data, monthRange);
+  const maxAbs = Math.max(1, ...months.map((m) => Math.abs(m.netProfit)));
+  const totals = months.reduce((t, m) => ({ sales: t.sales + m.sales, revenue: t.revenue + m.revenue, cogs: t.cogs + m.cogs, expenses: t.expenses + m.expenses, net: t.net + m.netProfit }), { sales: 0, revenue: 0, cogs: 0, expenses: 0, net: 0 });
 
   return (
     <div>
-      <div className="mb-4.5 grid grid-cols-2 desktop:grid-cols-4 gap-4">
-        <Kpi label="Capital invested" value={formatTaka(totalCapital)} />
-        <Kpi label="Revenue (paid orders)" value={formatTaka(revenue)} accent="cyan" />
-        <Kpi label="Gross profit" value={formatTaka(grossProfit)} accent="pink" />
-        <Kpi label="Gross margin" value={`${grossMargin.toFixed(1)}%`} accent="yellow" />
+      <RangeBar basePath="/admin/finance" range={range} />
+
+      <div className="mb-4 grid grid-cols-2 gap-4 desktop:grid-cols-4">
+        <Kpi label="Revenue" value={formatTaka(sum.revenue)} accent="cyan" delta={`${sum.completedSales} completed ${sum.completedSales === 1 ? "sale" : "sales"}`} />
+        <Kpi label="Cost of goods" value={formatTaka(sum.cogs)} accent="yellow" />
+        <Kpi label="Expenses" value={formatTaka(sum.expenses)} accent="pink" delta={`${sum.expensesByCategory.reduce((n, c) => n + c.count, 0)} entries`} />
+        <Kpi label="Net profit" value={formatTakaSigned(sum.netProfit)} accent={sum.netProfit >= 0 ? "lime" : "pink"} delta={`${sum.netMargin.toFixed(1)}% of revenue`} />
       </div>
+      <div className="mb-4.5 grid grid-cols-2 gap-4 desktop:grid-cols-4">
+        <Kpi label="Gross profit" value={formatTakaSigned(sum.grossProfit)} accent="lime" delta={`${sum.grossMargin.toFixed(1)}% margin`} />
+        <Kpi label="Investments (period)" value={formatTaka(sum.investments)} accent="cyan" />
+        <Kpi label="Stock bought (period)" value={formatTaka(sum.stockPurchased)} accent="yellow" />
+        <Kpi label="Cash balance" value={formatTakaSigned(cash.closing)} accent={cash.closing >= 0 ? "lime" : "pink"} delta={range.to ? "at end of period" : "right now"} />
+      </div>
+
+      {sum.unknownCostUnits > 0 && (
+        <p className="mb-4.5 border border-yellow/40 bg-yellow/[0.07] px-3.5 py-2.5 text-[13px] text-yellow">
+          {sum.unknownCostUnits} sold unit{sum.unknownCostUnits === 1 ? "" : "s"} in this period {sum.unknownCostUnits === 1 ? "has" : "have"} no recorded purchase cost, so profit is overstated by their cost. Record the stock you bought under{" "}
+          <Link href="/admin/finance/stock" className="underline">
+            Stock &amp; owners
+          </Link>{" "}
+          (or type a cost on manual sales) to fix it.
+        </p>
+      )}
 
       <div className="mb-4.5 grid grid-cols-1 gap-4.5 desktop:grid-cols-2">
-        <StockOwnerForm />
-        <StockPurchaseForm owners={owners} variants={variantOptions} />
-      </div>
-
-      <div className="mb-4.5 grid grid-cols-1 gap-4.5 desktop:grid-cols-2">
-        <Panel title="Financial summary">
-          <div className="mb-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-            <span className="text-muted">Cost of goods sold</span>
-            <span className="text-right">{formatTaka(cogs)}</span>
-            <span className="text-muted">Current inventory value (at cost)</span>
-            <span className="text-right">{formatTaka(inventoryValue)}</span>
+        <Panel title={`Profit & loss — ${range.label}`}>
+          <Row label="Product sales (after discounts)">
+            <Money value={sum.itemsRevenue} tone="plain" />
+          </Row>
+          <Row label="Delivery charges collected">
+            <Money value={sum.delivery} tone="plain" />
+          </Row>
+          <Row label="Revenue" strong>
+            <Money value={sum.revenue} tone="plain" />
+          </Row>
+          <Row label="Cost of goods sold">
+            <Money value={-sum.cogs} tone="out" />
+          </Row>
+          <Row label="Gross profit" strong>
+            <Money value={sum.grossProfit} />
+          </Row>
+          {sum.expensesByCategory.map((c) => (
+            <Row key={c.category} label={c.category} indent>
+              <Money value={-c.amount} tone="out" />
+            </Row>
+          ))}
+          <Row label="Total expenses">
+            <Money value={-sum.expenses} tone="out" />
+          </Row>
+          <div className="flex items-baseline justify-between gap-4 pt-3">
+            <span className="font-impact text-[17px] uppercase tracking-[0.5px]">Net profit</span>
+            <span className="font-impact text-[24px]">
+              <Money value={sum.netProfit} />
+            </span>
           </div>
-          {(unitsSoldWithoutCostBasis > 0 || variantsWithoutCostBasis > 0) && (
-            <p className="text-[12px] text-yellow">
-              {unitsSoldWithoutCostBasis > 0 &&
-                `${unitsSoldWithoutCostBasis} sold unit${unitsSoldWithoutCostBasis === 1 ? "" : "s"} have no recorded purchase cost and are excluded from COGS. `}
-              {variantsWithoutCostBasis > 0 &&
-                `${variantsWithoutCostBasis} variant${variantsWithoutCostBasis === 1 ? "" : "s"} in stock have no recorded purchase cost and are excluded from inventory value.`}
-            </p>
-          )}
+          <p className="mt-2 text-[12px] text-muted-2">
+            Revenue counts an order when it is delivered (cash collected) or paid online, and a manual sale when it is marked paid. Cancelled, refunded and returned orders are left out. Investments are not income; stock you buy is not an expense until it sells.
+          </p>
         </Panel>
 
-        <Panel title="Capital by owner" className="!p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-line-2 text-left text-muted">
-                  {["Owner", "Invested", "Share", "Profit share"].map((h) => (
-                    <th key={h} className="font-label px-4 py-2.5 text-[13px] tracking-[0.8px]">
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {ownerRows.map((o) => (
-                  <tr key={o.id} className="border-b border-line">
-                    <td className="px-4 py-2.5">{o.name}</td>
-                    <td className="px-4 py-2.5">{formatTaka(o.capital)}</td>
-                    <td className="px-4 py-2.5">{(o.share * 100).toFixed(1)}%</td>
-                    <td className="px-4 py-2.5">{formatTaka(o.profitShare)}</td>
-                  </tr>
-                ))}
-                {ownerRows.length === 0 && (
-                  <tr>
-                    <td colSpan={4} className="px-4 py-6 text-center text-muted">
-                      No owners yet.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </Panel>
+        <div className="space-y-4.5">
+          <Panel title="Cash in & out">
+            <Row label="Completed sales">
+              <Money value={sum.revenue} tone="in" />
+            </Row>
+            <Row label="Investments">
+              <Money value={sum.investments} tone="in" />
+            </Row>
+            <Row label="Expenses">
+              <Money value={-sum.expenses} tone="out" />
+            </Row>
+            <Row label="Stock purchases">
+              <Money value={-sum.stockPurchased} tone="out" />
+            </Row>
+            <Row label="Net cash movement" strong>
+              <Money value={sum.revenue + sum.investments - sum.expenses - sum.stockPurchased} />
+            </Row>
+            <Row label="Cash balance (all money since you started)" strong>
+              <Money value={cash.closing} />
+            </Row>
+          </Panel>
+
+          <Panel title="Not counted yet">
+            <Row label={`Online orders still in progress (${out.inProgressCount})`}>
+              <Money value={out.inProgressAmount} tone="plain" />
+            </Row>
+            <Row label={`Manual sales awaiting payment (${out.unpaidCount})`}>
+              <Money value={out.unpaidAmount} tone="plain" />
+            </Row>
+            <p className="mt-2 text-[12px] text-muted-2">These become revenue once the order is delivered or the sale is marked paid.</p>
+          </Panel>
+        </div>
       </div>
 
-      <Panel title="Purchase history" className="!p-0">
+      <Panel title={`Monthly profit — ${monthRange.label}`} className="mb-4.5 !p-0">
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full min-w-[760px] text-sm">
             <thead>
               <tr className="border-b border-line-2 text-left text-muted">
-                {["Date", "Owner", "Product", "Qty", "Unit cost", "Total", "Supplier"].map((h) => (
-                  <th key={h} className="font-label px-4 py-2.5 text-[13px] tracking-[0.8px]">
+                {["Month", "Sales", "Revenue", "Cost of goods", "Expenses", "Net profit", ""].map((h, i) => (
+                  <th key={i} className={`font-label px-4 py-2.5 text-[13px] tracking-[0.8px] ${i >= 1 && i <= 5 ? "text-right" : ""}`}>
                     {h}
                   </th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {purchases.map((p) => (
-                <tr key={p.id} className="border-b border-line">
-                  <td className="px-4 py-2.5">{p.purchaseDate.toLocaleDateString()}</td>
-                  <td className="px-4 py-2.5">{p.owner.name}</td>
-                  <td className="px-4 py-2.5">
-                    {p.productTitleSnapshot} ({p.variantLabelSnapshot})
+              {[...months].reverse().map((m) => (
+                <tr key={m.month} className="border-b border-line">
+                  <td className="whitespace-nowrap px-4 py-2.5">{monthLabel(m.month)}</td>
+                  <td className="px-4 py-2.5 text-right">{m.sales}</td>
+                  <td className="px-4 py-2.5 text-right">
+                    <Money value={m.revenue} tone="plain" />
                   </td>
-                  <td className="px-4 py-2.5">{p.quantity}</td>
-                  <td className="px-4 py-2.5">{formatTaka(p.unitCost.toString())}</td>
-                  <td className="px-4 py-2.5">{formatTaka(p.totalCost.toString())}</td>
-                  <td className="px-4 py-2.5">{p.supplierName ?? "—"}</td>
+                  <td className="px-4 py-2.5 text-right text-muted">
+                    <Money value={m.cogs} tone="plain" />
+                  </td>
+                  <td className="px-4 py-2.5 text-right text-muted">
+                    <Money value={m.expenses} tone="plain" />
+                  </td>
+                  <td className="px-4 py-2.5 text-right font-medium">
+                    <Money value={m.netProfit} />
+                  </td>
+                  <td className="w-[160px] px-4 py-2.5" aria-hidden>
+                    <div className="h-2.5 w-full bg-line/60">
+                      <div className={`h-full ${m.netProfit >= 0 ? "bg-lime" : "bg-error"}`} style={{ width: `${(Math.abs(m.netProfit) / maxAbs) * 100}%` }} />
+                    </div>
+                  </td>
                 </tr>
               ))}
-              {purchases.length === 0 && (
+              {months.length === 0 && (
                 <tr>
                   <td colSpan={7} className="px-4 py-6 text-center text-muted">
-                    No stock purchases recorded yet.
+                    Nothing recorded yet.
                   </td>
                 </tr>
               )}
             </tbody>
+            {months.length > 1 && (
+              <tfoot>
+                <tr className="border-t border-line-2 font-medium">
+                  <td className="px-4 py-3">Total</td>
+                  <td className="px-4 py-3 text-right">{totals.sales}</td>
+                  <td className="px-4 py-3 text-right">
+                    <Money value={totals.revenue} tone="plain" />
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <Money value={totals.cogs} tone="plain" />
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <Money value={totals.expenses} tone="plain" />
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <Money value={totals.net} />
+                  </td>
+                  <td />
+                </tr>
+              </tfoot>
+            )}
           </table>
         </div>
       </Panel>
+
+      <div className="mb-4.5 grid grid-cols-1 gap-4.5 desktop:grid-cols-2">
+        <Panel title="Capital & profit share (all time)">
+          {owners.rows.length === 0 ? (
+            <p className="text-sm text-muted">
+              No owners yet. Add them under{" "}
+              <Link href="/admin/finance/investments" className="text-cyan hover:underline">
+                Investments
+              </Link>
+              .
+            </p>
+          ) : (
+            <>
+              {owners.rows.map((o) => (
+                <Row key={o.id} label={`${o.name} · ${(o.share * 100).toFixed(1)}%`}>
+                  <span className="text-muted">
+                    <Money value={o.invested} tone="plain" /> in →{" "}
+                  </span>
+                  <Money value={o.profitShare} />
+                </Row>
+              ))}
+              <p className="mt-2 text-[12px] text-muted-2">
+                Total invested <Money value={owners.totalInvested} tone="plain" /> · net profit so far <Money value={owners.netProfitAllTime} />
+              </p>
+            </>
+          )}
+        </Panel>
+
+        <Panel title="Record something">
+          <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+            {[
+              ["/admin/finance/expenses", "+ Expense", "Rent, ads, packaging…"],
+              ["/admin/finance/investments", "+ Investment", "Money an owner put in"],
+              ["/admin/finance/sales", "+ Sale", "Made outside the website"],
+            ].map(([href, title, sub]) => (
+              <Link key={href} href={href} prefetch={false} className="border border-line-2 p-3.5 hover:border-lime">
+                <div className="font-impact text-[16px]">{title}</div>
+                <div className="mt-0.5 text-[12px] text-muted">{sub}</div>
+              </Link>
+            ))}
+          </div>
+          <p className="mt-3 text-[13px] text-muted">
+            Online orders need no entry — every order from the website appears under{" "}
+            <Link href="/admin/finance/sales" className="text-cyan hover:underline">
+              Sales
+            </Link>{" "}
+            automatically and counts once it is delivered.
+          </p>
+        </Panel>
+      </div>
     </div>
   );
 }

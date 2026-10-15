@@ -1,31 +1,9 @@
 "use client";
 
-import { useActionState, useRef, useEffect } from "react";
-import { createStockOwner, recordStockPurchase } from "@/actions/admin-finance";
+import { useRef } from "react";
+import { recordStockPurchase } from "@/actions/admin-finance";
 import { Panel } from "@/components/admin/Panel";
-
-export function StockOwnerForm() {
-  const [state, formAction, pending] = useActionState(createStockOwner, null);
-  const formRef = useRef<HTMLFormElement>(null);
-
-  useEffect(() => {
-    if (state?.ok) formRef.current?.reset();
-  }, [state]);
-
-  return (
-    <Panel title="Add a stock owner">
-      <form ref={formRef} action={formAction} className="grid grid-cols-1 gap-2.5 desktop:grid-cols-3">
-        <input name="name" placeholder="Owner name" required className="border border-line-2 bg-ink px-2.5 py-2 text-sm outline-none focus:border-lime" />
-        <input name="contact" placeholder="Contact (phone/email)" className="border border-line-2 bg-ink px-2.5 py-2 text-sm outline-none focus:border-lime" />
-        <input name="notes" placeholder="Notes" className="border border-line-2 bg-ink px-2.5 py-2 text-sm outline-none focus:border-lime" />
-        <button type="submit" disabled={pending} className="btn-primary bg-lime px-4 py-2 font-impact text-sm text-ink disabled:opacity-50 desktop:col-span-3 desktop:w-fit">
-          {pending ? "Adding…" : "Add owner"}
-        </button>
-        {state && !state.ok && <p className="text-[13px] text-error desktop:col-span-3">{state.error}</p>}
-      </form>
-    </Panel>
-  );
-}
+import { useServerForm } from "@/components/admin/finance/useServerForm";
 
 export function StockPurchaseForm({
   owners,
@@ -34,18 +12,14 @@ export function StockPurchaseForm({
   owners: { id: string; name: string }[];
   variants: { id: string; label: string }[];
 }) {
-  const [state, formAction, pending] = useActionState(recordStockPurchase, null);
   const formRef = useRef<HTMLFormElement>(null);
-
-  useEffect(() => {
-    if (state?.ok) formRef.current?.reset();
-  }, [state]);
+  const { state, pending, onSubmit } = useServerForm(recordStockPurchase, () => formRef.current?.reset());
 
   const today = new Date().toISOString().slice(0, 10);
 
   return (
     <Panel title="Record a stock purchase">
-      <form ref={formRef} action={formAction} className="grid grid-cols-1 gap-2.5 desktop:grid-cols-3">
+      <form ref={formRef} onSubmit={onSubmit} className="grid grid-cols-1 gap-2.5 desktop:grid-cols-3">
         <select name="ownerId" required defaultValue="" className="border border-line-2 bg-ink px-2.5 py-2 text-sm">
           <option value="" disabled>
             Owner (who paid)

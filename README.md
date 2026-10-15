@@ -243,13 +243,18 @@ Once enabled, **every** way of signing in needs the second step — email/passwo
 
 The TOTP implementation (`src/lib/totp.ts`) is a from-scratch RFC 6238 implementation with no third-party dependency for the cryptographic core, checked against the RFC's own test vectors.
 
-## Inventory finance
+## Finance
 
-`/admin/finance` tracks who actually paid for stock and what it cost, separately from the day-to-day stock-quantity edits in the product editor:
+`/admin/finance` (admin only) is the shop's books. Six tabs, all with a date-range picker (This month, Last month, Last 30/90 days, This year, All time, or any from–to dates — in Bangladesh time):
 
-- **Stock owners** — the people/entities who fund inventory purchases.
-- **Stock purchases** — recording one (owner, product variant, quantity, unit cost, supplier, date) both logs the purchase and increments that variant's stock in the same transaction, so it's the accountable way stock goes up.
-- **Financial summary** — capital invested (all-time, by owner), revenue from paid orders, cost of goods sold (weighted-average unit cost per variant from purchase history × units sold), gross profit/margin, each owner's proportional share of capital and profit, and current inventory value at cost. Sold or in-stock units with no recorded purchase history are called out explicitly rather than silently treated as zero-cost.
+- **Overview** — revenue, cost of goods, expenses, **net profit** and margin for the period, a profit & loss statement, cash in/out and the current cash balance, a **month-by-month profit table** (last 12 months, or the chosen range), each owner's capital and share of the profit, and what isn't counted yet (orders still in progress, sales awaiting payment).
+- **Sales** — *every* sale in one list: all online orders (they appear automatically — nothing to type) and sales you record by hand. Filter by source, status (completed / in progress / awaiting payment / cancelled-refunded) and search customer, order number, phone or product. Each completed sale shows its revenue, cost and profit. **Record a sale made outside the website** (Instagram, in person…): customer name, phone, email, address, date, one or more items (pick a product to fill its price and cost and optionally take it off the shelf, or type a custom item), discount, delivery charged, how it was paid, and whether the money is in yet. Manual sales can be edited or deleted later; any stock they took is put back.
+- **Expenses** — your daily costs: date, amount, category (Rent, Marketing & ads, Packaging, Delivery & courier… or type your own), what it was for, who you paid, how. Edit or delete any entry; filter by category or search.
+- **Investments** — money an owner or partner puts in: date, amount, who, how, a note. Manage the owners here too; each owner's share of the profit follows the money they have put in.
+- **Statement** — pick any dates and get the full transaction history: opening balance, every sale / expense / investment / stock purchase with a running balance, closing balance, and the period's profit. Filter by type or search, **print / save as PDF**, or **download as CSV** for a spreadsheet or your accountant.
+- **Stock & owners** — stock purchases (adds the units to the product and records what each cost), now editable/deletable too.
+
+**How profit is worked out.** *Revenue* counts an online order when it is **delivered** (for cash on delivery, that is when the cash comes in) or paid online, and a manual sale when it is marked paid — on the day it was delivered. Cancelled, refunded and returned orders are left out. *Cost of goods* is what each unit sold cost you (the average of your stock purchases for that product). **Net profit = revenue − cost of goods − expenses.** Investments are not income and stock you buy is not an expense — it becomes a cost only when it sells. Units with no recorded cost are flagged, because profit is overstated until you record the stock purchase (or type a cost on a manual sale).
 
 ## Motion & lighting
 

@@ -8,7 +8,7 @@ export default async function AdminDashboardLayout({ children }: { children: Rea
   if (!admin) redirect("/admin/login");
 
   return (
-    <div className="flex min-h-screen bg-ink text-paper">
+    <div className="admin-shell flex min-h-screen bg-ink text-paper">
       <AdminSidebar role={admin.role} />
       <div className="min-w-0 flex-1">
         <AdminTopbar name={admin.name} role={admin.role} />

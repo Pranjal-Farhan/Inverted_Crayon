@@ -17,3 +17,17 @@ export function toNumber(value: unknown): number {
   }
   return Number(value ?? 0);
 }
+
+/** For statements and ledgers, where every paisa matters: ৳1,234.50 — decimals only when there are some. */
+export function formatTakaPrecise(amount: number): string {
+  const n = Math.round(amount * 100) / 100;
+  const sign = n < 0 ? "−" : "";
+  const abs = Math.abs(n);
+  return sign + "৳" + abs.toLocaleString("en-US", { minimumFractionDigits: Number.isInteger(abs) ? 0 : 2, maximumFractionDigits: 2 });
+}
+
+/** A signed amount for profit/loss figures: +৳1,200 or −৳300 (no sign shown for zero). */
+export function formatTakaSigned(amount: number): string {
+  const rounded = Math.round(amount);
+  return (rounded > 0 ? "+" : "") + formatTaka(rounded).replace("৳-", "−৳");
+}
