@@ -11,7 +11,8 @@ export function AdminLoginForm() {
   const [codeState, codeFormAction, codePending] = useActionState(verifyAdminTwoFactor, null);
   const searchParams = useSearchParams();
 
-  if (state?.needsTwoFactor) {
+  // Either the password step just asked for a code, or Google/Facebook sign-in sent us here for one.
+  if (state?.needsTwoFactor || searchParams.get("step") === "2fa") {
     return (
       <form action={codeFormAction}>
         <p className="mb-4 text-[13px] text-muted">
@@ -33,6 +34,9 @@ export function AdminLoginForm() {
         <Button type="submit" className="w-full" arrow={false} loading={codePending}>
           Verify
         </Button>
+        <a href="/admin/login" className="mt-3 block text-center text-[13px] text-muted hover:text-paper">
+          Start over
+        </a>
       </form>
     );
   }

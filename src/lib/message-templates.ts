@@ -105,6 +105,8 @@ export type TemplateKey =
   | "WELCOME"
   | "ORDER_CONFIRMED"
   | "ORDER_SHIPPED"
+  | "ORDER_CANCELLATION_REQUESTED"
+  | "ORDER_CANCELLED"
   | "BACK_IN_STOCK"
   | "PREORDER_SHIP_UPDATE"
   | "CONTACT_RECEIVED"
@@ -180,6 +182,44 @@ export const TEMPLATES: TemplateDef[] = [
     subject: "It's shipped",
     defaultBody: "Order #{orderNumber} is on its way via {courier} — tracking ref {trackingRef}.",
     placeholders: ["orderNumber", "courier", "trackingRef", "items", "itemsSummary", "shippingAddress", "orderUrl", "customerName", ...STORE],
+  },
+  {
+    key: "ORDER_CANCELLATION_REQUESTED",
+    channel: "EMAIL",
+    audience: "CUSTOMER",
+    title: "Cancellation request received",
+    when: "Right after a customer asks to cancel an order that hasn't shipped (from their account's order page) — an acknowledgement that we got it.",
+    subject: "We got your cancellation request",
+    defaultBody: `Hi {customerName} — we've received your request to cancel order #{orderNumber} ({itemsSummary}, {total}).
+
+Reason you gave: {reason}
+
+We'll review it and email you as soon as it's confirmed. If the order has already been handed to the courier we may not be able to stop it — we'll tell you either way.
+
+Questions? Just reply to this email or write to {storeEmail}.`,
+    placeholders: [
+      "orderNumber", "orderDate", "items", "itemsSummary", "subtotal", "discount", "couponCode", "shippingCost", "total",
+      "paymentMethod", "paymentStatus", "shippingAddress", "reason", "receipt", "orderUrl", "customerName", ...STORE,
+    ],
+  },
+  {
+    key: "ORDER_CANCELLED",
+    channel: "EMAIL",
+    audience: "CUSTOMER",
+    title: "Order cancelled",
+    when: "When an order is cancelled by an admin (Cancel order, or a Refund on an unshipped order the customer asked to cancel) — confirms the cancellation to the customer.",
+    subject: "Your order has been cancelled",
+    defaultBody: `Hi {customerName} — order #{orderNumber} ({itemsSummary}, {total}) has been cancelled.
+
+Nothing more is owed for it. If you had already paid anything towards this order, we'll be in touch about returning it.
+
+Changed your mind? You're always welcome back: {siteUrl}
+
+Questions? Just reply to this email or write to {storeEmail}.`,
+    placeholders: [
+      "orderNumber", "orderDate", "items", "itemsSummary", "subtotal", "discount", "couponCode", "shippingCost", "total",
+      "paymentMethod", "paymentStatus", "shippingAddress", "reason", "receipt", "orderUrl", "customerName", ...STORE,
+    ],
   },
   {
     key: "BACK_IN_STOCK",

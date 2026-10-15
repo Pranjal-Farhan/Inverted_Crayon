@@ -47,5 +47,10 @@ export async function googleExchangeCode(params: {
   if (!userRes.ok || !user.sub || !user.email) {
     throw new Error(`Google userinfo failed: ${JSON.stringify(user)}`);
   }
+  // The email is what ties a Google login to an existing account, so an address Google hasn't
+  // verified as the user's own must not be trusted for that.
+  if (user.email_verified === false) {
+    throw new Error("Google account's email isn't verified — can't sign in with it.");
+  }
   return { id: user.sub, email: user.email, name: user.name ?? null, picture: user.picture ?? null };
 }

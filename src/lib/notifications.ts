@@ -119,16 +119,37 @@ export async function notifyOrderUpdated(orderId: string, update: string, actor:
   });
 }
 
-/** A customer asked to cancel an order that hasn't shipped. */
+/** A customer asked to cancel an order that hasn't shipped: acknowledge to them, tell the brand. */
 export async function notifyCancellationRequested(orderId: string, reason: string) {
   const [order, ctx] = await Promise.all([loadOrder({ id: orderId }), getMessageContext()]);
   if (!order) return;
-  await sendTemplatedEmail({
-    key: "ADMIN_CANCELLATION_REQUEST",
-    vars: { ...orderVars(order, ctx), reason: reason.trim() || "No reason given" },
-    relatedOrderId: order.number,
-    attachments: await receiptAttachments(order, ctx.store),
-  });
+  const vars = { ...orderVars(order, ctx), reason: reason.trim() || "No reason given" };
+  const attachments = await receiptAttachments(order, ctx.store);
+  await Promise.all([
+    sendTemplatedEmail({ key: "ORDER_CANCELLATION_REQUESTED", to: order.email, vars, relatedOrderId: order.number, attachments }),
+    sendTemplatedEmail({ key: "ADMIN_CANCELLATION_REQUEST", vars, relatedOrderId: order.number, attachments }),
+  ]);
+}
+
+/**
+ * An order was cancelled by an admin: confirm it to the customer (with the receipt, which now says
+ * Cancelled) and tell the brand what changed. {reason} is what the customer wrote when they asked
+ * to cancel, if they did.
+ */
+export async function notifyOrderCancelled(orderId: string, update: string, actor: AdminActor) {
+  const [order, ctx] = await Promise.all([loadOrder({ id: orderId }), getMessageContext()]);
+  if (!order) return;
+  const vars = { ...orderVars(order, ctx), reason: order.cancellationReason?.trim() || "No reason given" };
+  const attachments = await receiptAttachments(order, ctx.store);
+  await Promise.all([
+    sendTemplatedEmail({ key: "ORDER_CANCELLED", to: order.email, vars, relatedOrderId: order.number, attachments }),
+    sendTemplatedEmail({
+      key: "ADMIN_ORDER_UPDATE",
+      vars: { ...vars, update, updatedBy: actorLabel(actor), updatedAt: formatDhaka(new Date()) },
+      relatedOrderId: order.number,
+      attachments,
+    }),
+  ]);
 }
 
 /** A customer asked to return some items from a delivered order. */

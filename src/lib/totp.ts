@@ -1,5 +1,5 @@
 import "server-only";
-import { createHmac, randomBytes } from "node:crypto";
+import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 
 /**
  * TOTP (RFC 6238) — the algorithm behind Google Authenticator, Authy, 1Password, etc. Hand-rolled
@@ -71,15 +71,27 @@ export function currentTotpCode(secret: string, at: number = Date.now()): string
   return hotp(secret, Math.floor(at / 1000 / STEP_SECONDS));
 }
 
-/** Accepts the current 30s step plus one step either side, to tolerate normal clock drift. */
-export function verifyTotpCode(secret: string, code: string, at: number = Date.now()): boolean {
+/**
+ * Which 30-second step `code` is the code for — the current one, or one either side to tolerate
+ * normal clock drift — or null if it isn't a valid code. Callers that log someone in must also
+ * refuse a step that was already used (see consumeSecondFactor in two-factor.ts): RFC 6238 §5.2.
+ */
+export function matchTotpStep(secret: string, code: string, at: number = Date.now()): number | null {
   const trimmed = code.trim();
-  if (!/^\d{6}$/.test(trimmed)) return false;
+  if (!/^\d{6}$/.test(trimmed)) return null;
   const counter = Math.floor(at / 1000 / STEP_SECONDS);
+  const given = Buffer.from(trimmed);
+  let matched: number | null = null;
+  // Always check all three steps (no early exit) so the time taken doesn't hint at which one matched.
   for (const delta of [0, -1, 1]) {
-    if (hotp(secret, counter + delta) === trimmed) return true;
+    const expected = Buffer.from(hotp(secret, counter + delta));
+    if (timingSafeEqual(given, expected) && matched === null) matched = counter + delta;
   }
-  return false;
+  return matched;
+}
+
+export function verifyTotpCode(secret: string, code: string, at: number = Date.now()): boolean {
+  return matchTotpStep(secret, code, at) !== null;
 }
 
 export function totpAuthUri(secret: string, accountEmail: string, issuer = "Inverted Crayon"): string {

@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { getSiteOrigin } from "@/lib/site-url";
 import { db } from "@/lib/db";
-import { setCustomerSession, setAdminSession } from "@/lib/session";
+import { setCustomerSession, setAdminSession, setAdmin2FAPending } from "@/lib/session";
 import { googleExchangeCode } from "@/lib/oauth/google";
 import { facebookExchangeCode } from "@/lib/oauth/facebook";
 import { notifyAccountRegistered } from "@/lib/notifications";
@@ -56,6 +56,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ prov
           provider === "google"
             ? await db.adminUser.update({ where: { id: account.id }, data: { googleId: profile.id } })
             : await db.adminUser.update({ where: { id: account.id }, data: { facebookId: profile.id } });
+      }
+
+      // Signing in with Google/Facebook proves who they are, not that they hold the authenticator —
+      // an account with two-factor on still has to pass the code step, exactly as with a password.
+      if (account.twoFactorEnabled) {
+        await setAdmin2FAPending({ adminId: account.id });
+        return NextResponse.redirect(`${origin}/admin/login?step=2fa`);
       }
 
       await setAdminSession({ adminId: account.id, email: account.email, name: account.name, role: account.role });

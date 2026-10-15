@@ -42,7 +42,8 @@ export function TwoFactorSetup({ enabled: initialEnabled }: { enabled: boolean }
   if (savedCodes) {
     return (
       <Panel title="Two-factor authentication">
-        <p className="mb-3 text-sm text-lime">Two-factor authentication is now enabled.</p>
+        <p className="mb-1 text-sm text-lime">Two-factor authentication is now enabled.</p>
+        <p className="mb-3 text-[13px] text-muted">Any other device signed in to this account has been signed out.</p>
         <p className="mb-3 text-[13px] text-muted">
           Save these one-time backup codes somewhere safe — each can be used once to sign in if you lose access to
           your authenticator app. They won&apos;t be shown again.
@@ -64,13 +65,27 @@ export function TwoFactorSetup({ enabled: initialEnabled }: { enabled: boolean }
       <Panel title="Two-factor authentication">
         <p className="mb-3 text-sm text-lime">Two-factor authentication is enabled on this account.</p>
         <form action={disableAction}>
-          <p className="mb-2 text-[13px] text-muted">Enter your password to disable it.</p>
-          <div className="mb-3 flex max-w-sm gap-2">
+          <p className="mb-2 text-[13px] text-muted">
+            To turn it off, enter your password and a current code from your authenticator app (or one of your backup codes).
+          </p>
+          <div className="mb-3 flex max-w-md flex-wrap gap-2">
             <input
               name="password"
               type="password"
               required
-              className="flex-1 border border-line-2 bg-ink px-3 py-2 text-sm outline-none focus:border-lime"
+              autoComplete="current-password"
+              placeholder="Password"
+              aria-label="Password"
+              className="min-w-[10rem] flex-1 border border-line-2 bg-ink px-3 py-2 text-sm outline-none focus:border-lime"
+            />
+            <input
+              name="code"
+              type="text"
+              required
+              autoComplete="one-time-code"
+              placeholder="Code"
+              aria-label="Authenticator or backup code"
+              className="w-32 border border-line-2 bg-ink px-3 py-2 text-sm tracking-[2px] outline-none focus:border-lime"
             />
             <button
               type="submit"
@@ -80,7 +95,7 @@ export function TwoFactorSetup({ enabled: initialEnabled }: { enabled: boolean }
               {disablePending ? "Disabling…" : "Disable"}
             </button>
           </div>
-          {disableState && !disableState.ok && <p className="text-[13px] text-error">{disableState.error}</p>}
+          {disableState && !disableState.ok && <p role="alert" className="text-[13px] text-error">{disableState.error}</p>}
         </form>
       </Panel>
     );

@@ -57,7 +57,7 @@ export default async function AccountOrderDetailPage({ params }: Props) {
           <div className="mt-4 border border-yellow/40 bg-yellow/[0.07] px-4 py-3 text-sm">
             <p className="font-label text-[13px] tracking-[1.2px] text-yellow">CANCELLATION REQUESTED</p>
             <p className="mt-1 text-muted">
-              You asked to cancel this order on {formatDhaka(order.cancellationRequestedAt)}. Our team will contact you to confirm.
+              You asked to cancel this order on {formatDhaka(order.cancellationRequestedAt)}. We emailed you to say we got it, and we&apos;ll email you again once it&apos;s confirmed.
             </p>
           </div>
         ) : (

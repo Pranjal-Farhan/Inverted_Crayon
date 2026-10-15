@@ -546,7 +546,7 @@ model AdminUser {
   facebookId       String?   @unique
   // When this account's password was last changed by its owner. Any login session issued before
   // this moment is rejected (see getCurrentAdmin in src/lib/admin-guard.ts), so changing the
-  // password signs the account out everywhere else.
+  // password — or turning two-factor on or off — signs the account out everywhere else.
   passwordChangedAt DateTime?
 
   // TOTP two-factor auth (RFC 6238, e.g. Google Authenticator). twoFactorSecret is only meaningful
@@ -555,6 +555,9 @@ model AdminUser {
   twoFactorSecret      String?
   twoFactorEnabled     Boolean  @default(false)
   twoFactorBackupCodes String[] @default([])
+  // The most recent 30-second TOTP step that was accepted. A code is only good for a later step than
+  // this, so a code that was already used (or shoulder-surfed) can't be replayed inside its window.
+  twoFactorLastStep    Int?
 
   createdAt DateTime @default(now())
 }
@@ -596,6 +599,8 @@ enum EmailType {
   BACK_IN_STOCK
   PREORDER_SHIP_UPDATE
   CONTACT_RECEIVED
+  ORDER_CANCELLATION_REQUESTED
+  ORDER_CANCELLED
   // Retired: abandoned-bag reminders no longer exist. The value stays only because Postgres can't
   // drop an enum value without rewriting the type, and old outbox rows still carry it.
   ABANDONED_CHECKOUT

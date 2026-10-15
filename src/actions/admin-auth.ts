@@ -13,7 +13,7 @@ import {
 } from "@/lib/session";
 import { isLocked, lockoutMessage, nextLockoutState } from "@/lib/login-lockout";
 import { notifyLoginLockout } from "@/lib/notifications";
-import { verifyTotpCode } from "@/lib/totp";
+import { consumeSecondFactor } from "@/lib/two-factor";
 
 export async function adminLogin(
   _prev: { ok: boolean; error: string; needsTwoFactor: boolean } | null,
@@ -44,13 +44,16 @@ export async function adminLogin(
     return { ok: false, error: "Invalid email or password.", needsTwoFactor: false };
   }
 
-  if (user.failedLoginCount > 0) {
-    await db.adminUser.update({ where: { id: user.id }, data: { failedLoginCount: 0, lockedUntil: null } });
-  }
-
   if (user.twoFactorEnabled) {
+    // A correct password is only half a login here, so the failed-attempt counter is deliberately
+    // NOT reset yet — it resets when the code step succeeds. Otherwise someone who knows the password
+    // could alternate "log in, try four codes, log in again…" and guess the 6-digit code without limit.
     await setAdmin2FAPending({ adminId: user.id });
     return { ok: true, error: "", needsTwoFactor: true };
+  }
+
+  if (user.failedLoginCount > 0) {
+    await db.adminUser.update({ where: { id: user.id }, data: { failedLoginCount: 0, lockedUntil: null } });
   }
 
   await setAdminSession({ adminId: user.id, email: user.email, name: user.name, role: user.role });
@@ -81,31 +84,13 @@ export async function verifyAdminTwoFactor(
     return { ok: false, error: lockoutMessage(user.lockedUntil!) };
   }
 
-  const code = String(formData.get("code") ?? "").trim();
+  const code = String(formData.get("code") ?? "");
 
-  if (verifyTotpCode(user.twoFactorSecret, code)) {
-    if (user.failedLoginCount > 0) {
-      await db.adminUser.update({ where: { id: user.id }, data: { failedLoginCount: 0, lockedUntil: null } });
-    }
+  if (await consumeSecondFactor(user, code)) {
+    await db.adminUser.update({ where: { id: user.id }, data: { failedLoginCount: 0, lockedUntil: null } });
     await clearAdmin2FAPending();
     await setAdminSession({ adminId: user.id, email: user.email, name: user.name, role: user.role });
     redirect(homeFor(user.role));
-  }
-
-  // Not a valid TOTP code — check it against the stored (bcrypt-hashed) backup codes instead.
-  const normalizedInput = code.toUpperCase();
-  for (let i = 0; i < user.twoFactorBackupCodes.length; i++) {
-    if (await bcrypt.compare(normalizedInput, user.twoFactorBackupCodes[i])) {
-      const remaining = [...user.twoFactorBackupCodes];
-      remaining.splice(i, 1);
-      await db.adminUser.update({
-        where: { id: user.id },
-        data: { twoFactorBackupCodes: remaining, failedLoginCount: 0, lockedUntil: null },
-      });
-      await clearAdmin2FAPending();
-      await setAdminSession({ adminId: user.id, email: user.email, name: user.name, role: user.role });
-      redirect(homeFor(user.role));
-    }
   }
 
   const next = nextLockoutState(user.failedLoginCount);
@@ -117,6 +102,7 @@ export async function verifyAdminTwoFactor(
       attempts: next.failedLoginCount,
       lockedUntil: next.lockedUntil,
     });
+    return { ok: false, error: lockoutMessage(next.lockedUntil) };
   }
   return { ok: false, error: "Invalid code." };
 }

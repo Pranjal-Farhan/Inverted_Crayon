@@ -59,7 +59,7 @@ export default async function AdminOrderDetailPage({ params }: Props) {
               </p>
               {order.status !== "REFUNDED" && order.status !== "CANCELLED" && (
                 <p className="mt-1 text-[12px] text-muted-2">
-                  Nothing has been cancelled yet. Use Refund below to cancel the order and restore its stock, or contact the customer.
+                  Nothing has been cancelled yet. Use Cancel order below to confirm it — the stock is restored and the customer is emailed — or contact the customer first.
                 </p>
               )}
             </div>

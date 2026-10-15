@@ -5,6 +5,7 @@ import {
   markOrderShipped,
   markOrderDelivered,
   refundOrder,
+  cancelOrder,
   updateOrderNotes,
   markBalanceCollected,
 } from "@/actions/admin-orders";
@@ -55,6 +56,19 @@ export function OrderActions({
             className="btn-primary bg-lime px-3.5 py-2 font-impact text-sm text-ink disabled:opacity-50"
           >
             Mark delivered
+          </button>
+        )}
+        {(status === "PENDING" || status === "PAID" || status === "PROCESSING") && (
+          <button
+            disabled={pending}
+            onClick={() => {
+              if (confirm("Cancel this order? Its stock is restored and the customer is emailed the cancellation.")) {
+                startTransition(() => cancelOrder(orderId));
+              }
+            }}
+            className="border border-line-2 px-3.5 py-2 text-sm text-error hover:border-error disabled:opacity-50"
+          >
+            Cancel order
           </button>
         )}
         {status !== "REFUNDED" && status !== "CANCELLED" && (
