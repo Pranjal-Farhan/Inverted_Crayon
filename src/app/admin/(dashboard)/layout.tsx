@@ -11,7 +11,7 @@ export default async function AdminDashboardLayout({ children }: { children: Rea
     <div className="flex min-h-screen bg-ink text-paper">
       <AdminSidebar role={admin.role} />
       <div className="min-w-0 flex-1">
-        <AdminTopbar name={admin.name} />
+        <AdminTopbar name={admin.name} role={admin.role} />
         <div className="p-5.5 desktop:p-6.5">{children}</div>
       </div>
     </div>

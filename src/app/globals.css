@@ -417,6 +417,23 @@ button {
   100% { box-shadow: 0 0 0 0 rgba(255, 210, 59, 0); }
 }
 
+/* Admin menu on phones (AdminMobileMenu.tsx) — the dark scrim fades in while the panel slides in from
+   the left. Reduced-motion is covered by the blanket rule near the top of this file. */
+.admin-menu-fade {
+  animation: admin-menu-fade 0.2s ease-out;
+}
+.admin-menu-slide {
+  animation: admin-menu-slide 0.24s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@keyframes admin-menu-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes admin-menu-slide {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
+}
+
 /* Chat bubble (ChatBubble.tsx) — the panel pops up out of the launcher's corner, and the launcher
    sends out a few lime rings on first load before settling. Both are plain animations, so the
    blanket reduced-motion rule near the top of this file resolves them to their end state. */

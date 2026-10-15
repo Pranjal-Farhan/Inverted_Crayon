@@ -289,7 +289,7 @@ It is enforced on the server, three ways, and the menu is only a convenience on 
 - **Every admin page** starts with `await requireAdminPage("<area>")`, before it reads any data: signed-out goes to the login page, an account without access goes back to its own home. Pages do this themselves because layouts and pages render independently — a layout redirect would not stop the page's queries from running.
 - **The role is read from the database on every request** (`getCurrentAdmin()`, one primary-key lookup, de-duplicated per request with React's `cache()`), not trusted from the session cookie. The cookie is a 30-day signed snapshot, so without this a demoted account would keep its old powers and a removed account would stay signed in until the cookie expired; now both take effect on the next click. (The 2FA actions only touch the caller's own account and look it up by id themselves.)
 
-The sidebar (`AdminSidebar.tsx`) hides what an account can't use and drops empty groups; the Roles tab carries a one-line legend of the split.
+The section list (`AdminNav.tsx`, used by both the desktop sidebar and the phone menu — §10) hides what an account can't use and drops empty groups; the Roles tab carries a one-line legend of the split.
 
 ## 8. Storefront walkthrough
 
@@ -469,7 +469,7 @@ Three different surfaces show order status/contents, each gated differently on p
 
 ## 10. Admin panel walkthrough
 
-Every page lives under `src/app/admin/(dashboard)/`, wrapped by `(dashboard)/layout.tsx` which enforces an admin session (redirects to `/admin/login` otherwise) and renders `AdminSidebar` + `AdminTopbar`. The sidebar (`AdminSidebar.tsx`) is the map of every section, grouped exactly as: **Overview** (Dashboard) · **Sell** (Orders, Products, Finance, Categories, Size guides) · **Grow** (Customers, Discounts, Content CMS, Footer, Analytics) · **System** (Emails, SMS, Templates, Settings).
+Every page lives under `src/app/admin/(dashboard)/`, wrapped by `(dashboard)/layout.tsx` which enforces an admin session (redirects to `/admin/login` otherwise) and renders `AdminSidebar` + `AdminTopbar`. **On phones and tablets (below the 960px desktop breakpoint) the sidebar is hidden and the top bar carries a menu button instead** (`AdminMobileMenu.tsx`): it slides the same section list (`AdminNav.tsx` — one definition shared with the sidebar, so the two can't drift) in from the left, with a scrim, Escape / tap-outside / choose-a-section to close, page scroll locked while it's open, and a "Signed in as … · ADMIN/STAFF" line. The open state remembers the page it was opened on, so navigating (back button included) closes it with no reset effect, and the panel is rendered through a portal to `<body>` because the top bar's backdrop blur would otherwise make it the containing block of anything `position: fixed` inside it, clipping the drawer to the bar's height. The sidebar (`AdminSidebar.tsx`) is the map of every section, grouped exactly as: **Overview** (Dashboard) · **Sell** (Orders, Products, Finance, Categories, Size guides) · **Grow** (Customers, Discounts, Content CMS, Footer, Analytics) · **System** (Emails, SMS, Templates, Settings).
 
 ### 10.1 Dashboard (`/admin/dashboard`)
 
