@@ -14,7 +14,7 @@ type Props = { searchParams: Promise<{ range?: string; from?: string; to?: strin
 
 const TYPE_FILTERS: Record<string, { label: string; kinds?: TxnKind[] }> = {
   all: { label: "Everything" },
-  sales: { label: "Sales", kinds: ["SALE"] },
+  sales: { label: "Cash collected from sales", kinds: ["SALE"] },
   expenses: { label: "Expenses", kinds: ["EXPENSE"] },
   investments: { label: "Investments", kinds: ["INVESTMENT"] },
   stock: { label: "Stock purchases", kinds: ["STOCK_PURCHASE"] },
@@ -42,7 +42,7 @@ export default async function FinanceStatementPage({ searchParams }: Props) {
         <div>
           <h2 className="font-impact text-[22px] uppercase tracking-[0.5px]">Statement — {range.label}</h2>
           <p className="text-[13px] text-muted">
-            {store.name} · every sale, expense, investment and stock purchase{range.from || range.to ? " in this period" : ""}, with the running balance. Generated {formatDayOf(new Date())}.
+            {store.name} · every cash collected, expense, investment and stock purchase{range.from || range.to ? " in this period" : ""}, with the running balance. Generated {formatDayOf(new Date())}.
           </p>
         </div>
         <StatementActions exportHref={exportHref} />
@@ -50,7 +50,7 @@ export default async function FinanceStatementPage({ searchParams }: Props) {
 
       <div className="mb-4 grid grid-cols-2 gap-4 desktop:grid-cols-4">
         <Kpi label="Opening balance" value={formatTakaSigned(st.opening)} accent="yellow" delta={range.from ? "before this period" : "start"} />
-        <Kpi label="Money in" value={formatTaka(st.moneyIn)} accent="lime" delta="sales + investments" />
+        <Kpi label="Money in" value={formatTaka(st.moneyIn)} accent="lime" delta="cash collected + investments" />
         <Kpi label="Money out" value={formatTaka(st.moneyOut)} accent="pink" delta="expenses + stock bought" />
         <Kpi label="Closing balance" value={formatTakaSigned(st.closing)} accent="cyan" />
       </div>
@@ -73,6 +73,25 @@ export default async function FinanceStatementPage({ searchParams }: Props) {
           ))}
         </div>
       </Panel>
+
+      {st.awaiting.length > 0 && (
+        <p className="mb-4 border border-yellow/40 bg-yellow/[0.07] px-3.5 py-2.5 text-[13px] text-yellow">
+          {st.awaiting.length} sale{st.awaiting.length === 1 ? "" : "s"} delivered in this period, worth {formatTaka(st.awaiting.reduce((t, x) => t + x.revenue, 0))}, {st.awaiting.length === 1 ? "has its" : "have their"} cash not collected yet — not money in hand, so not listed below:{" "}
+          {st.awaiting.slice(0, 12).map((x, i) => (
+            <span key={x.key}>
+              {i > 0 && ", "}
+              <Link href={x.href} prefetch={false} className="underline">
+                {x.ref}
+              </Link>
+            </span>
+          ))}
+          {st.awaiting.length > 12 && ` … and ${st.awaiting.length - 12} more`}. Mark them collected under{" "}
+          <Link href="/admin/finance/sales?status=awaiting_cash&range=all" className="underline">
+            Sales
+          </Link>
+          .
+        </p>
+      )}
 
       <form method="get" className="mb-3.5 flex flex-wrap items-end gap-2.5 print:hidden">
         {range.preset === "custom" ? (
@@ -171,7 +190,7 @@ export default async function FinanceStatementPage({ searchParams }: Props) {
         </div>
       </Panel>
       <p className="mt-3 text-[12px] text-muted-2">
-        The balance counts every transaction, whatever is filtered. Sales appear when they are delivered or paid; orders still in progress, cancelled or refunded do not move money and are not listed.
+        The balance counts every transaction, whatever is filtered. A sale appears here on the day its cash was collected (marked on the order, or under Sales); sales delivered but not collected yet, orders still in progress, and cancelled or refunded orders do not move money and are not listed.
       </p>
     </div>
   );

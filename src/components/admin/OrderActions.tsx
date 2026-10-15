@@ -8,6 +8,7 @@ import {
   cancelOrder,
   updateOrderNotes,
   markBalanceCollected,
+  unmarkBalanceCollected,
 } from "@/actions/admin-orders";
 
 export function OrderActions({
@@ -16,12 +17,15 @@ export function OrderActions({
   notes,
   balanceDue,
   balanceCollected,
+  cashCollectedOn,
 }: {
   orderId: string;
   status: string;
   notes: string;
   balanceDue?: number;
   balanceCollected?: boolean;
+  /** Already formatted, e.g. "14 Oct 2026". */
+  cashCollectedOn?: string | null;
 }) {
   const [pending, startTransition] = useTransition();
   const [shipOpen, setShipOpen] = useState(false);
@@ -38,8 +42,22 @@ export function OrderActions({
             onClick={() => startTransition(() => markBalanceCollected(orderId))}
             className="border border-yellow px-3.5 py-2 text-sm text-yellow hover:bg-yellow/[0.08] disabled:opacity-50"
           >
-            Mark COD balance collected
+            Mark cash collected
           </button>
+        )}
+        {balanceCollected && (
+          <span className="flex items-center gap-2.5 border border-lime/40 bg-lime/[0.07] px-3.5 py-2 text-sm text-lime">
+            ✓ Cash collected{cashCollectedOn ? ` on ${cashCollectedOn}` : ""}
+            <button
+              disabled={pending}
+              onClick={() => {
+                if (confirm("Mark this order's cash as NOT collected again? It will show as awaiting cash in Finance.")) startTransition(() => unmarkBalanceCollected(orderId));
+              }}
+              className="text-[12px] text-muted underline hover:text-paper disabled:opacity-50"
+            >
+              Undo
+            </button>
+          </span>
         )}
         {(status === "PENDING" || status === "PAID" || status === "PROCESSING") && (
           <button

@@ -24,10 +24,17 @@ import { dhakaDay, dhakaMonth, inRange, monthsBetween, todayDhaka, type DateRang
  *  purchases (inventory) are NOT expenses: investments aren't income, and stock only becomes a cost
  *  when it's sold. Both do move cash, so the statement shows them.
  *
- *  CASH — money in (completed sales + investments) minus money out (expenses + stock purchases).
+ *  CASH — what is actually in hand. A sale's money counts from the day it was collected: for cash on
+ *  delivery that's the day "cash collected" was marked on the order (a delivered order is a sale
+ *  straight away but shows as "awaiting cash" until then); online-paid orders and paid manual sales
+ *  count from the sale day. Cash balance = cash collected + investments − expenses − stock purchases.
+ *
+ *  REMOVED — an order can be left out of every report (a test order, say) without touching the order.
  */
 
 export type SaleStatus = "COMPLETED" | "IN_PROGRESS" | "UNPAID" | "LOST";
+/** Where a sale's money is: COLLECTED = in hand, AWAITING = delivered but not collected yet, NONE = nothing to collect (yet). */
+export type CashStatus = "COLLECTED" | "AWAITING" | "NONE";
 
 export type SaleRow = {
   key: string;
@@ -52,6 +59,11 @@ export type SaleRow = {
   cogs: number;
   unknownCostUnits: number;
   profit: number;
+  cashStatus: CashStatus;
+  /** The day the money came in, when it has. */
+  cashAt: Date | null;
+  /** True when "cash collected" was marked by hand on an online order (so it can be undone). */
+  cashMarked: boolean;
 };
 
 export type TxnKind = "SALE" | "EXPENSE" | "INVESTMENT" | "STOCK_PURCHASE";
@@ -72,7 +84,7 @@ export type Txn = {
 };
 
 export const KIND_LABEL: Record<TxnKind, string> = {
-  SALE: "Sale",
+  SALE: "Cash collected",
   EXPENSE: "Expense",
   INVESTMENT: "Investment",
   STOCK_PURCHASE: "Stock purchase",
@@ -125,6 +137,8 @@ export async function loadFinance() {
         createdAt: true,
         updatedAt: true,
         deliveredAt: true,
+        cashCollectedAt: true,
+        excludeFromFinance: true,
         email: true,
         phone: true,
         shippingFullName: true,
@@ -155,6 +169,8 @@ export async function loadFinance() {
   };
 
   const sales: SaleRow[] = [];
+  /** Online orders taken out of the reports — kept so they can be listed and restored, never counted. */
+  const removed: SaleRow[] = [];
 
   for (const o of orders) {
     const lost = LOST_STATUSES.includes(o.status);
@@ -170,7 +186,11 @@ export async function loadFinance() {
     }
     const revenue = toNumber(o.total);
     const delivery = toNumber(o.shippingCost);
-    sales.push({
+    // Money in hand: when cash was marked collected, or (paid online) from the day it was placed.
+    // A cancelled/refunded order has none — the money went back.
+    const cashAt = lost ? null : (o.cashCollectedAt ?? (o.paymentStatus === "PAID" ? o.createdAt : null));
+    const cashStatus: CashStatus = cashAt ? "COLLECTED" : o.status === "DELIVERED" ? "AWAITING" : "NONE";
+    const row: SaleRow = {
       key: `order:${o.id}`,
       source: "ORDER",
       id: o.id,
@@ -191,7 +211,11 @@ export async function loadFinance() {
       cogs,
       unknownCostUnits: unknown,
       profit: status === "COMPLETED" ? revenue - cogs : 0,
-    });
+      cashStatus,
+      cashAt,
+      cashMarked: o.cashCollectedAt != null,
+    };
+    (o.excludeFromFinance ? removed : sales).push(row);
   }
 
   for (const m of manualSales) {
@@ -226,11 +250,15 @@ export async function loadFinance() {
       cogs,
       unknownCostUnits: unknown,
       profit: status === "COMPLETED" ? revenue - cogs : 0,
+      cashStatus: m.paid ? "COLLECTED" : "NONE",
+      cashAt: m.paid ? m.date : null,
+      cashMarked: false,
     });
   }
   sales.sort((a, b) => b.date.getTime() - a.date.getTime());
 
-  return { orders, manualSales, expenses, investments, purchases, owners, sales, avgCost };
+  removed.sort((a, b) => b.date.getTime() - a.date.getTime());
+  return { orders, manualSales, expenses, investments, purchases, owners, sales, removed, avgCost };
 }
 
 // ------------------------------------------------------------------------------ the ledger
@@ -238,13 +266,14 @@ export async function loadFinance() {
 /** Every movement of money, oldest first: completed sales and investments in; expenses and stock purchases out. */
 export function allTransactions(data: FinanceData): Txn[] {
   const t: Txn[] = [];
+  // Money in from sales is dated by when it came in, not when the order was delivered.
   for (const s of data.sales) {
-    if (s.status !== "COMPLETED") continue;
+    if (s.cashStatus !== "COLLECTED" || !s.cashAt) continue;
     t.push({
       key: s.key,
       kind: "SALE",
       id: s.id,
-      date: s.date,
+      date: s.cashAt,
       title: `${s.source === "ORDER" ? "Order" : "Manual sale"} ${s.ref}`,
       party: s.customerName,
       category: s.source === "ORDER" ? "Online order" : "Manual sale",
@@ -328,7 +357,9 @@ export function statement(data: FinanceData, range: DateRange, opts: { kinds?: T
     if (q && ![t.title, t.party, t.category, t.method].join(" ").toLowerCase().includes(q)) continue;
     lines.push({ ...t, balance: running });
   }
-  return { opening, closing: running, moneyIn, moneyOut, lines };
+  // Delivered in this period but the cash isn't in yet — not money, so not on the ledger above.
+  const awaiting = data.sales.filter((x) => x.cashStatus === "AWAITING" && inRange(x.date, range));
+  return { opening, closing: running, moneyIn, moneyOut, lines, awaiting };
 }
 
 // ------------------------------------------------------------------------------ profit
@@ -350,6 +381,9 @@ export type Summary = {
   onlineSales: number;
   manualSalesCount: number;
   unknownCostUnits: number;
+  /** Sale money that came in during the period (see CASH above). */
+  cashCollected: number;
+  cashCollectedCount: number;
 };
 
 export function summarize(data: FinanceData, range: DateRange): Summary {
@@ -368,7 +402,10 @@ export function summarize(data: FinanceData, range: DateRange): Summary {
     cats.set(e.category, c);
   }
   const netProfit = revenue - cogs - expenses;
+  const collected = data.sales.filter((x) => x.cashStatus === "COLLECTED" && x.cashAt && inRange(x.cashAt, range));
   return {
+    cashCollected: collected.reduce((t, x) => t + x.revenue, 0),
+    cashCollectedCount: collected.length,
     revenue,
     itemsRevenue: done.reduce((s, r) => s + r.itemsRevenue, 0),
     delivery: done.reduce((s, r) => s + r.delivery, 0),
@@ -392,7 +429,10 @@ export function summarize(data: FinanceData, range: DateRange): Summary {
 export function outstanding(data: FinanceData) {
   const inProgress = data.sales.filter((s) => s.status === "IN_PROGRESS");
   const unpaid = data.sales.filter((s) => s.status === "UNPAID");
+  const awaiting = data.sales.filter((s) => s.cashStatus === "AWAITING");
   return {
+    awaitingCashCount: awaiting.length,
+    awaitingCashAmount: awaiting.reduce((t, r) => t + r.revenue, 0),
     inProgressCount: inProgress.length,
     inProgressAmount: inProgress.reduce((s, r) => s + r.revenue, 0),
     unpaidCount: unpaid.length,

@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/lib/db";
+import type { Prisma } from "@/generated/prisma/client";
 import { getAdminForArea } from "@/lib/admin-guard";
 import { invalidateProduct } from "@/lib/invalidate";
 import { entryDate, todayDhaka } from "@/lib/finance-dates";
@@ -129,8 +130,12 @@ export async function saveExpense(_prev: Result | null, formData: FormData): Pro
 }
 
 export async function deleteExpense(id: string): Promise<Result> {
+  return deleteExpenses([id]);
+}
+
+export async function deleteExpenses(ids: string[]): Promise<Result> {
   if (!(await requireFinance())) return fail("Not authorized.");
-  await db.expense.deleteMany({ where: { id } });
+  await db.expense.deleteMany({ where: { id: { in: ids } } });
   refresh();
   return OK;
 }
@@ -166,8 +171,12 @@ export async function saveInvestment(_prev: Result | null, formData: FormData): 
 }
 
 export async function deleteInvestment(id: string): Promise<Result> {
+  return deleteInvestments([id]);
+}
+
+export async function deleteInvestments(ids: string[]): Promise<Result> {
   if (!(await requireFinance())) return fail("Not authorized.");
-  await db.investment.deleteMany({ where: { id } });
+  await db.investment.deleteMany({ where: { id: { in: ids } } });
   refresh();
   return OK;
 }
@@ -214,19 +223,31 @@ export async function updateStockPurchase(_prev: Result | null, formData: FormDa
 
 /** Removes a purchase and takes its units back off the shelf — refused if some have already been sold. */
 export async function deleteStockPurchase(id: string): Promise<Result> {
+  return deleteStockPurchases([id]);
+}
+
+/** Each purchase is handled on its own: the ones that can go, go; the ones with units already sold are reported. */
+export async function deleteStockPurchases(ids: string[]): Promise<Result> {
   if (!(await requireFinance())) return fail("Not authorized.");
-  const p = await db.stockPurchase.findUnique({ where: { id }, include: { variant: { include: { product: { select: { id: true, slug: true } } } } } });
-  if (!p) return OK;
-  if (p.variantId && p.variant) {
-    const taken = await db.variant.updateMany({ where: { id: p.variantId, stockQty: { gte: p.quantity } }, data: { stockQty: { decrement: p.quantity } } });
-    if (taken.count === 0) {
-      return fail(`Can't delete: this purchase added ${p.quantity} units of ${p.productTitleSnapshot} (${p.variantLabelSnapshot}), but fewer than that are in stock now — some were sold. Correct the stock first.`);
+  const problems: string[] = [];
+  let deleted = 0;
+  for (const id of ids) {
+    const p = await db.stockPurchase.findUnique({ where: { id }, include: { variant: { include: { product: { select: { id: true, slug: true } } } } } });
+    if (!p) continue;
+    if (p.variantId && p.variant) {
+      const taken = await db.variant.updateMany({ where: { id: p.variantId, stockQty: { gte: p.quantity } }, data: { stockQty: { decrement: p.quantity } } });
+      if (taken.count === 0) {
+        problems.push(`${p.productTitleSnapshot} (${p.variantLabelSnapshot}): this purchase added ${p.quantity} units, but fewer than that are in stock now — some were sold.`);
+        continue;
+      }
+      invalidateProduct({ id: p.variant.product.id, slug: p.variant.product.slug });
     }
-    invalidateProduct({ id: p.variant.product.id, slug: p.variant.product.slug });
+    await db.stockPurchase.delete({ where: { id } });
+    deleted += 1;
   }
-  await db.stockPurchase.delete({ where: { id } });
   refresh();
-  return OK;
+  if (problems.length === 0) return OK;
+  return fail(`${deleted ? `Deleted ${deleted}. ` : ""}Couldn't delete ${problems.length}: ${problems.join(" ")} Correct the stock first.`);
 }
 
 // ================================================================================ manual sales
@@ -365,19 +386,28 @@ export async function saveManualSale(_prev: Result | null, formData: FormData): 
   return OK;
 }
 
+/** Removes one manual sale inside a transaction, putting back any stock it took. */
+async function removeManualSale(tx: Prisma.TransactionClient, id: string, touched: Set<string>) {
+  const sale = await tx.manualSale.findUnique({ where: { id }, include: { items: true } });
+  if (!sale) return;
+  for (const it of sale.items) {
+    if (it.stockDeducted && it.variantId) {
+      await tx.variant.update({ where: { id: it.variantId }, data: { stockQty: { increment: it.qty } } });
+      touched.add(it.variantId);
+    }
+  }
+  await tx.manualSale.delete({ where: { id } });
+}
+
 export async function deleteManualSale(id: string): Promise<Result> {
+  return deleteManualSales([id]);
+}
+
+export async function deleteManualSales(ids: string[]): Promise<Result> {
   if (!(await requireFinance())) return fail("Not authorized.");
   const touched = new Set<string>();
   await db.$transaction(async (tx) => {
-    const sale = await tx.manualSale.findUnique({ where: { id }, include: { items: true } });
-    if (!sale) return;
-    for (const it of sale.items) {
-      if (it.stockDeducted && it.variantId) {
-        await tx.variant.update({ where: { id: it.variantId }, data: { stockQty: { increment: it.qty } } });
-        touched.add(it.variantId);
-      }
-    }
-    await tx.manualSale.delete({ where: { id } });
+    for (const id of ids) await removeManualSale(tx, id, touched);
   });
   await invalidateVariants(touched);
   refresh();
@@ -388,4 +418,36 @@ async function invalidateVariants(variantIds: Set<string>) {
   if (variantIds.size === 0) return;
   const products = await db.product.findMany({ where: { variants: { some: { id: { in: [...variantIds] } } } }, select: { id: true, slug: true } });
   for (const p of products) invalidateProduct({ id: p.id, slug: p.slug });
+}
+
+// ================================================================================ online orders in the reports
+
+/** Marks an order's cash as collected on the given day (defaults to today), from the Finance screens. */
+export async function markCashCollected(orderId: string, collectedOn: string): Promise<Result> {
+  if (!(await requireFinance())) return fail("Not authorized.");
+  const when = /^\d{4}-\d{2}-\d{2}$/.test(collectedOn) ? entryDate(collectedOn) : new Date();
+  const found = await db.order.updateMany({ where: { id: orderId }, data: { balanceCollected: true, cashCollectedAt: when } });
+  if (found.count === 0) return fail("That order no longer exists.");
+  revalidatePath(`/admin/orders/${orderId}`);
+  refresh();
+  return OK;
+}
+
+export async function undoCashCollected(orderId: string): Promise<Result> {
+  if (!(await requireFinance())) return fail("Not authorized.");
+  await db.order.updateMany({ where: { id: orderId }, data: { balanceCollected: false, cashCollectedAt: null } });
+  revalidatePath(`/admin/orders/${orderId}`);
+  refresh();
+  return OK;
+}
+
+/**
+ * Takes online orders out of (or puts them back into) every finance report. The order itself —
+ * its page, the customer's view, the stock — is untouched; only the money figures change.
+ */
+export async function setOrdersExcludedFromFinance(ids: string[], excluded: boolean): Promise<Result> {
+  if (!(await requireFinance())) return fail("Not authorized.");
+  await db.order.updateMany({ where: { id: { in: ids } }, data: { excludeFromFinance: excluded } });
+  refresh();
+  return OK;
 }

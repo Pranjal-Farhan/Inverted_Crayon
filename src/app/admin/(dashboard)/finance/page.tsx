@@ -45,8 +45,8 @@ export default async function FinanceOverviewPage({ searchParams }: Props) {
       </div>
       <div className="mb-4.5 grid grid-cols-2 gap-4 desktop:grid-cols-4">
         <Kpi label="Gross profit" value={formatTakaSigned(sum.grossProfit)} accent="lime" delta={`${sum.grossMargin.toFixed(1)}% margin`} />
-        <Kpi label="Investments (period)" value={formatTaka(sum.investments)} accent="cyan" />
-        <Kpi label="Stock bought (period)" value={formatTaka(sum.stockPurchased)} accent="yellow" />
+        <Kpi label="Cash collected" value={formatTaka(sum.cashCollected)} accent="cyan" delta={`${sum.cashCollectedCount} ${sum.cashCollectedCount === 1 ? "sale" : "sales"} paid up in this period`} />
+        <Kpi label="Delivered — awaiting cash" value={formatTaka(out.awaitingCashAmount)} accent="yellow" delta={`${out.awaitingCashCount} ${out.awaitingCashCount === 1 ? "order" : "orders"} · all time`} />
         <Kpi label="Cash balance" value={formatTakaSigned(cash.closing)} accent={cash.closing >= 0 ? "lime" : "pink"} delta={range.to ? "at end of period" : "right now"} />
       </div>
 
@@ -92,14 +92,14 @@ export default async function FinanceOverviewPage({ searchParams }: Props) {
             </span>
           </div>
           <p className="mt-2 text-[12px] text-muted-2">
-            Revenue counts an order when it is delivered (cash collected) or paid online, and a manual sale when it is marked paid. Cancelled, refunded and returned orders are left out. Investments are not income; stock you buy is not an expense until it sells.
+            Revenue counts an order when it is delivered or paid online, and a manual sale when it is marked paid; the cash itself counts from the day you mark it collected. Cancelled, refunded and returned orders are left out. Investments are not income; stock you buy is not an expense until it sells.
           </p>
         </Panel>
 
         <div className="space-y-4.5">
           <Panel title="Cash in & out">
-            <Row label="Completed sales">
-              <Money value={sum.revenue} tone="in" />
+            <Row label={`Cash collected from sales (${sum.cashCollectedCount})`}>
+              <Money value={sum.cashCollected} tone="in" />
             </Row>
             <Row label="Investments">
               <Money value={sum.investments} tone="in" />
@@ -111,7 +111,7 @@ export default async function FinanceOverviewPage({ searchParams }: Props) {
               <Money value={-sum.stockPurchased} tone="out" />
             </Row>
             <Row label="Net cash movement" strong>
-              <Money value={sum.revenue + sum.investments - sum.expenses - sum.stockPurchased} />
+              <Money value={sum.cashCollected + sum.investments - sum.expenses - sum.stockPurchased} />
             </Row>
             <Row label="Cash balance (all money since you started)" strong>
               <Money value={cash.closing} />
@@ -119,13 +119,16 @@ export default async function FinanceOverviewPage({ searchParams }: Props) {
           </Panel>
 
           <Panel title="Not counted yet">
+            <Row label={`Delivered, cash not collected yet (${out.awaitingCashCount})`}>
+              <Money value={out.awaitingCashAmount} tone="plain" />
+            </Row>
             <Row label={`Online orders still in progress (${out.inProgressCount})`}>
               <Money value={out.inProgressAmount} tone="plain" />
             </Row>
             <Row label={`Manual sales awaiting payment (${out.unpaidCount})`}>
               <Money value={out.unpaidAmount} tone="plain" />
             </Row>
-            <p className="mt-2 text-[12px] text-muted-2">These become revenue once the order is delivered or the sale is marked paid.</p>
+            <p className="mt-2 text-[12px] text-muted-2">Delivered orders already count as sales; their cash counts once you mark it collected (on the order, or under Sales → Mark cash collected). In-progress orders become sales when delivered.</p>
           </Panel>
         </div>
       </div>

@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { saveInvestment, deleteInvestment, createStockOwner, saveStockOwner, deleteStockOwner } from "@/actions/admin-finance";
+import { saveInvestment, deleteInvestment, deleteInvestments, createStockOwner, saveStockOwner, deleteStockOwner } from "@/actions/admin-finance";
 import { Panel } from "@/components/admin/Panel";
 import { useServerForm } from "./useServerForm";
+import { BulkBar, RowCheck, useSelection } from "./selection";
 import { Field, Money, EmptyRow, RowActions, METHOD_OPTIONS, inputCls, btnGhost, btnPrimary } from "./ui-client";
 
 export type InvestmentRow = { id: string; date: string; amount: number; ownerId: string; ownerName: string; description: string; method: string; notes: string };
@@ -104,6 +105,7 @@ export function InvestmentsManager({ rows, owners, today, total }: { rows: Inves
   const [editingOwner, setEditingOwner] = useState<string | null>(null);
   const [addKey, setAddKey] = useState(0);
   const [ownerKey, setOwnerKey] = useState(0);
+  const sel = useSelection(rows.map((r) => r.id));
 
   return (
     <div>
@@ -116,11 +118,20 @@ export function InvestmentsManager({ rows, owners, today, total }: { rows: Inves
         <InvestmentForm key={addKey} owners={owners} today={today} onDone={() => setAddKey((k) => k + 1)} />
       </Panel>
 
+      <BulkBar
+        count={sel.count}
+        onClear={sel.clear}
+        actions={[{ label: `Delete ${sel.count} investment${sel.count === 1 ? "" : "s"}`, confirmText: `Permanently delete ${sel.count} investment${sel.count === 1 ? "" : "s"}? They will no longer count in the cash balance or the owners' shares. This can't be undone.`, run: () => deleteInvestments(sel.ids) }]}
+      />
+
       <Panel className="mb-4.5 !p-0">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[760px] text-sm">
             <thead>
               <tr className="border-b border-line-2 text-left text-muted">
+                <th className="w-9 px-4 py-2.5">
+                  <RowCheck checked={sel.allTicked} onChange={sel.toggleAll} label="Select all investments" />
+                </th>
                 {["Date", "Invested by", "Details", "How", "Amount", ""].map((h, i) => (
                   <th key={i} className={`font-label px-4 py-2.5 text-[13px] tracking-[0.8px] ${h === "Amount" ? "text-right" : ""}`}>
                     {h}
@@ -132,12 +143,15 @@ export function InvestmentsManager({ rows, owners, today, total }: { rows: Inves
               {rows.map((r) =>
                 editing === r.id ? (
                   <tr key={r.id} className="border-b border-line bg-panel-2/40">
-                    <td colSpan={6} className="p-4">
+                    <td colSpan={7} className="p-4">
                       <InvestmentForm initial={r} owners={owners} today={today} onDone={() => setEditing(null)} />
                     </td>
                   </tr>
                 ) : (
                   <tr key={r.id} className="border-b border-line align-top">
+                    <td className="px-4 py-3">
+                      <RowCheck checked={sel.has(r.id)} onChange={() => sel.toggle(r.id)} label={`Select investment by ${r.ownerName}`} />
+                    </td>
                     <td className="whitespace-nowrap px-4 py-3">{r.date}</td>
                     <td className="px-4 py-3">{r.ownerName}</td>
                     <td className="px-4 py-3">
@@ -149,17 +163,17 @@ export function InvestmentsManager({ rows, owners, today, total }: { rows: Inves
                       <Money value={r.amount} tone="in" />
                     </td>
                     <td className="px-4 py-3">
-                      <RowActions onEdit={() => setEditing(r.id)} onDelete={() => deleteInvestment(r.id)} confirmText={`Delete this investment by ${r.ownerName}? It will no longer count in the cash balance or the owner's share.`} />
+                      <RowActions onEdit={() => setEditing(r.id)} onDelete={() => deleteInvestment(r.id)} confirmText={`Delete this investment by ${r.ownerName}? It will no longer count in the cash balance or the owner's share. This can't be undone.`} />
                     </td>
                   </tr>
                 ),
               )}
-              {rows.length === 0 && <EmptyRow cols={6}>No investments in this period.</EmptyRow>}
+              {rows.length === 0 && <EmptyRow cols={7}>No investments in this period.</EmptyRow>}
             </tbody>
             {rows.length > 0 && (
               <tfoot>
                 <tr className="border-t border-line-2">
-                  <td colSpan={4} className="font-label px-4 py-3 text-[13px] tracking-[0.8px] text-muted">
+                  <td colSpan={5} className="font-label px-4 py-3 text-[13px] tracking-[0.8px] text-muted">
                     TOTAL ({rows.length})
                   </td>
                   <td className="px-4 py-3 text-right font-medium">

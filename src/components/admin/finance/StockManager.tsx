@@ -1,10 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { updateStockPurchase, deleteStockPurchase } from "@/actions/admin-finance";
+import { updateStockPurchase, deleteStockPurchase, deleteStockPurchases } from "@/actions/admin-finance";
 import { Panel } from "@/components/admin/Panel";
 import { StockPurchaseForm } from "@/components/admin/FinanceForms";
 import { useServerForm } from "./useServerForm";
+import { BulkBar, RowCheck, useSelection } from "./selection";
 import { Field, Money, EmptyRow, RowActions, inputCls, btnGhost, btnPrimary } from "./ui-client";
 
 export type PurchaseRow = {
@@ -76,6 +77,7 @@ export function StockManager({
   total: number;
 }) {
   const [editing, setEditing] = useState<string | null>(null);
+  const sel = useSelection(rows.map((r) => r.id));
   return (
     <div>
       <p className="mb-3.5 text-[13px] text-muted">
@@ -84,11 +86,20 @@ export function StockManager({
       <div className="mb-4.5">
         <StockPurchaseForm owners={owners} variants={variants} />
       </div>
+      <BulkBar
+        count={sel.count}
+        onClear={sel.clear}
+        actions={[{ label: `Delete ${sel.count} purchase${sel.count === 1 ? "" : "s"}`, confirmText: `Delete ${sel.count} stock purchase${sel.count === 1 ? "" : "s"}? Their units are taken back off the products' stock; any with units already sold are kept and reported. This can't be undone.`, run: () => deleteStockPurchases(sel.ids) }]}
+      />
+
       <Panel className="!p-0">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[820px] text-sm">
             <thead>
               <tr className="border-b border-line-2 text-left text-muted">
+                <th className="w-9 px-3 py-2.5">
+                  <RowCheck checked={sel.allTicked} onChange={sel.toggleAll} label="Select all purchases" />
+                </th>
                 {["Date", "Paid for by", "Product", "Qty", "Unit cost", "Total", "Supplier", ""].map((h, i) => (
                   <th key={i} className={`font-label px-3 py-2.5 text-[13px] tracking-[0.8px] ${["Unit cost", "Total"].includes(h) ? "text-right" : ""}`}>
                     {h}
@@ -100,12 +111,15 @@ export function StockManager({
               {rows.map((r) =>
                 editing === r.id ? (
                   <tr key={r.id} className="border-b border-line bg-panel-2/40">
-                    <td colSpan={8} className="p-4">
+                    <td colSpan={9} className="p-4">
                       <PurchaseEditForm row={r} owners={owners} onDone={() => setEditing(null)} />
                     </td>
                   </tr>
                 ) : (
                   <tr key={r.id} className="border-b border-line align-top">
+                    <td className="px-3 py-3">
+                      <RowCheck checked={sel.has(r.id)} onChange={() => sel.toggle(r.id)} label={`Select ${r.product}`} />
+                    </td>
                     <td className="whitespace-nowrap px-3 py-3">{r.date}</td>
                     <td className="px-3 py-3">{r.ownerName}</td>
                     <td className="px-3 py-3">
@@ -126,12 +140,12 @@ export function StockManager({
                   </tr>
                 ),
               )}
-              {rows.length === 0 && <EmptyRow cols={8}>No stock purchases in this period.</EmptyRow>}
+              {rows.length === 0 && <EmptyRow cols={9}>No stock purchases in this period.</EmptyRow>}
             </tbody>
             {rows.length > 0 && (
               <tfoot>
                 <tr className="border-t border-line-2">
-                  <td colSpan={5} className="font-label px-3 py-3 text-[13px] tracking-[0.8px] text-muted">
+                  <td colSpan={6} className="font-label px-3 py-3 text-[13px] tracking-[0.8px] text-muted">
                     TOTAL ({rows.length})
                   </td>
                   <td className="px-3 py-3 text-right font-medium">

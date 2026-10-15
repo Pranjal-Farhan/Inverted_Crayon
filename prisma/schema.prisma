@@ -324,6 +324,14 @@ model Order {
   // date a sale counts in the finance reports (see src/lib/finance.ts).
   deliveredAt DateTime?
 
+  // When the cash for this order was actually received (cash on delivery: when the courier or the
+  // customer paid up). Set by "Mark cash collected"; the finance reports count the money as in
+  // hand from this day, while the sale itself counts from delivery.
+  cashCollectedAt DateTime?
+
+  // Taken out of the finance reports (e.g. a test order) without touching the order itself.
+  excludeFromFinance Boolean @default(false)
+
   // Set when the customer asks (from their account's order page) to cancel an order that hasn't
   // shipped yet. Only a flag + their reason for the admin to act on — the admin still decides and
   // performs the actual cancellation/refund.

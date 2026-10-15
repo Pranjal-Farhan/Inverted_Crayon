@@ -124,10 +124,18 @@ export async function updateOrderNotes(orderId: string, notes: string) {
   revalidatePath(`/admin/orders/${orderId}`);
 }
 
-/** Marks a preorder's cash-on-delivery balance as collected — purely a record-keeping flag, doesn't touch paymentStatus (that still tracks the online advance). */
+/** Marks the cash on delivery as collected — the date it was collected (now) is what the finance reports count the money from. */
 export async function markBalanceCollected(orderId: string) {
   const admin = await requireAdmin();
-  await db.order.update({ where: { id: orderId }, data: { balanceCollected: true } });
-  await notifyOrderUpdated(orderId, "Cash-on-delivery balance marked as collected", admin);
+  await db.order.update({ where: { id: orderId }, data: { balanceCollected: true, cashCollectedAt: new Date() } });
+  await notifyOrderUpdated(orderId, "Cash on delivery marked as collected", admin);
+  revalidatePath(`/admin/orders/${orderId}`);
+}
+
+/** For a mistaken "collected" click: the order goes back to awaiting its cash. */
+export async function unmarkBalanceCollected(orderId: string) {
+  const admin = await requireAdmin();
+  await db.order.update({ where: { id: orderId }, data: { balanceCollected: false, cashCollectedAt: null } });
+  await notifyOrderUpdated(orderId, "Cash on delivery set back to not collected", admin);
   revalidatePath(`/admin/orders/${orderId}`);
 }

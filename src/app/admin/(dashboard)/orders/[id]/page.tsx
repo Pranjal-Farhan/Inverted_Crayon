@@ -131,6 +131,7 @@ export default async function AdminOrderDetailPage({ params }: Props) {
               notes={order.internalNotes ?? ""}
               balanceDue={toNumber(order.balanceDue)}
               balanceCollected={order.balanceCollected}
+              cashCollectedOn={order.cashCollectedAt ? order.cashCollectedAt.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric", timeZone: "Asia/Dhaka" }) : null}
             />
           </div>
         </Panel>
