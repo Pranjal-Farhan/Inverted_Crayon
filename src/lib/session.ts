@@ -27,6 +27,8 @@ export type AdminSessionPayload = {
   email: string;
   name: string;
   role: "ADMIN" | "STAFF";
+  /** When the cookie was issued (seconds) — stamped by jose, present on every verified token. */
+  iat?: number;
 };
 
 export type Admin2FAPendingPayload = {

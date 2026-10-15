@@ -4,6 +4,7 @@ import { canAccessArea } from "@/lib/admin-areas";
 import { requireAdminPage } from "@/lib/admin-guard";
 import { SettingsView } from "@/components/admin/SettingsView";
 import { TwoFactorSetup } from "@/components/admin/TwoFactorSetup";
+import { ChangePasswordForm } from "@/components/admin/ChangePasswordForm";
 
 export default async function AdminSettingsPage() {
   const admin = await requireAdminPage("security");
@@ -18,6 +19,7 @@ export default async function AdminSettingsPage() {
           Sign-in security for your own account. Store settings and team accounts are managed by an admin.
         </p>
         <TwoFactorSetup enabled={self?.twoFactorEnabled ?? false} />
+        <ChangePasswordForm />
       </div>
     );
   }

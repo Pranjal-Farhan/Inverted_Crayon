@@ -5,6 +5,7 @@ import { saveStoreInfo, saveChatWidgetSettings } from "@/actions/admin-settings"
 import { Panel } from "@/components/admin/Panel";
 import { StaffManager } from "@/components/admin/StaffManager";
 import { TwoFactorSetup } from "@/components/admin/TwoFactorSetup";
+import { ChangePasswordForm } from "@/components/admin/ChangePasswordForm";
 import type { ChatWidgetSettings, StoreInfo } from "@/lib/store-settings";
 
 const TABS = ["Store", "Roles", "Security", "Chat"] as const;
@@ -45,7 +46,12 @@ export function SettingsView({
 
       {tab === "Roles" && <StaffManager users={staff} selfId={selfId} />}
 
-      {tab === "Security" && <TwoFactorSetup enabled={twoFactorEnabled} />}
+      {tab === "Security" && (
+        <>
+          <TwoFactorSetup enabled={twoFactorEnabled} />
+          <ChangePasswordForm />
+        </>
+      )}
 
       {tab === "Chat" && (
         <Panel title="Chat bubble">

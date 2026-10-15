@@ -17,10 +17,15 @@ export type CurrentAdmin = { id: string; email: string; name: string; role: Admi
 export const getCurrentAdmin = cache(async (): Promise<CurrentAdmin | null> => {
   const session = await getAdminSession();
   if (!session) return null;
-  return db.adminUser.findUnique({
+  const user = await db.adminUser.findUnique({
     where: { id: session.adminId },
-    select: { id: true, email: true, name: true, role: true },
+    select: { id: true, email: true, name: true, role: true, passwordChangedAt: true },
   });
+  if (!user) return null;
+  // A session issued before the owner last changed the password is no longer valid — that is what
+  // makes "change password" also sign out every other device.
+  if (user.passwordChangedAt && (session.iat ?? 0) < Math.floor(user.passwordChangedAt.getTime() / 1000)) return null;
+  return { id: user.id, email: user.email, name: user.name, role: user.role };
 });
 
 /** The signed-in account if it may use `area`, else null — for actions that report errors as data. */
