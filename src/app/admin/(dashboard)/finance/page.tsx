@@ -40,14 +40,14 @@ export default async function FinanceOverviewPage({ searchParams }: Props) {
       <div className="mb-4 grid grid-cols-2 gap-4 desktop:grid-cols-4">
         <Kpi label="Revenue" value={formatTaka(sum.revenue)} accent="cyan" delta={`${sum.completedSales} completed ${sum.completedSales === 1 ? "sale" : "sales"}`} />
         <Kpi label="Cost of goods" value={formatTaka(sum.cogs)} accent="yellow" />
-        <Kpi label="Expenses" value={formatTaka(sum.expenses)} accent="pink" delta={`${sum.expensesByCategory.reduce((n, c) => n + c.count, 0)} entries`} />
+        <Kpi label="Expenses" value={formatTaka(sum.expenses)} accent="pink" delta={sum.shipmentCosts > 0 ? `incl. ${formatTaka(sum.shipmentCosts)} shipment costs` : `${sum.expensesByCategory.reduce((n, c) => n + c.count, 0)} entries`} />
         <Kpi label="Net profit" value={formatTakaSigned(sum.netProfit)} accent={sum.netProfit >= 0 ? "lime" : "pink"} delta={`${sum.netMargin.toFixed(1)}% of revenue`} />
       </div>
       <div className="mb-4.5 grid grid-cols-2 gap-4 desktop:grid-cols-4">
         <Kpi label="Gross profit" value={formatTakaSigned(sum.grossProfit)} accent="lime" delta={`${sum.grossMargin.toFixed(1)}% margin`} />
         <Kpi label="Cash collected" value={formatTaka(sum.cashCollected)} accent="cyan" delta={`${sum.cashCollectedCount} ${sum.cashCollectedCount === 1 ? "sale" : "sales"} paid up in this period`} />
         <Kpi label="Delivered — awaiting cash" value={formatTaka(out.awaitingCashAmount)} accent="yellow" delta={`${out.awaitingCashCount} ${out.awaitingCashCount === 1 ? "order" : "orders"} · all time`} />
-        <Kpi label="Cash balance" value={formatTakaSigned(cash.closing)} accent={cash.closing >= 0 ? "lime" : "pink"} delta={range.to ? "at end of period" : "right now"} />
+        <Kpi label="Net cash" value={formatTakaSigned(cash.closing)} accent={cash.closing >= 0 ? "lime" : "pink"} delta={range.to ? "collected − spent, to end of period" : "cash collected − expenses − stock paid for"} />
       </div>
 
       {sum.unknownCostUnits > 0 && (
@@ -92,7 +92,7 @@ export default async function FinanceOverviewPage({ searchParams }: Props) {
             </span>
           </div>
           <p className="mt-2 text-[12px] text-muted-2">
-            Revenue counts an order when it is delivered or paid online, and a manual sale when it is marked paid; the cash itself counts from the day you mark it collected. Cancelled, refunded and returned orders are left out. Investments are not income; stock you buy is not an expense until it sells.
+            Revenue counts an order when it is delivered or paid online, and a manual sale when it is marked paid; the cash itself counts from the day you mark it collected. Cancelled, refunded and returned orders are left out. Stock you pay for (investments) is not an expense until it sells — only the shipment cost counts against profit, in the month it was paid.
           </p>
         </Panel>
 
@@ -101,19 +101,16 @@ export default async function FinanceOverviewPage({ searchParams }: Props) {
             <Row label={`Cash collected from sales (${sum.cashCollectedCount})`}>
               <Money value={sum.cashCollected} tone="in" />
             </Row>
-            <Row label="Investments">
-              <Money value={sum.investments} tone="in" />
-            </Row>
             <Row label="Expenses">
-              <Money value={-sum.expenses} tone="out" />
+              <Money value={-sum.expenseEntries} tone="out" />
             </Row>
-            <Row label="Stock purchases">
-              <Money value={-sum.stockPurchased} tone="out" />
+            <Row label="Investments — stock shipments paid for">
+              <Money value={-sum.investments} tone="out" />
             </Row>
             <Row label="Net cash movement" strong>
-              <Money value={sum.cashCollected + sum.investments - sum.expenses - sum.stockPurchased} />
+              <Money value={sum.cashCollected - sum.expenseEntries - sum.investments} />
             </Row>
-            <Row label="Cash balance (all money since you started)" strong>
+            <Row label="Net cash, all time (collected − expenses − stock paid for)" strong>
               <Money value={cash.closing} />
             </Row>
           </Panel>
@@ -138,7 +135,7 @@ export default async function FinanceOverviewPage({ searchParams }: Props) {
           <table className="w-full min-w-[760px] text-sm">
             <thead>
               <tr className="border-b border-line-2 text-left text-muted">
-                {["Month", "Sales", "Revenue", "Cost of goods", "Expenses", "Net profit", ""].map((h, i) => (
+                {["Month", "Sales", "Revenue", "Cost of goods", "Expenses + shipping", "Net profit", ""].map((h, i) => (
                   <th key={i} className={`font-label px-4 py-2.5 text-[13px] tracking-[0.8px] ${i >= 1 && i <= 5 ? "text-right" : ""}`}>
                     {h}
                   </th>
@@ -217,13 +214,7 @@ export default async function FinanceOverviewPage({ searchParams }: Props) {
               {owners.rows.map((o) => (
                 <Row key={o.id} label={o.name}>
                   <span className="text-muted">
-                    <Money value={o.invested} tone="plain" /> invested
-                    {o.stockPaid > 0 && (
-                      <>
-                        {" "}
-                        · <Money value={o.stockPaid} tone="plain" /> stock
-                      </>
-                    )}
+                    <Money value={o.invested} tone="plain" /> invested in stock
                     {o.expensesPaid > 0 && (
                       <>
                         {" "}
@@ -244,7 +235,7 @@ export default async function FinanceOverviewPage({ searchParams }: Props) {
           <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
             {[
               ["/admin/finance/expenses", "+ Expense", "Rent, ads, packaging…"],
-              ["/admin/finance/investments", "+ Investment", "Money an owner put in"],
+              ["/admin/finance/investments", "+ Investment", "A stock shipment you paid for"],
               ["/admin/finance/sales", "+ Sale", "Made outside the website"],
             ].map(([href, title, sub]) => (
               <Link key={href} href={href} prefetch={false} className="border border-line-2 p-3.5 hover:border-lime">

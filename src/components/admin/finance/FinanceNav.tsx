@@ -9,7 +9,6 @@ const TABS = [
   ["/admin/finance/expenses", "Expenses"],
   ["/admin/finance/investments", "Investments"],
   ["/admin/finance/statement", "Statement"],
-  ["/admin/finance/stock", "Stock & owners"],
 ] as const;
 
 export function FinanceNav() {

@@ -25,63 +25,6 @@ export async function createStockOwner(
   return { ok: true, error: "" };
 }
 
-export async function recordStockPurchase(
-  _prev: { ok: boolean; error: string } | null,
-  formData: FormData,
-): Promise<{ ok: boolean; error: string }> {
-  if (!(await getAdminForArea("finance"))) return { ok: false, error: "Not authorized." };
-
-  const ownerId = String(formData.get("ownerId") ?? "");
-  const variantId = String(formData.get("variantId") ?? "") || null;
-  const quantity = Number(formData.get("quantity"));
-  const supplierName = String(formData.get("supplierName") ?? "").trim() || null;
-  const purchaseDateRaw = String(formData.get("purchaseDate") ?? "");
-  const notes = String(formData.get("notes") ?? "").trim() || null;
-
-  if (!ownerId) return { ok: false, error: "Select an owner." };
-  if (!variantId) return { ok: false, error: "Select a product variant." };
-  if (!Number.isInteger(quantity) || quantity <= 0) return { ok: false, error: "Quantity must be a whole number above zero." };
-
-  const owner = await db.stockOwner.findUnique({ where: { id: ownerId } });
-  if (!owner) return { ok: false, error: "That owner no longer exists." };
-
-  const variant = await db.variant.findUnique({ where: { id: variantId }, include: { product: { omit: { purchaseCost: false } } } });
-  if (!variant) return { ok: false, error: "That variant no longer exists." };
-  // The price comes from the product's purchase cost — one place to keep it (Products → edit →
-  // Purchase cost) — and is frozen onto this record so a later change doesn't rewrite what was paid.
-  if (variant.product.purchaseCost == null) {
-    return { ok: false, error: `Set the purchase cost for “${variant.product.title}” on its product page first, then record the purchase.` };
-  }
-  const unitCost = toNumber(variant.product.purchaseCost);
-
-  const purchaseDate = /^\d{4}-\d{2}-\d{2}$/.test(purchaseDateRaw) ? entryDate(purchaseDateRaw) : new Date();
-  const totalCost = quantity * unitCost;
-
-  await db.$transaction([
-    db.stockPurchase.create({
-      data: {
-        ownerId,
-        productId: variant.productId,
-        variantId: variant.id,
-        productTitleSnapshot: variant.product.title,
-        variantLabelSnapshot: `${variant.size} / ${variant.color}`,
-        quantity,
-        unitCost,
-        totalCost,
-        supplierName,
-        purchaseDate,
-        notes,
-      },
-    }),
-    db.variant.update({ where: { id: variant.id }, data: { stockQty: { increment: quantity } } }),
-  ]);
-
-  revalidatePath("/admin/finance");
-  // A stock purchase increments stockQty, which can flip a sold-out/preorder badge.
-  invalidateProduct({ id: variant.productId, slug: variant.product.slug });
-  return { ok: true, error: "" };
-}
-
 // ================================================================================ shared
 
 type Result = { ok: boolean; error: string };
@@ -149,32 +92,146 @@ export async function deleteExpenses(ids: string[]): Promise<Result> {
 }
 
 // ================================================================================ investments
+//
+// An investment is a stock shipment an owner paid for: items (variant, quantity, what each unit
+// cost) plus the shipment's own cost. Recording one puts the units on the shelf; editing or
+// deleting it takes them back off — with the same guarded decrement the stock stepper uses, so
+// units that have already been sold can't be taken off twice.
 
-const investmentSchema = z.object({
+const shipmentSchema = z.object({
   id: z.string().optional(),
   date: day,
-  amount: money("Amount").refine((n) => n > 0, "Amount must be more than zero."),
-  ownerId: z.string().min(1, "Choose who invested."),
+  ownerId: z.string().min(1, "Choose the owner who paid."),
+  supplierName: optional(120),
   description: optional(140),
   method: methodSchema,
   notes: optional(500),
+  shipmentCost: money("Shipment cost"),
+  /** Also save each product's cost from this shipment as its purchase cost (otherwise only products with none yet get it). */
+  updateProductCosts: z.boolean().default(false),
+  items: z
+    .array(
+      z.object({
+        variantId: z.string().min(1, "Choose a product for every line."),
+        quantity: z.coerce.number({ error: "Quantity must be a number." }).int("Quantity must be a whole number.").min(1, "Quantity must be at least 1.").max(1_000_000),
+        unitCost: money("Cost each"),
+      }),
+    )
+    .min(1, "Add at least one product to the shipment."),
 });
 
-export async function saveInvestment(_prev: Result | null, formData: FormData): Promise<Result> {
+export type ShipmentInput = z.input<typeof shipmentSchema>;
+
+/** A refusal raised inside the transaction (rolls everything back) with a message for the admin. */
+class ShipmentError extends Error {}
+
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
+export async function saveInvestment(input: ShipmentInput): Promise<Result> {
   const admin = await requireFinance();
   if (!admin) return fail("Not authorized.");
-  const parsed = investmentSchema.safeParse(Object.fromEntries(formData));
+  const parsed = shipmentSchema.safeParse(input);
   if (!parsed.success) return fail(firstError(parsed.error));
-  const { id, date, ...rest } = parsed.data;
-  if (!(await db.stockOwner.findUnique({ where: { id: rest.ownerId }, select: { id: true } }))) return fail("That owner no longer exists.");
-  const data = { ...rest, date: entryDate(date) };
-  if (id) {
-    const found = await db.investment.updateMany({ where: { id }, data });
-    if (found.count === 0) return fail("That investment no longer exists.");
-  } else {
-    await db.investment.create({ data: { ...data, createdByEmail: admin.email } });
+  const d = parsed.data;
+
+  if (!(await db.stockOwner.findUnique({ where: { id: d.ownerId }, select: { id: true } }))) return fail("That owner no longer exists.");
+
+  // The same variant on two lines is one line: quantities add up, the unit cost is their weighted average.
+  const merged = new Map<string, { quantity: number; total: number }>();
+  for (const it of d.items) {
+    const m = merged.get(it.variantId) ?? { quantity: 0, total: 0 };
+    m.quantity += it.quantity;
+    m.total += it.quantity * it.unitCost;
+    merged.set(it.variantId, m);
   }
+  const variants = await db.variant.findMany({
+    where: { id: { in: [...merged.keys()] } },
+    // purchaseCost is asked for explicitly — it is left out of every query by default (lib/db.ts).
+    include: { product: { select: { id: true, slug: true, title: true, purchaseCost: true } } },
+  });
+  if (variants.length !== merged.size) return fail("One of the products no longer exists — remove that line and try again.");
+
+  // In the order they were entered (the database returns variants in its own order).
+  const variantById = new Map(variants.map((v) => [v.id, v]));
+  const lines = [...merged.entries()].map(([id, m]) => {
+    const unitCost = round2(m.total / m.quantity);
+    return { variant: variantById.get(id)!, quantity: m.quantity, unitCost, lineTotal: round2(m.quantity * unitCost) };
+  });
+  const goods = lines.reduce((t, l) => t + l.lineTotal, 0);
+  const amount = round2(goods + d.shipmentCost);
+
+  // Product purchase cost: this shipment's average cost per product. It fills a product that has none
+  // yet; with the box ticked it replaces the one it has.
+  const perProduct = new Map<string, { qty: number; total: number; current: number | null }>();
+  for (const l of lines) {
+    const e = perProduct.get(l.variant.productId) ?? { qty: 0, total: 0, current: l.variant.product.purchaseCost != null ? toNumber(l.variant.product.purchaseCost) : null };
+    e.qty += l.quantity;
+    e.total += l.lineTotal;
+    perProduct.set(l.variant.productId, e);
+  }
+
+  try {
+    await db.$transaction(async (tx) => {
+      // Net change to each variant's stock: this shipment's units, minus what the shipment added before when editing.
+      const delta = new Map<string, number>();
+      for (const l of lines) delta.set(l.variant.id, l.quantity);
+      if (d.id) {
+        const before = await tx.investment.findUnique({ where: { id: d.id }, include: { items: true } });
+        if (!before) throw new ShipmentError("That investment no longer exists.");
+        if (before.legacyCapital) throw new ShipmentError("This is an old entry from before investments tracked shipments — delete it instead.");
+        for (const it of before.items) if (it.variantId) delta.set(it.variantId, (delta.get(it.variantId) ?? 0) - it.quantity);
+      }
+      for (const [variantId, change] of delta) {
+        if (change === 0) continue;
+        if (change > 0) {
+          await tx.variant.update({ where: { id: variantId }, data: { stockQty: { increment: change } } });
+        } else {
+          const taken = await tx.variant.updateMany({ where: { id: variantId, stockQty: { gte: -change } }, data: { stockQty: { decrement: -change } } });
+          if (taken.count === 0) {
+            const v = await tx.variant.findUnique({ where: { id: variantId }, select: { size: true, color: true, product: { select: { title: true } } } });
+            throw new ShipmentError(`${v?.product.title ?? "A product"} (${v?.size} / ${v?.color}): this change takes ${-change} units off the shelf, but fewer than that are in stock — some were sold. Correct the stock first.`);
+          }
+        }
+      }
+
+      const data = {
+        date: entryDate(d.date),
+        amount,
+        shipmentCost: d.shipmentCost,
+        ownerId: d.ownerId,
+        supplierName: d.supplierName,
+        description: d.description,
+        method: d.method,
+        notes: d.notes,
+      };
+      const items = lines.map((l) => ({
+        productId: l.variant.productId,
+        variantId: l.variant.id,
+        productTitleSnapshot: l.variant.product.title,
+        variantLabelSnapshot: `${l.variant.size} / ${l.variant.color}`,
+        quantity: l.quantity,
+        unitCost: l.unitCost,
+        lineTotal: l.lineTotal,
+      }));
+      if (d.id) {
+        await tx.investmentItem.deleteMany({ where: { investmentId: d.id } });
+        await tx.investment.update({ where: { id: d.id }, data: { ...data, items: { create: items } } });
+      } else {
+        await tx.investment.create({ data: { ...data, createdByEmail: admin.email, items: { create: items } } });
+      }
+
+      for (const [productId, e] of perProduct) {
+        if (e.current != null && !d.updateProductCosts) continue;
+        await tx.product.update({ where: { id: productId }, data: { purchaseCost: round2(e.total / e.qty) } });
+      }
+    });
+  } catch (e) {
+    if (e instanceof ShipmentError) return fail(e.message);
+    throw e;
+  }
+
   refresh();
+  for (const l of lines) invalidateProduct({ id: l.variant.product.id, slug: l.variant.product.slug });
   return OK;
 }
 
@@ -182,11 +239,38 @@ export async function deleteInvestment(id: string): Promise<Result> {
   return deleteInvestments([id]);
 }
 
+/** Each shipment is handled on its own: the ones that can go, go (their units come back off the shelf); the ones with units already sold are reported. */
 export async function deleteInvestments(ids: string[]): Promise<Result> {
   if (!(await requireFinance())) return fail("Not authorized.");
-  await db.investment.deleteMany({ where: { id: { in: ids } } });
+  const problems: string[] = [];
+  let deleted = 0;
+  for (const id of ids) {
+    const inv = await db.investment.findUnique({ where: { id }, include: { items: { include: { variant: { select: { product: { select: { id: true, slug: true } } } } } } } });
+    if (!inv) continue;
+    try {
+      await db.$transaction(async (tx) => {
+        if (!inv.legacyCapital) {
+          for (const it of inv.items) {
+            if (!it.variantId) continue;
+            const taken = await tx.variant.updateMany({ where: { id: it.variantId, stockQty: { gte: it.quantity } }, data: { stockQty: { decrement: it.quantity } } });
+            if (taken.count === 0) throw new ShipmentError(`${it.productTitleSnapshot} (${it.variantLabelSnapshot}): this shipment added ${it.quantity} units, but fewer than that are in stock now — some were sold.`);
+          }
+        }
+        await tx.investment.delete({ where: { id } });
+      });
+    } catch (e) {
+      if (e instanceof ShipmentError) {
+        problems.push(e.message);
+        continue;
+      }
+      throw e;
+    }
+    deleted += 1;
+    for (const it of inv.items) if (it.variant) invalidateProduct({ id: it.variant.product.id, slug: it.variant.product.slug });
+  }
   refresh();
-  return OK;
+  if (problems.length === 0) return OK;
+  return fail(`${deleted ? `Deleted ${deleted}. ` : ""}Couldn't delete ${problems.length}: ${problems.join(" ")} Correct the stock first.`);
 }
 
 // ================================================================================ owners
@@ -206,60 +290,11 @@ export async function saveStockOwner(_prev: Result | null, formData: FormData): 
 
 export async function deleteStockOwner(id: string): Promise<Result> {
   if (!(await requireFinance())) return fail("Not authorized.");
-  const [inv, buys, exp] = await Promise.all([
-    db.investment.count({ where: { ownerId: id } }),
-    db.stockPurchase.count({ where: { ownerId: id } }),
-    db.expense.count({ where: { ownerId: id } }),
-  ]);
-  if (inv + buys + exp > 0) return fail("This owner has investments, stock purchases or expenses on record, so they can't be removed. Edit or delete those first.");
+  const [inv, exp] = await Promise.all([db.investment.count({ where: { ownerId: id } }), db.expense.count({ where: { ownerId: id } })]);
+  if (inv + exp > 0) return fail("This owner has investments or expenses on record, so they can't be removed. Edit or delete those first.");
   await db.stockOwner.deleteMany({ where: { id } });
   refresh();
   return OK;
-}
-
-// ================================================================================ stock purchases
-
-export async function updateStockPurchase(_prev: Result | null, formData: FormData): Promise<Result> {
-  if (!(await requireFinance())) return fail("Not authorized.");
-  const parsed = z
-    .object({ id: z.string().min(1), ownerId: z.string().min(1, "Choose an owner."), date: day, supplierName: optional(120), notes: optional(500) })
-    .safeParse(Object.fromEntries(formData));
-  if (!parsed.success) return fail(firstError(parsed.error));
-  const { id, date, ...rest } = parsed.data;
-  if (!(await db.stockOwner.findUnique({ where: { id: rest.ownerId }, select: { id: true } }))) return fail("That owner no longer exists.");
-  const found = await db.stockPurchase.updateMany({ where: { id }, data: { ...rest, purchaseDate: entryDate(date) } });
-  if (found.count === 0) return fail("That purchase no longer exists.");
-  refresh();
-  return OK;
-}
-
-/** Removes a purchase and takes its units back off the shelf — refused if some have already been sold. */
-export async function deleteStockPurchase(id: string): Promise<Result> {
-  return deleteStockPurchases([id]);
-}
-
-/** Each purchase is handled on its own: the ones that can go, go; the ones with units already sold are reported. */
-export async function deleteStockPurchases(ids: string[]): Promise<Result> {
-  if (!(await requireFinance())) return fail("Not authorized.");
-  const problems: string[] = [];
-  let deleted = 0;
-  for (const id of ids) {
-    const p = await db.stockPurchase.findUnique({ where: { id }, include: { variant: { include: { product: { select: { id: true, slug: true } } } } } });
-    if (!p) continue;
-    if (p.variantId && p.variant) {
-      const taken = await db.variant.updateMany({ where: { id: p.variantId, stockQty: { gte: p.quantity } }, data: { stockQty: { decrement: p.quantity } } });
-      if (taken.count === 0) {
-        problems.push(`${p.productTitleSnapshot} (${p.variantLabelSnapshot}): this purchase added ${p.quantity} units, but fewer than that are in stock now — some were sold.`);
-        continue;
-      }
-      invalidateProduct({ id: p.variant.product.id, slug: p.variant.product.slug });
-    }
-    await db.stockPurchase.delete({ where: { id } });
-    deleted += 1;
-  }
-  refresh();
-  if (problems.length === 0) return OK;
-  return fail(`${deleted ? `Deleted ${deleted}. ` : ""}Couldn't delete ${problems.length}: ${problems.join(" ")} Correct the stock first.`);
 }
 
 // ================================================================================ manual sales

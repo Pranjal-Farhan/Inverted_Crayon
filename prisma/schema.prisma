@@ -145,7 +145,7 @@ model Product {
   tags              ProductTag[]
   orderItems        OrderItem[]
   wishlistedBy      WishlistItem[]
-  stockPurchases    StockPurchase[]
+  investmentItems   InvestmentItem[]
   manufacturerLinks ManufacturerLink[]
   // Product-locked coupons attached to this product (Discount.scope = PRODUCT). Global coupons
   // never appear here — they apply everywhere without being attached.
@@ -181,7 +181,7 @@ model Variant {
 
   orderItems      OrderItem[]
   backInStockSubs BackInStockSubscription[]
-  stockPurchases  StockPurchase[]
+  investmentItems InvestmentItem[]
   manualSaleItems ManualSaleItem[]
 
   createdAt DateTime @default(now())
@@ -506,9 +506,9 @@ model NewsletterSubscriber {
 }
 
 // ---------- inventory finance ----------
-// Who actually paid for a batch of stock, and what it cost — separate from Variant.stockQty
-// (the live count) and from Order/OrderItem (the sell side). Recording a purchase here also
-// increments the variant's stockQty, so this becomes the accountable way stock goes up.
+// The people who pay for stock and put money into the business. What they pay for is recorded as
+// Investments (below): each one is a stock shipment, and recording it also raises the variants'
+// stockQty, so that is the accountable way stock goes up.
 
 model StockOwner {
   id        String   @id @default(cuid())
@@ -517,35 +517,8 @@ model StockOwner {
   notes     String?
   createdAt DateTime @default(now())
 
-  purchases   StockPurchase[]
   investments Investment[]
   expenses    Expense[]
-}
-
-model StockPurchase {
-  id      String     @id @default(cuid())
-  ownerId String
-  owner   StockOwner @relation(fields: [ownerId], references: [id])
-
-  // Nullable + snapshotted so a purchase record survives the product/variant later being deleted
-  // — same pattern as OrderItem on the sell side.
-  productId            String?
-  product              Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
-  variantId            String?
-  variant              Variant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
-  productTitleSnapshot String
-  variantLabelSnapshot String
-
-  quantity     Int
-  unitCost     Decimal  @db.Decimal(10, 2)
-  totalCost    Decimal  @db.Decimal(10, 2)
-  supplierName String?
-  purchaseDate DateTime @default(now())
-  notes        String?
-  createdAt    DateTime @default(now())
-
-  @@index([ownerId])
-  @@index([variantId])
 }
 
 // ---------- admin / CMS ----------
@@ -702,9 +675,9 @@ model SmsLog {
 }
 
 // ---------- finance: manual entries ----------
-// The money side of the business that isn't an online order: what was spent, what the owners put
-// in, and sales made outside the website. Online orders and stock purchases are read from their own
-// tables — src/lib/finance.ts stitches everything into one ledger.
+// The money side of the business that isn't an online order: what was spent, the stock shipments the
+// owners paid for (investments), and sales made outside the website. Online orders are read from their
+// own tables — src/lib/finance.ts stitches everything into one ledger.
 
 enum FinanceMethod {
   CASH
@@ -716,7 +689,7 @@ enum FinanceMethod {
 }
 
 // A day-to-day cost of running the business (rent, ads, packaging, courier fees…). Not stock —
-// inventory is bought through StockPurchase and only becomes a cost when it's sold.
+// inventory is bought through Investment (a stock shipment) and only becomes a cost when it's sold.
 model Expense {
   id             String        @id @default(cuid())
   date           DateTime
@@ -738,22 +711,51 @@ model Expense {
   @@index([ownerId])
 }
 
-// Money an owner/partner puts into the business.
+// An investment is a stock shipment we paid for: the owner who paid, what came in (the items), what
+// each unit cost, and what the shipment itself cost (freight, customs…). It counts as the stock
+// purchase — money out for stock — and raises each variant's stockQty. `amount` is the total paid
+// (items + shipmentCost), stored so a later change to a product can't rewrite what was paid.
 model Investment {
-  id             String        @id @default(cuid())
+  id             String           @id @default(cuid())
   date           DateTime
-  amount         Decimal       @db.Decimal(12, 2)
+  amount         Decimal          @db.Decimal(12, 2)
+  shipmentCost   Decimal          @default(0) @db.Decimal(12, 2)
   ownerId        String
-  owner          StockOwner    @relation(fields: [ownerId], references: [id])
+  owner          StockOwner       @relation(fields: [ownerId], references: [id])
+  supplierName   String?
   description    String?
-  method         FinanceMethod @default(CASH)
+  method         FinanceMethod    @default(CASH)
   notes          String?
+  // Entries made before investments became shipments were plain "money an owner put in". They are
+  // kept for the record but no longer counted anywhere.
+  legacyCapital  Boolean          @default(false)
+  items          InvestmentItem[]
   createdByEmail String?
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
 
   @@index([date])
   @@index([ownerId])
+}
+
+// One line of a shipment. Nullable + snapshotted so the record survives the product/variant being
+// deleted later — the same pattern as OrderItem on the sell side.
+model InvestmentItem {
+  id                   String     @id @default(cuid())
+  investmentId         String
+  investment           Investment @relation(fields: [investmentId], references: [id], onDelete: Cascade)
+  productId            String?
+  product              Product?   @relation(fields: [productId], references: [id], onDelete: SetNull)
+  variantId            String?
+  variant              Variant?   @relation(fields: [variantId], references: [id], onDelete: SetNull)
+  productTitleSnapshot String
+  variantLabelSnapshot String
+  quantity             Int
+  unitCost             Decimal    @db.Decimal(10, 2)
+  lineTotal            Decimal    @db.Decimal(12, 2)
+
+  @@index([investmentId])
+  @@index([variantId])
 }
 
 // A sale made outside the website (Instagram DM, in person…), typed in by hand. `total` is stored
@@ -787,7 +789,7 @@ model ManualSaleItem {
   saleId        String
   sale          ManualSale @relation(fields: [saleId], references: [id], onDelete: Cascade)
   description   String
-  // Optional link to a catalogue variant — gives the cost price from stock purchases and lets the
+  // Optional link to a catalogue variant — gives the cost price (the product's purchase cost) and lets the
   // sale take its units off the shelf. Free-typed items have neither.
   variantId     String?
   variant       Variant?   @relation(fields: [variantId], references: [id], onDelete: SetNull)

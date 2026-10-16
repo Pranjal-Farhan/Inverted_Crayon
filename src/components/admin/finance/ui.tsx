@@ -39,7 +39,6 @@ const KIND_TONE: Record<string, string> = {
   SALE: "text-lime",
   EXPENSE: "text-error",
   INVESTMENT: "text-cyan",
-  STOCK_PURCHASE: "text-yellow",
 };
 export function KindChip({ kind, label }: { kind: string; label: string }) {
   return <span className={`font-label whitespace-nowrap text-[12px] tracking-[0.8px] ${KIND_TONE[kind] ?? ""}`}>{label.toUpperCase()}</span>;

@@ -16,8 +16,7 @@ const TYPE_FILTERS: Record<string, { label: string; kinds?: TxnKind[] }> = {
   all: { label: "Everything" },
   sales: { label: "Cash collected from sales", kinds: ["SALE"] },
   expenses: { label: "Expenses", kinds: ["EXPENSE"] },
-  investments: { label: "Investments", kinds: ["INVESTMENT"] },
-  stock: { label: "Stock purchases", kinds: ["STOCK_PURCHASE"] },
+  investments: { label: "Investments (stock shipments)", kinds: ["INVESTMENT"] },
 };
 
 export default async function FinanceStatementPage({ searchParams }: Props) {
@@ -42,7 +41,7 @@ export default async function FinanceStatementPage({ searchParams }: Props) {
         <div>
           <h2 className="font-impact text-[22px] uppercase tracking-[0.5px]">Statement — {range.label}</h2>
           <p className="text-[13px] text-muted">
-            {store.name} · every cash collected, expense, investment and stock purchase{range.from || range.to ? " in this period" : ""}, with the running balance. Generated {formatDayOf(new Date())}.
+            {store.name} · every cash collected, expense and investment (stock shipment paid for){range.from || range.to ? " in this period" : ""}, with the running balance. Generated {formatDayOf(new Date())}.
           </p>
         </div>
         <StatementActions exportHref={exportHref} />
@@ -50,8 +49,8 @@ export default async function FinanceStatementPage({ searchParams }: Props) {
 
       <div className="mb-4 grid grid-cols-2 gap-4 desktop:grid-cols-4">
         <Kpi label="Opening balance" value={formatTakaSigned(st.opening)} accent="yellow" delta={range.from ? "before this period" : "start"} />
-        <Kpi label="Money in" value={formatTaka(st.moneyIn)} accent="lime" delta="cash collected + investments" />
-        <Kpi label="Money out" value={formatTaka(st.moneyOut)} accent="pink" delta="expenses + stock bought" />
+        <Kpi label="Money in" value={formatTaka(st.moneyIn)} accent="lime" delta="cash collected from sales" />
+        <Kpi label="Money out" value={formatTaka(st.moneyOut)} accent="pink" delta="expenses + stock shipments paid" />
         <Kpi label="Closing balance" value={formatTakaSigned(st.closing)} accent="cyan" />
       </div>
 

@@ -21,14 +21,18 @@ import { dhakaDay, dhakaMonth, inRange, monthsBetween, todayDhaka, type DateRang
  *  can override it with its own typed cost. Units with no known cost are counted and flagged rather
  *  than guessed.
  *
- *  NET PROFIT = revenue − cost of goods − expenses. Investments (owners putting money in) and stock
- *  purchases (inventory) are NOT expenses: investments aren't income, and stock only becomes a cost
- *  when it's sold. Both do move cash, so the statement shows them.
+ *  INVESTMENTS — each one is a stock shipment an owner paid for: the items (what each unit cost) plus
+ *  the shipment's own cost (freight, customs…). It counts as the stock purchase — money out — and
+ *  puts the units on the shelf. The goods are NOT an expense when bought: they become a cost only
+ *  when sold, through cost of goods. The shipment cost is: it counts against profit in the period
+ *  the shipment was paid (a "Shipment costs" line next to the expenses).
+ *
+ *  NET PROFIT = revenue − cost of goods − expenses − shipment costs.
  *
  *  CASH — what is actually in hand. A sale's money counts from the day it was collected: for cash on
  *  delivery that's the day "cash collected" was marked on the order (a delivered order is a sale
  *  straight away but shows as "awaiting cash" until then); online-paid orders and paid manual sales
- *  count from the sale day. Cash balance = cash collected + investments − expenses − stock purchases.
+ *  count from the sale day. Net cash = cash collected − expenses − investments (stock shipments paid).
  *
  *  REMOVED — an order can be left out of every report (a test order, say) without touching the order.
  */
@@ -67,7 +71,7 @@ export type SaleRow = {
   cashMarked: boolean;
 };
 
-export type TxnKind = "SALE" | "EXPENSE" | "INVESTMENT" | "STOCK_PURCHASE";
+export type TxnKind = "SALE" | "EXPENSE" | "INVESTMENT";
 
 export type Txn = {
   key: string;
@@ -78,7 +82,7 @@ export type Txn = {
   title: string;
   /** The other side: the customer, vendor or supplier. */
   party: string;
-  /** The owner who made / paid it (expenses, investments, stock purchases). */
+  /** The owner who made / paid it (expenses, investments). */
   owner: string;
   category: string;
   method: string;
@@ -91,7 +95,6 @@ export const KIND_LABEL: Record<TxnKind, string> = {
   SALE: "Cash collected",
   EXPENSE: "Expense",
   INVESTMENT: "Investment",
-  STOCK_PURCHASE: "Stock purchase",
 };
 
 export const METHOD_LABEL: Record<string, string> = {
@@ -126,7 +129,7 @@ const LOST_STATUSES = ["CANCELLED", "REFUNDED", "RETURNED"];
 export type FinanceData = Awaited<ReturnType<typeof loadFinance>>;
 
 export async function loadFinance() {
-  const [orders, manualSales, expenses, investments, purchases, owners, products] = await Promise.all([
+  const [orders, manualSales, expenses, allInvestments, owners, products] = await Promise.all([
     db.order.findMany({
       select: {
         id: true,
@@ -152,11 +155,14 @@ export async function loadFinance() {
     }),
     db.manualSale.findMany({ include: { items: true }, orderBy: { date: "desc" } }),
     db.expense.findMany({ include: { owner: true }, orderBy: { date: "desc" } }),
-    db.investment.findMany({ include: { owner: true }, orderBy: { date: "desc" } }),
-    db.stockPurchase.findMany({ include: { owner: true }, orderBy: { purchaseDate: "desc" } }),
+    db.investment.findMany({ include: { owner: true, items: { orderBy: { id: "asc" } } }, orderBy: [{ date: "desc" }, { createdAt: "desc" }] }),
     db.stockOwner.findMany({ orderBy: { createdAt: "asc" } }),
     db.product.findMany({ select: { id: true, purchaseCost: true, variants: { select: { id: true } } } }),
   ]);
+
+  // Entries from before investments became shipments are kept for the record but never counted.
+  const investments = allInvestments.filter((i) => !i.legacyCapital);
+  const legacyCapital = allInvestments.filter((i) => i.legacyCapital);
 
   // What one unit costs the business: the purchase cost typed on the product (admin → Products →
   // edit → Purchase cost). Every size and colour of a product costs the same; a product with no
@@ -262,12 +268,19 @@ export async function loadFinance() {
   sales.sort((a, b) => b.date.getTime() - a.date.getTime());
 
   removed.sort((a, b) => b.date.getTime() - a.date.getTime());
-  return { orders, manualSales, expenses, investments, purchases, owners, sales, removed, unitCostOf, productCost };
+  return { orders, manualSales, expenses, investments, legacyCapital, owners, sales, removed, unitCostOf, productCost };
 }
 
 // ------------------------------------------------------------------------------ the ledger
 
-/** Every movement of money, oldest first: completed sales and investments in; expenses and stock purchases out. */
+/** What a shipment contains, in one line: "20× Crown Jeans (M / Cyan), 5× …". */
+export function investmentSummary(items: { quantity: number; productTitleSnapshot: string; variantLabelSnapshot: string }[]): string {
+  if (items.length === 0) return "Stock shipment";
+  const parts = items.slice(0, 3).map((i) => `${i.quantity}× ${i.productTitleSnapshot} (${i.variantLabelSnapshot})`);
+  return parts.join(", ") + (items.length > 3 ? ` + ${items.length - 3} more` : "");
+}
+
+/** Every movement of money, oldest first: cash collected from sales in; expenses and investments (stock shipments paid for) out. */
 export function allTransactions(data: FinanceData): Txn[] {
   const t: Txn[] = [];
   // Money in from sales is dated by when it came in, not when the order was delivered.
@@ -304,36 +317,21 @@ export function allTransactions(data: FinanceData): Txn[] {
       href: "/admin/finance/expenses",
     });
   }
+  // An investment is a stock shipment paid for: money out, in one line, whatever is in it.
   for (const i of data.investments) {
     t.push({
       key: `investment:${i.id}`,
       kind: "INVESTMENT",
       id: i.id,
       date: i.date,
-      title: i.description?.trim() || "Investment",
-      party: "",
+      title: i.description?.trim() || investmentSummary(i.items),
+      party: i.supplierName ?? "",
       owner: i.owner.name,
-      category: "Investment",
+      category: "Stock shipment",
       method: METHOD_LABEL[i.method] ?? i.method,
-      inAmount: toNumber(i.amount),
-      outAmount: 0,
-      href: "/admin/finance/investments",
-    });
-  }
-  for (const p of data.purchases) {
-    t.push({
-      key: `purchase:${p.id}`,
-      kind: "STOCK_PURCHASE",
-      id: p.id,
-      date: p.purchaseDate,
-      title: `${p.quantity}× ${p.productTitleSnapshot} (${p.variantLabelSnapshot})`,
-      party: p.supplierName ?? "",
-      owner: p.owner.name,
-      category: "Stock purchase",
-      method: "",
       inAmount: 0,
-      outAmount: toNumber(p.totalCost),
-      href: "/admin/finance/stock",
+      outAmount: toNumber(i.amount),
+      href: "/admin/finance/investments",
     });
   }
   t.sort((a, b) => a.date.getTime() - b.date.getTime() || a.key.localeCompare(b.key));
@@ -379,12 +377,17 @@ export type Summary = {
   cogs: number;
   grossProfit: number;
   grossMargin: number;
+  /** Everything counted against profit: the expense entries plus the shipment costs. */
   expenses: number;
+  /** Just the entries on the Expenses page (what left in cash as expenses). */
+  expenseEntries: number;
+  /** The freight/customs part of the shipments paid in the period. */
+  shipmentCosts: number;
   expensesByCategory: { category: string; amount: number; count: number }[];
   netProfit: number;
   netMargin: number;
+  /** Everything paid for stock shipments in the period — goods and shipment cost; money out. */
   investments: number;
-  stockPurchased: number;
   completedSales: number;
   onlineSales: number;
   manualSalesCount: number;
@@ -393,6 +396,9 @@ export type Summary = {
   cashCollected: number;
   cashCollectedCount: number;
 };
+
+/** Shown in the profit & loss next to the expense categories. */
+export const SHIPMENT_CATEGORY = "Shipment costs (stock)";
 
 export function summarize(data: FinanceData, range: DateRange): Summary {
   const done = data.sales.filter((s) => s.status === "COMPLETED" && inRange(s.date, range));
@@ -409,6 +415,12 @@ export function summarize(data: FinanceData, range: DateRange): Summary {
     c.count += 1;
     cats.set(e.category, c);
   }
+  const expenseEntries = expenses;
+  const shipped = data.investments.filter((i) => inRange(i.date, range));
+  const shipmentCosts = shipped.reduce((t, i) => t + toNumber(i.shipmentCost), 0);
+  const withCost = shipped.filter((i) => toNumber(i.shipmentCost) > 0).length;
+  if (shipmentCosts > 0) cats.set(SHIPMENT_CATEGORY, { amount: shipmentCosts, count: withCost });
+  expenses += shipmentCosts;
   const netProfit = revenue - cogs - expenses;
   const collected = data.sales.filter((x) => x.cashStatus === "COLLECTED" && x.cashAt && inRange(x.cashAt, range));
   return {
@@ -421,11 +433,12 @@ export function summarize(data: FinanceData, range: DateRange): Summary {
     grossProfit: revenue - cogs,
     grossMargin: revenue > 0 ? ((revenue - cogs) / revenue) * 100 : 0,
     expenses,
+    expenseEntries,
+    shipmentCosts,
     expensesByCategory: [...cats.entries()].map(([category, v]) => ({ category, ...v })).sort((a, b) => b.amount - a.amount),
     netProfit,
     netMargin: revenue > 0 ? (netProfit / revenue) * 100 : 0,
-    investments: data.investments.filter((i) => inRange(i.date, range)).reduce((s, i) => s + toNumber(i.amount), 0),
-    stockPurchased: data.purchases.filter((p) => inRange(p.purchaseDate, range)).reduce((s, p) => s + toNumber(p.totalCost), 0),
+    investments: shipped.reduce((s, i) => s + toNumber(i.amount), 0),
     completedSales: done.length,
     onlineSales: done.filter((s) => s.source === "ORDER").length,
     manualSalesCount: done.filter((s) => s.source === "MANUAL").length,
@@ -456,8 +469,8 @@ export type MonthRow = {
   grossProfit: number;
   expenses: number;
   netProfit: number;
+  /** Paid for stock shipments that month (money out). */
   investments: number;
-  stockPurchased: number;
 };
 
 /** One row per month across the range (all time: from the first entry to now), oldest first. */
@@ -466,7 +479,6 @@ export function monthly(data: FinanceData, range: DateRange): MonthRow[] {
     ...data.sales.filter((s) => s.status === "COMPLETED").map((s) => s.date),
     ...data.expenses.map((e) => e.date),
     ...data.investments.map((i) => i.date),
-    ...data.purchases.map((p) => p.purchaseDate),
   ];
   const today = todayDhaka();
   const first = dates.length ? dhakaDay(new Date(Math.min(...dates.map((d) => d.getTime())))) : today;
@@ -474,7 +486,7 @@ export function monthly(data: FinanceData, range: DateRange): MonthRow[] {
   const to = range.to ?? today;
   const months = monthsBetween(from, to > today && !range.to ? today : to);
   const rows = new Map<string, MonthRow>(
-    months.map((m) => [m, { month: m, sales: 0, revenue: 0, cogs: 0, grossProfit: 0, expenses: 0, netProfit: 0, investments: 0, stockPurchased: 0 }]),
+    months.map((m) => [m, { month: m, sales: 0, revenue: 0, cogs: 0, grossProfit: 0, expenses: 0, netProfit: 0, investments: 0 }]),
   );
   for (const s of data.sales) {
     if (s.status !== "COMPLETED") continue;
@@ -490,11 +502,10 @@ export function monthly(data: FinanceData, range: DateRange): MonthRow[] {
   }
   for (const i of data.investments) {
     const r = rows.get(dhakaMonth(i.date));
-    if (r) r.investments += toNumber(i.amount);
-  }
-  for (const p of data.purchases) {
-    const r = rows.get(dhakaMonth(p.purchaseDate));
-    if (r) r.stockPurchased += toNumber(p.totalCost);
+    if (!r) continue;
+    r.investments += toNumber(i.amount);
+    // The shipment's own cost is a cost of the month it was paid; the goods become cost when sold.
+    r.expenses += toNumber(i.shipmentCost);
   }
   for (const r of rows.values()) {
     r.grossProfit = r.revenue - r.cogs;
@@ -503,18 +514,18 @@ export function monthly(data: FinanceData, range: DateRange): MonthRow[] {
   return [...rows.values()];
 }
 
-/** Who has put what in, all time: money invested, stock paid for, and expenses they made. */
+/** Who has paid what, all time: stock shipments (investments) and expenses. */
 export function ownerSummary(data: FinanceData) {
   const invested = new Map<string, number>();
-  const stock = new Map<string, number>();
+  const shipments = new Map<string, number>();
   const expenses = new Map<string, number>();
   let totalInvested = 0;
   for (const i of data.investments) {
     const a = toNumber(i.amount);
     invested.set(i.ownerId, (invested.get(i.ownerId) ?? 0) + a);
+    shipments.set(i.ownerId, (shipments.get(i.ownerId) ?? 0) + 1);
     totalInvested += a;
   }
-  for (const p of data.purchases) stock.set(p.ownerId, (stock.get(p.ownerId) ?? 0) + toNumber(p.totalCost));
   for (const e of data.expenses) if (e.ownerId) expenses.set(e.ownerId, (expenses.get(e.ownerId) ?? 0) + toNumber(e.amount));
   const rows = data.owners
     .map((o) => ({
@@ -523,7 +534,7 @@ export function ownerSummary(data: FinanceData) {
       contact: o.contact,
       notes: o.notes,
       invested: invested.get(o.id) ?? 0,
-      stockPaid: stock.get(o.id) ?? 0,
+      shipments: shipments.get(o.id) ?? 0,
       expensesPaid: expenses.get(o.id) ?? 0,
     }))
     .sort((a, b) => b.invested - a.invested);

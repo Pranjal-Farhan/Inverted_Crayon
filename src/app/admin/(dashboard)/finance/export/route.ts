@@ -3,7 +3,7 @@ import { getAdminForArea } from "@/lib/admin-guard";
 import { KIND_LABEL, loadFinance, statement, toCsv, type TxnKind } from "@/lib/finance";
 import { dhakaDay, resolveRange } from "@/lib/finance-dates";
 
-const KINDS: Record<string, TxnKind[] | undefined> = { sales: ["SALE"], expenses: ["EXPENSE"], investments: ["INVESTMENT"], stock: ["STOCK_PURCHASE"] };
+const KINDS: Record<string, TxnKind[] | undefined> = { sales: ["SALE"], expenses: ["EXPENSE"], investments: ["INVESTMENT"] };
 
 /** The statement for a period as a spreadsheet — same filters as the Statement page. */
 export async function GET(req: NextRequest) {

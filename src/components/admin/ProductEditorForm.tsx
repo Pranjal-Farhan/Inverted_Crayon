@@ -964,7 +964,7 @@ export function ProductEditorForm({
                 )}
                 <p className="mt-1.5 text-[12px] text-muted-2">
                   What one unit costs you to buy or make — the same for every size and colour. Finance uses it to work out cost of goods and profit
-                  for every sale of this product, and for stock purchases. Only admins can see or change it; it never appears on the storefront.
+                  for every sale of this product, and it is the starting cost on a stock shipment (Finance → Investments). Only admins can see or change it; it never appears on the storefront.
                 </p>
               </div>
             </div>
