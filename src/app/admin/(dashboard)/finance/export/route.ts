@@ -13,10 +13,10 @@ export async function GET(req: NextRequest) {
   const data = await loadFinance();
   const st = statement(data, range, { kinds: KINDS[sp.get("type") ?? ""], q: sp.get("q") ?? undefined });
 
-  const rows: (string | number)[][] = [["Date", "Type", "Details", "Category", "Party", "Method", "Money in", "Money out", "Balance"]];
-  rows.push(["", "", "Opening balance", "", "", "", "", "", st.opening]);
-  for (const l of st.lines) rows.push([dhakaDay(l.date), KIND_LABEL[l.kind], l.title, l.category, l.party, l.method, l.inAmount || "", l.outAmount || "", l.balance]);
-  rows.push(["", "", "Closing balance", "", "", "", st.moneyIn, st.moneyOut, st.closing]);
+  const rows: (string | number)[][] = [["Date", "Type", "Details", "Category", "Party", "Owner", "Method", "Money in", "Money out", "Balance"]];
+  rows.push(["", "", "Opening balance", "", "", "", "", "", "", st.opening]);
+  for (const l of st.lines) rows.push([dhakaDay(l.date), KIND_LABEL[l.kind], l.title, l.category, l.party, l.owner, l.method, l.inAmount || "", l.outAmount || "", l.balance]);
+  rows.push(["", "", "Closing balance", "", "", "", "", st.moneyIn, st.moneyOut, st.closing]);
 
   const name = `statement-${range.from ?? "start"}_to_${range.to ?? "today"}.csv`;
   return new NextResponse(toCsv(rows), {

@@ -144,7 +144,7 @@ function ManualSaleForm({ initial, variants, today, onDone }: { initial?: Manual
                   ) : (
                     <span>Custom item — stock isn&apos;t touched.</span>
                   )}
-                  <span>Cost each is optional; without it this item has no known cost in the profit figures.</span>
+                  <span>Cost each starts from the product&apos;s purchase cost — change it to override. With no cost at all, the item shows as &ldquo;no cost&rdquo; in the profit figures.</span>
                   <span className="ml-auto text-paper">Line: {formatTakaPrecise((Number(it.qty) || 0) * (Number(it.unitPrice) || 0))}</span>
                 </div>
               </div>

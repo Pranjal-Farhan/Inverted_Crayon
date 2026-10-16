@@ -1,4 +1,5 @@
 import { requireAdminPage } from "@/lib/admin-guard";
+import { canAccessArea } from "@/lib/admin-areas";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { toNumber } from "@/lib/money";
@@ -10,11 +11,15 @@ import { getShippingRates } from "@/lib/store-settings";
 type Props = { params: Promise<{ id: string }> };
 
 export default async function EditProductPage({ params }: Props) {
-  await requireAdminPage("products");
+  const admin = await requireAdminPage("products");
+  // The purchase cost is a finance figure — fetched and sent to the browser only for accounts that can open Finance.
+  const canSeePurchaseCost = canAccessArea(admin.role, "finance");
   const { id } = await params;
   const [product, categories, sizeGuideTemplateRows, couponOptions, rates] = await Promise.all([
     db.product.findUnique({
       where: { id },
+      // Not returned by default (see lib/db.ts); the page hands it to the browser only if the account may see it.
+      omit: { purchaseCost: false },
       include: {
         variants: true,
         tags: { include: { tag: true } },
@@ -51,6 +56,7 @@ export default async function EditProductPage({ params }: Props) {
         description: product.description,
         categoryId: product.categoryId,
         basePrice: toNumber(product.basePrice),
+        purchaseCost: canSeePurchaseCost && product.purchaseCost != null ? toNumber(product.purchaseCost) : null,
         discountType: product.discountType,
         discountValue: product.discountValue != null ? toNumber(product.discountValue) : null,
         status: product.status,
@@ -86,6 +92,7 @@ export default async function EditProductPage({ params }: Props) {
       sizeGuideTemplates={sizeGuideTemplates}
       couponOptions={couponOptions}
       standardDelivery={{ insideDhaka: rates.INSIDE_DHAKA.cost, outsideDhaka: rates.OUTSIDE_DHAKA.cost }}
+      canSeePurchaseCost={canSeePurchaseCost}
     />
   );
 }

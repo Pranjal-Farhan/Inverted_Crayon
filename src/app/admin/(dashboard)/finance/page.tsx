@@ -52,11 +52,11 @@ export default async function FinanceOverviewPage({ searchParams }: Props) {
 
       {sum.unknownCostUnits > 0 && (
         <p className="mb-4.5 border border-yellow/40 bg-yellow/[0.07] px-3.5 py-2.5 text-[13px] text-yellow">
-          {sum.unknownCostUnits} sold unit{sum.unknownCostUnits === 1 ? "" : "s"} in this period {sum.unknownCostUnits === 1 ? "has" : "have"} no recorded purchase cost, so profit is overstated by their cost. Record the stock you bought under{" "}
-          <Link href="/admin/finance/stock" className="underline">
-            Stock &amp; owners
-          </Link>{" "}
-          (or type a cost on manual sales) to fix it.
+          {sum.unknownCostUnits} sold unit{sum.unknownCostUnits === 1 ? "" : "s"} in this period {sum.unknownCostUnits === 1 ? "has" : "have"} no purchase cost, so profit is overstated by their cost. Enter the <strong>Purchase cost</strong> on the product (open it from{" "}
+          <Link href="/admin/products" className="underline">
+            Products
+          </Link>
+          ), or type a cost on a manual sale, to fix it.
         </p>
       )}
 
@@ -203,7 +203,7 @@ export default async function FinanceOverviewPage({ searchParams }: Props) {
       </Panel>
 
       <div className="mb-4.5 grid grid-cols-1 gap-4.5 desktop:grid-cols-2">
-        <Panel title="Capital & profit share (all time)">
+        <Panel title="Owners (all time)">
           {owners.rows.length === 0 ? (
             <p className="text-sm text-muted">
               No owners yet. Add them under{" "}
@@ -215,15 +215,26 @@ export default async function FinanceOverviewPage({ searchParams }: Props) {
           ) : (
             <>
               {owners.rows.map((o) => (
-                <Row key={o.id} label={`${o.name} · ${(o.share * 100).toFixed(1)}%`}>
+                <Row key={o.id} label={o.name}>
                   <span className="text-muted">
-                    <Money value={o.invested} tone="plain" /> in →{" "}
+                    <Money value={o.invested} tone="plain" /> invested
+                    {o.stockPaid > 0 && (
+                      <>
+                        {" "}
+                        · <Money value={o.stockPaid} tone="plain" /> stock
+                      </>
+                    )}
+                    {o.expensesPaid > 0 && (
+                      <>
+                        {" "}
+                        · <Money value={o.expensesPaid} tone="plain" /> expenses
+                      </>
+                    )}
                   </span>
-                  <Money value={o.profitShare} />
                 </Row>
               ))}
               <p className="mt-2 text-[12px] text-muted-2">
-                Total invested <Money value={owners.totalInvested} tone="plain" /> · net profit so far <Money value={owners.netProfitAllTime} />
+                Total invested <Money value={owners.totalInvested} tone="plain" />
               </p>
             </>
           )}

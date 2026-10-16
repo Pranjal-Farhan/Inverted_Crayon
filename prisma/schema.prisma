@@ -131,6 +131,11 @@ model Product {
   // { columns: string[]; rows: { size: string; values: string[] }[] } — see src/lib/size-guide.ts.
   // Null = this product has no measurements entered yet; the PDP falls back to a generic chart.
   sizeGuide                  Json?
+  // What one unit of this product costs the business to buy/make — admin-only (never selected by
+  // a storefront query, never shown to staff). Finance prices cost of goods from it (src/lib/finance.ts):
+  // every size and colour of the product costs this much. Null = not entered yet, so units sold
+  // are flagged "no cost" in the reports instead of guessed.
+  purchaseCost               Decimal?             @db.Decimal(10, 2)
 
   categoryId String
   category   Category @relation(fields: [categoryId], references: [id])
@@ -514,6 +519,7 @@ model StockOwner {
 
   purchases   StockPurchase[]
   investments Investment[]
+  expenses    Expense[]
 }
 
 model StockPurchase {
@@ -719,12 +725,17 @@ model Expense {
   title          String
   paidTo         String?
   method         FinanceMethod @default(CASH)
+  // The owner who made (paid) this transaction. Optional — older entries and business-account
+  // payments have none. Restrict: an owner with expenses on record can't be deleted.
+  ownerId        String?
+  owner          StockOwner?   @relation(fields: [ownerId], references: [id], onDelete: Restrict)
   notes          String?
   createdByEmail String?
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 
   @@index([date])
+  @@index([ownerId])
 }
 
 // Money an owner/partner puts into the business.

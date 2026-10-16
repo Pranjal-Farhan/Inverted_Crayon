@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { updateStockPurchase, deleteStockPurchase, deleteStockPurchases } from "@/actions/admin-finance";
 import { Panel } from "@/components/admin/Panel";
-import { StockPurchaseForm } from "@/components/admin/FinanceForms";
+import { StockPurchaseForm, type StockVariantOption } from "@/components/admin/FinanceForms";
 import { useServerForm } from "./useServerForm";
 import { BulkBar, RowCheck, useSelection } from "./selection";
 import { Field, Money, EmptyRow, RowActions, inputCls, btnGhost, btnPrimary } from "./ui-client";
@@ -73,7 +73,7 @@ export function StockManager({
 }: {
   rows: PurchaseRow[];
   owners: { id: string; name: string }[];
-  variants: { id: string; label: string }[];
+  variants: StockVariantOption[];
   total: number;
 }) {
   const [editing, setEditing] = useState<string | null>(null);
@@ -81,7 +81,7 @@ export function StockManager({
   return (
     <div>
       <p className="mb-3.5 text-[13px] text-muted">
-        Stock you buy is recorded here. It adds the units to the product&apos;s stock and sets what each one cost you — that cost is deducted from the sale price as <span className="text-paper">cost of goods</span> when the item sells. It is not counted as an expense when you buy it.
+        Stock you buy is recorded here: it adds the units to the product&apos;s stock and counts as money paid out by the owner who funded it. Each unit is priced at the product&apos;s <span className="text-paper">purchase cost</span> (set on its product page), and that same cost is what Finance deducts as cost of goods when the item sells — so it is not counted as an expense when you buy it.
       </p>
       <div className="mb-4.5">
         <StockPurchaseForm owners={owners} variants={variants} />

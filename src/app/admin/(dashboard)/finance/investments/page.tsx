@@ -20,7 +20,7 @@ export default async function FinanceInvestmentsPage({ searchParams }: Props) {
   const owners = ownerSummary(data);
   const rows: InvestmentRow[] = rowsRaw.map((i) => ({ id: i.id, date: dhakaDay(i.date), amount: toNumber(i.amount), ownerId: i.ownerId, ownerName: i.owner.name, description: i.description ?? "", method: i.method, notes: i.notes ?? "" }));
   const total = rows.reduce((s, r) => s + r.amount, 0);
-  const ownerRows: OwnerRow[] = owners.rows.map((o) => ({ id: o.id, name: o.name, contact: o.contact ?? "", notes: o.notes ?? "", invested: o.invested, stockPaid: o.stockPaid, share: o.share, profitShare: o.profitShare }));
+  const ownerRows: OwnerRow[] = owners.rows.map((o) => ({ id: o.id, name: o.name, contact: o.contact ?? "", notes: o.notes ?? "", invested: o.invested, stockPaid: o.stockPaid, expensesPaid: o.expensesPaid }));
 
   return (
     <div>

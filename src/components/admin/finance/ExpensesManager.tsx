@@ -7,9 +7,10 @@ import { useServerForm } from "./useServerForm";
 import { BulkBar, RowCheck, useSelection } from "./selection";
 import { Field, Money, EmptyRow, RowActions, METHOD_OPTIONS, inputCls, btnGhost, btnPrimary } from "./ui-client";
 
-export type ExpenseRow = { id: string; date: string; amount: number; category: string; title: string; paidTo: string; method: string; notes: string };
+export type ExpenseRow = { id: string; date: string; amount: number; category: string; title: string; paidTo: string; method: string; ownerId: string; ownerName: string; notes: string };
+type OwnerOption = { id: string; name: string };
 
-function ExpenseForm({ initial, categories, today, onDone }: { initial?: ExpenseRow; categories: string[]; today: string; onDone: () => void }) {
+function ExpenseForm({ initial, categories, owners, today, onDone }: { initial?: ExpenseRow; categories: string[]; owners: OwnerOption[]; today: string; onDone: () => void }) {
   const { state, pending, onSubmit } = useServerForm(saveExpense, onDone);
   const listId = `exp-cats-${initial?.id ?? "new"}`;
   return (
@@ -29,7 +30,17 @@ function ExpenseForm({ initial, categories, today, onDone }: { initial?: Expense
           ))}
         </datalist>
       </Field>
-      <Field label="PAID BY">
+      <Field label="PAID BY (OWNER)">
+        <select name="ownerId" defaultValue={initial?.ownerId ?? ""} className={inputCls}>
+          <option value="">{owners.length ? "— Not recorded —" : "No owners yet (add under Investments)"}</option>
+          {owners.map((o) => (
+            <option key={o.id} value={o.id}>
+              {o.name}
+            </option>
+          ))}
+        </select>
+      </Field>
+      <Field label="PAYMENT METHOD">
         <select name="method" defaultValue={initial?.method ?? "CASH"} className={inputCls}>
           {METHOD_OPTIONS.map(([v, l]) => (
             <option key={v} value={v}>
@@ -38,13 +49,13 @@ function ExpenseForm({ initial, categories, today, onDone }: { initial?: Expense
           ))}
         </select>
       </Field>
-      <Field label="WHAT WAS IT FOR" className="sm:col-span-2">
+      <Field label="WHAT WAS IT FOR">
         <input name="title" required maxLength={140} defaultValue={initial?.title} placeholder="e.g. Facebook ads — October drop" className={inputCls} />
       </Field>
       <Field label="PAID TO (OPTIONAL)">
         <input name="paidTo" maxLength={120} defaultValue={initial?.paidTo} placeholder="Vendor / person" className={inputCls} />
       </Field>
-      <Field label="NOTES (OPTIONAL)">
+      <Field label="NOTES (OPTIONAL)" className="sm:col-span-2">
         <input name="notes" maxLength={500} defaultValue={initial?.notes} className={inputCls} />
       </Field>
       <div className="flex flex-wrap items-center gap-2.5 sm:col-span-2 desktop:col-span-4">
@@ -66,7 +77,7 @@ function ExpenseForm({ initial, categories, today, onDone }: { initial?: Expense
   );
 }
 
-export function ExpensesManager({ rows, categories, today, total }: { rows: ExpenseRow[]; categories: string[]; today: string; total: number }) {
+export function ExpensesManager({ rows, categories, owners, today, total }: { rows: ExpenseRow[]; categories: string[]; owners: OwnerOption[]; today: string; total: number }) {
   const [editing, setEditing] = useState<string | null>(null);
   const [addKey, setAddKey] = useState(0);
   const sel = useSelection(rows.map((r) => r.id));
@@ -74,7 +85,7 @@ export function ExpensesManager({ rows, categories, today, total }: { rows: Expe
   return (
     <div>
       <Panel title="Add an expense" className="mb-4.5">
-        <ExpenseForm key={addKey} categories={categories} today={today} onDone={() => setAddKey((k) => k + 1)} />
+        <ExpenseForm key={addKey} categories={categories} owners={owners} today={today} onDone={() => setAddKey((k) => k + 1)} />
       </Panel>
 
       <BulkBar
@@ -85,13 +96,13 @@ export function ExpensesManager({ rows, categories, today, total }: { rows: Expe
 
       <Panel className="!p-0">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[760px] text-sm">
+          <table className="w-full min-w-[860px] text-sm">
             <thead>
               <tr className="border-b border-line-2 text-left text-muted">
                 <th className="w-9 px-4 py-2.5">
                   <RowCheck checked={sel.allTicked} onChange={sel.toggleAll} label="Select all expenses" />
                 </th>
-                {["Date", "Category", "Details", "Paid by", "Amount", ""].map((h, i) => (
+                {["Date", "Category", "Details", "Owner", "Method", "Amount", ""].map((h, i) => (
                   <th key={i} className={`font-label px-4 py-2.5 text-[13px] tracking-[0.8px] ${h === "Amount" ? "text-right" : ""}`}>
                     {h}
                   </th>
@@ -102,8 +113,8 @@ export function ExpensesManager({ rows, categories, today, total }: { rows: Expe
               {rows.map((r) =>
                 editing === r.id ? (
                   <tr key={r.id} className="border-b border-line bg-panel-2/40">
-                    <td colSpan={7} className="p-4">
-                      <ExpenseForm initial={r} categories={categories} today={today} onDone={() => setEditing(null)} />
+                    <td colSpan={8} className="p-4">
+                      <ExpenseForm initial={r} categories={categories} owners={owners} today={today} onDone={() => setEditing(null)} />
                     </td>
                   </tr>
                 ) : (
@@ -117,6 +128,7 @@ export function ExpensesManager({ rows, categories, today, total }: { rows: Expe
                       <div>{r.title}</div>
                       {(r.paidTo || r.notes) && <div className="mt-0.5 text-[12px] text-muted">{[r.paidTo && `to ${r.paidTo}`, r.notes].filter(Boolean).join(" · ")}</div>}
                     </td>
+                    <td className="whitespace-nowrap px-4 py-3">{r.ownerName || <span className="text-muted-2">—</span>}</td>
                     <td className="whitespace-nowrap px-4 py-3 text-muted">{METHOD_OPTIONS.find(([v]) => v === r.method)?.[1] ?? r.method}</td>
                     <td className="whitespace-nowrap px-4 py-3 text-right">
                       <Money value={r.amount} tone="out" />
@@ -127,12 +139,12 @@ export function ExpensesManager({ rows, categories, today, total }: { rows: Expe
                   </tr>
                 ),
               )}
-              {rows.length === 0 && <EmptyRow cols={7}>No expenses in this period. Add one above.</EmptyRow>}
+              {rows.length === 0 && <EmptyRow cols={8}>No expenses in this period. Add one above.</EmptyRow>}
             </tbody>
             {rows.length > 0 && (
               <tfoot>
                 <tr className="border-t border-line-2">
-                  <td colSpan={5} className="font-label px-4 py-3 text-[13px] tracking-[0.8px] text-muted">
+                  <td colSpan={6} className="font-label px-4 py-3 text-[13px] tracking-[0.8px] text-muted">
                     TOTAL ({rows.length} {rows.length === 1 ? "expense" : "expenses"})
                   </td>
                   <td className="px-4 py-3 text-right font-medium">

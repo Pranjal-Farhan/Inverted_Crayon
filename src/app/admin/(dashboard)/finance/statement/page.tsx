@@ -120,11 +120,11 @@ export default async function FinanceStatementPage({ searchParams }: Props) {
 
       <Panel className="!p-0">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[900px] text-sm">
+          <table className="w-full min-w-[980px] text-sm">
             <thead>
               <tr className="border-b border-line-2 text-left text-muted">
-                {["Date", "Type", "Details", "Party", "Method", "In", "Out", "Balance"].map((h, i) => (
-                  <th key={h} className={`font-label px-3 py-2.5 text-[13px] tracking-[0.8px] ${i >= 5 ? "text-right" : ""}`}>
+                {["Date", "Type", "Details", "Party", "Owner", "Method", "In", "Out", "Balance"].map((h, i) => (
+                  <th key={h} className={`font-label px-3 py-2.5 text-[13px] tracking-[0.8px] ${i >= 6 ? "text-right" : ""}`}>
                     {h}
                   </th>
                 ))}
@@ -132,7 +132,7 @@ export default async function FinanceStatementPage({ searchParams }: Props) {
             </thead>
             <tbody>
               <tr className="border-b border-line text-muted">
-                <td colSpan={7} className="px-3 py-2.5 italic">
+                <td colSpan={8} className="px-3 py-2.5 italic">
                   Opening balance
                 </td>
                 <td className="px-3 py-2.5 text-right">
@@ -156,6 +156,7 @@ export default async function FinanceStatementPage({ searchParams }: Props) {
                     <div className="text-[12px] text-muted-2">{l.category}</div>
                   </td>
                   <td className="px-3 py-2.5 text-muted">{l.party || "—"}</td>
+                  <td className="px-3 py-2.5 text-muted">{l.owner || "—"}</td>
                   <td className="px-3 py-2.5 text-muted">{l.method || "—"}</td>
                   <td className="whitespace-nowrap px-3 py-2.5 text-right">{l.inAmount > 0 ? <Money value={l.inAmount} tone="in" /> : ""}</td>
                   <td className="whitespace-nowrap px-3 py-2.5 text-right">{l.outAmount > 0 ? <Money value={l.outAmount} tone="out" /> : ""}</td>
@@ -166,13 +167,13 @@ export default async function FinanceStatementPage({ searchParams }: Props) {
               ))}
               {st.lines.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-4 py-8 text-center text-muted">
+                  <td colSpan={9} className="px-4 py-8 text-center text-muted">
                     Nothing recorded in this period.
                   </td>
                 </tr>
               )}
               <tr className="border-t border-line-2 font-medium">
-                <td colSpan={5} className="px-3 py-3">
+                <td colSpan={6} className="px-3 py-3">
                   Totals listed
                 </td>
                 <td className="px-3 py-3 text-right">

@@ -16,9 +16,10 @@ import { dhakaDay, dhakaMonth, inRange, monthsBetween, todayDhaka, type DateRang
  *    LOST         cancelled, refunded or returned — shown, not counted.
  *  A completed sale counts on the day it was delivered (online) or dated (manual), in Dhaka time.
  *
- *  COST OF GOODS — each unit sold costs what it cost to buy: the variant's weighted-average unit cost
- *  over every stock purchase on record (the same method as before). Units with no known cost are
- *  counted and flagged rather than guessed.
+ *  COST OF GOODS — each unit sold costs the product's purchase cost, typed on the product itself
+ *  (admin → Products → edit → Purchase cost); every size and colour costs the same. A manual-sale item
+ *  can override it with its own typed cost. Units with no known cost are counted and flagged rather
+ *  than guessed.
  *
  *  NET PROFIT = revenue − cost of goods − expenses. Investments (owners putting money in) and stock
  *  purchases (inventory) are NOT expenses: investments aren't income, and stock only becomes a cost
@@ -75,7 +76,10 @@ export type Txn = {
   id: string;
   date: Date;
   title: string;
+  /** The other side: the customer, vendor or supplier. */
   party: string;
+  /** The owner who made / paid it (expenses, investments, stock purchases). */
+  owner: string;
   category: string;
   method: string;
   inAmount: number;
@@ -122,7 +126,7 @@ const LOST_STATUSES = ["CANCELLED", "REFUNDED", "RETURNED"];
 export type FinanceData = Awaited<ReturnType<typeof loadFinance>>;
 
 export async function loadFinance() {
-  const [orders, manualSales, expenses, investments, purchases, owners] = await Promise.all([
+  const [orders, manualSales, expenses, investments, purchases, owners, products] = await Promise.all([
     db.order.findMany({
       select: {
         id: true,
@@ -142,30 +146,30 @@ export async function loadFinance() {
         email: true,
         phone: true,
         shippingFullName: true,
-        items: { select: { variantId: true, productTitleSnapshot: true, variantLabelSnapshot: true, qty: true } },
+        items: { select: { productId: true, variantId: true, productTitleSnapshot: true, variantLabelSnapshot: true, qty: true } },
       },
       orderBy: { createdAt: "desc" },
     }),
     db.manualSale.findMany({ include: { items: true }, orderBy: { date: "desc" } }),
-    db.expense.findMany({ orderBy: { date: "desc" } }),
+    db.expense.findMany({ include: { owner: true }, orderBy: { date: "desc" } }),
     db.investment.findMany({ include: { owner: true }, orderBy: { date: "desc" } }),
     db.stockPurchase.findMany({ include: { owner: true }, orderBy: { purchaseDate: "desc" } }),
     db.stockOwner.findMany({ orderBy: { createdAt: "asc" } }),
+    db.product.findMany({ select: { id: true, purchaseCost: true, variants: { select: { id: true } } } }),
   ]);
 
-  // Weighted-average unit cost per variant, from every purchase on record for it.
-  const basis = new Map<string, { qty: number; cost: number }>();
-  for (const p of purchases) {
-    if (!p.variantId) continue;
-    const e = basis.get(p.variantId) ?? { qty: 0, cost: 0 };
-    e.qty += p.quantity;
-    e.cost += toNumber(p.totalCost);
-    basis.set(p.variantId, e);
+  // What one unit costs the business: the purchase cost typed on the product (admin → Products →
+  // edit → Purchase cost). Every size and colour of a product costs the same; a product with no
+  // cost entered yet is "unknown", and the reports flag those units instead of guessing.
+  const productCost = new Map<string, number>();
+  const variantProduct = new Map<string, string>();
+  for (const p of products) {
+    if (p.purchaseCost != null) productCost.set(p.id, toNumber(p.purchaseCost));
+    for (const v of p.variants) variantProduct.set(v.id, p.id);
   }
-  const avgCost = (variantId: string | null | undefined): number | null => {
-    if (!variantId) return null;
-    const e = basis.get(variantId);
-    return e && e.qty > 0 ? e.cost / e.qty : null;
+  const unitCostOf = (item: { productId?: string | null; variantId?: string | null }): number | null => {
+    const productId = item.productId ?? (item.variantId ? variantProduct.get(item.variantId) : undefined);
+    return productId ? (productCost.get(productId) ?? null) : null;
   };
 
   const sales: SaleRow[] = [];
@@ -180,7 +184,7 @@ export async function loadFinance() {
     let cogs = 0;
     let unknown = 0;
     for (const i of o.items) {
-      const c = avgCost(i.variantId);
+      const c = unitCostOf(i);
       if (c === null) unknown += i.qty;
       else cogs += c * i.qty;
     }
@@ -222,7 +226,7 @@ export async function loadFinance() {
     let cogs = 0;
     let unknown = 0;
     for (const i of m.items) {
-      const c = i.unitCost != null ? toNumber(i.unitCost) : avgCost(i.variantId);
+      const c = i.unitCost != null ? toNumber(i.unitCost) : unitCostOf(i);
       if (c === null) unknown += i.qty;
       else cogs += c * i.qty;
     }
@@ -258,7 +262,7 @@ export async function loadFinance() {
   sales.sort((a, b) => b.date.getTime() - a.date.getTime());
 
   removed.sort((a, b) => b.date.getTime() - a.date.getTime());
-  return { orders, manualSales, expenses, investments, purchases, owners, sales, removed, avgCost };
+  return { orders, manualSales, expenses, investments, purchases, owners, sales, removed, unitCostOf, productCost };
 }
 
 // ------------------------------------------------------------------------------ the ledger
@@ -276,6 +280,7 @@ export function allTransactions(data: FinanceData): Txn[] {
       date: s.cashAt,
       title: `${s.source === "ORDER" ? "Order" : "Manual sale"} ${s.ref}`,
       party: s.customerName,
+      owner: "",
       category: s.source === "ORDER" ? "Online order" : "Manual sale",
       method: s.paymentLabel,
       inAmount: s.revenue,
@@ -291,6 +296,7 @@ export function allTransactions(data: FinanceData): Txn[] {
       date: e.date,
       title: e.title,
       party: e.paidTo ?? "",
+      owner: e.owner?.name ?? "",
       category: e.category,
       method: METHOD_LABEL[e.method] ?? e.method,
       inAmount: 0,
@@ -305,7 +311,8 @@ export function allTransactions(data: FinanceData): Txn[] {
       id: i.id,
       date: i.date,
       title: i.description?.trim() || "Investment",
-      party: i.owner.name,
+      party: "",
+      owner: i.owner.name,
       category: "Investment",
       method: METHOD_LABEL[i.method] ?? i.method,
       inAmount: toNumber(i.amount),
@@ -320,7 +327,8 @@ export function allTransactions(data: FinanceData): Txn[] {
       id: p.id,
       date: p.purchaseDate,
       title: `${p.quantity}× ${p.productTitleSnapshot} (${p.variantLabelSnapshot})`,
-      party: p.supplierName ?? p.owner.name,
+      party: p.supplierName ?? "",
+      owner: p.owner.name,
       category: "Stock purchase",
       method: "",
       inAmount: 0,
@@ -354,7 +362,7 @@ export function statement(data: FinanceData, range: DateRange, opts: { kinds?: T
     moneyIn += t.inAmount;
     moneyOut += t.outAmount;
     if (opts.kinds && !opts.kinds.includes(t.kind)) continue;
-    if (q && ![t.title, t.party, t.category, t.method].join(" ").toLowerCase().includes(q)) continue;
+    if (q && ![t.title, t.party, t.owner, t.category, t.method].join(" ").toLowerCase().includes(q)) continue;
     lines.push({ ...t, balance: running });
   }
   // Delivered in this period but the cash isn't in yet — not money, so not on the ledger above.
@@ -495,10 +503,11 @@ export function monthly(data: FinanceData, range: DateRange): MonthRow[] {
   return [...rows.values()];
 }
 
-/** Who has put what in, all time, and each owner's share of the net profit made so far. */
+/** Who has put what in, all time: money invested, stock paid for, and expenses they made. */
 export function ownerSummary(data: FinanceData) {
   const invested = new Map<string, number>();
   const stock = new Map<string, number>();
+  const expenses = new Map<string, number>();
   let totalInvested = 0;
   for (const i of data.investments) {
     const a = toNumber(i.amount);
@@ -506,15 +515,19 @@ export function ownerSummary(data: FinanceData) {
     totalInvested += a;
   }
   for (const p of data.purchases) stock.set(p.ownerId, (stock.get(p.ownerId) ?? 0) + toNumber(p.totalCost));
-  const everything = summarize(data, { from: null, to: null, preset: "all", label: "All time" });
+  for (const e of data.expenses) if (e.ownerId) expenses.set(e.ownerId, (expenses.get(e.ownerId) ?? 0) + toNumber(e.amount));
   const rows = data.owners
-    .map((o) => {
-      const inv = invested.get(o.id) ?? 0;
-      const share = totalInvested > 0 ? inv / totalInvested : 0;
-      return { id: o.id, name: o.name, contact: o.contact, notes: o.notes, invested: inv, stockPaid: stock.get(o.id) ?? 0, share, profitShare: everything.netProfit * share };
-    })
+    .map((o) => ({
+      id: o.id,
+      name: o.name,
+      contact: o.contact,
+      notes: o.notes,
+      invested: invested.get(o.id) ?? 0,
+      stockPaid: stock.get(o.id) ?? 0,
+      expensesPaid: expenses.get(o.id) ?? 0,
+    }))
     .sort((a, b) => b.invested - a.invested);
-  return { rows, totalInvested, netProfitAllTime: everything.netProfit };
+  return { rows, totalInvested };
 }
 
 // ------------------------------------------------------------------------------ CSV

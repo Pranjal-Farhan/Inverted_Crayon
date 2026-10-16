@@ -8,7 +8,7 @@ import { BulkBar, RowCheck, useSelection } from "./selection";
 import { Field, Money, EmptyRow, RowActions, METHOD_OPTIONS, inputCls, btnGhost, btnPrimary } from "./ui-client";
 
 export type InvestmentRow = { id: string; date: string; amount: number; ownerId: string; ownerName: string; description: string; method: string; notes: string };
-export type OwnerRow = { id: string; name: string; contact: string; notes: string; invested: number; stockPaid: number; share: number; profitShare: number };
+export type OwnerRow = { id: string; name: string; contact: string; notes: string; invested: number; stockPaid: number; expensesPaid: number };
 
 function InvestmentForm({ initial, owners, today, onDone }: { initial?: InvestmentRow; owners: { id: string; name: string }[]; today: string; onDone: () => void }) {
   const { state, pending, onSubmit } = useServerForm(saveInvestment, onDone);
@@ -110,7 +110,7 @@ export function InvestmentsManager({ rows, owners, today, total }: { rows: Inves
   return (
     <div>
       <p className="mb-3.5 text-[13px] text-muted">
-        An investment is money an owner or partner puts into the business. It is not income and not an expense — it adds to your cash and to that owner&apos;s share. (Stock you buy goes under{" "}
+        An investment is money an owner or partner puts into the business. It is not income and not an expense — it adds to your cash. (Stock you buy goes under{" "}
         <span className="text-paper">Stock &amp; owners</span>.)
       </p>
 
@@ -163,7 +163,7 @@ export function InvestmentsManager({ rows, owners, today, total }: { rows: Inves
                       <Money value={r.amount} tone="in" />
                     </td>
                     <td className="px-4 py-3">
-                      <RowActions onEdit={() => setEditing(r.id)} onDelete={() => deleteInvestment(r.id)} confirmText={`Delete this investment by ${r.ownerName}? It will no longer count in the cash balance or the owner's share. This can't be undone.`} />
+                      <RowActions onEdit={() => setEditing(r.id)} onDelete={() => deleteInvestment(r.id)} confirmText={`Delete this investment by ${r.ownerName}? It will no longer count in the cash balance. This can't be undone.`} />
                     </td>
                   </tr>
                 ),
@@ -189,13 +189,13 @@ export function InvestmentsManager({ rows, owners, today, total }: { rows: Inves
 
       <Panel title="Owners & their capital">
         <p className="mb-3 text-[13px] text-muted">
-          Each owner&apos;s share of the profit follows the money they have put in (all time). Add everyone who has invested here before recording their investment.
+          Everyone who puts money in or pays for the business. Add them here before recording their investment, or choosing them on an expense or stock purchase.
         </p>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[640px] text-sm">
             <thead>
               <tr className="border-b border-line-2 text-left text-muted">
-                {["Owner", "Invested", "Share", "Profit share so far", "Stock paid for", ""].map((h, i) => (
+                {["Owner", "Invested", "Stock paid for", "Expenses paid", ""].map((h, i) => (
                   <th key={i} className="font-label px-3 py-2 text-[13px] tracking-[0.8px]">
                     {h}
                   </th>
@@ -206,7 +206,7 @@ export function InvestmentsManager({ rows, owners, today, total }: { rows: Inves
               {owners.map((o) =>
                 editingOwner === o.id ? (
                   <tr key={o.id} className="border-b border-line bg-panel-2/40">
-                    <td colSpan={6} className="p-3">
+                    <td colSpan={5} className="p-3">
                       <OwnerForm initial={o} onDone={() => setEditingOwner(null)} />
                     </td>
                   </tr>
@@ -219,12 +219,11 @@ export function InvestmentsManager({ rows, owners, today, total }: { rows: Inves
                     <td className="px-3 py-2.5">
                       <Money value={o.invested} tone="plain" />
                     </td>
-                    <td className="px-3 py-2.5">{(o.share * 100).toFixed(1)}%</td>
-                    <td className="px-3 py-2.5">
-                      <Money value={o.profitShare} />
-                    </td>
                     <td className="px-3 py-2.5">
                       <Money value={o.stockPaid} tone="plain" />
+                    </td>
+                    <td className="px-3 py-2.5">
+                      <Money value={o.expensesPaid} tone="plain" />
                     </td>
                     <td className="px-3 py-2.5">
                       <RowActions onEdit={() => setEditingOwner(o.id)} onDelete={() => deleteStockOwner(o.id)} confirmText={`Remove ${o.name}?`} />
@@ -232,7 +231,7 @@ export function InvestmentsManager({ rows, owners, today, total }: { rows: Inves
                   </tr>
                 ),
               )}
-              {owners.length === 0 && <EmptyRow cols={6}>No owners yet — add the first one below.</EmptyRow>}
+              {owners.length === 0 && <EmptyRow cols={5}>No owners yet — add the first one below.</EmptyRow>}
             </tbody>
           </table>
         </div>

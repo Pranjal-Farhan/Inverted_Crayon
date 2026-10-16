@@ -100,7 +100,7 @@ export default async function FinanceSalesPage({ searchParams }: Props) {
     label: `${v.product.title} — ${v.size}/${v.color}`,
     sku: v.sku,
     price: toNumber(v.product.basePrice),
-    cost: data.avgCost(v.id),
+    cost: data.unitCostOf({ productId: v.productId, variantId: v.id }),
     stock: v.stockQty,
   }));
 

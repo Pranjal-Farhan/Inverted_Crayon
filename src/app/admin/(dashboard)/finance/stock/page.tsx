@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { requireAdminPage } from "@/lib/admin-guard";
 import { db } from "@/lib/db";
 import { toNumber, formatTaka } from "@/lib/money";
@@ -13,28 +14,19 @@ export default async function FinanceStockPage({ searchParams }: Props) {
   await requireAdminPage("finance");
   const range = resolveRange(await searchParams);
   const date = { ...(range.from ? { gte: dayStart(range.from) } : {}), ...(range.to ? { lt: dayAfter(range.to) } : {}) };
-  const [owners, purchases, variants, everything] = await Promise.all([
+  const [owners, purchases, variants] = await Promise.all([
     db.stockOwner.findMany({ orderBy: { createdAt: "asc" } }),
     db.stockPurchase.findMany({ where: { purchaseDate: date }, include: { owner: true }, orderBy: [{ purchaseDate: "desc" }, { createdAt: "desc" }] }),
-    db.variant.findMany({ include: { product: true }, orderBy: { sku: "asc" } }),
-    db.stockPurchase.findMany({ select: { variantId: true, quantity: true, totalCost: true } }),
+    db.variant.findMany({ include: { product: { select: { id: true, title: true, purchaseCost: true } } }, orderBy: { sku: "asc" } }),
   ]);
 
-  // Inventory on hand, valued at each variant's average purchase cost.
-  const basis = new Map<string, { qty: number; cost: number }>();
-  for (const p of everything) {
-    if (!p.variantId) continue;
-    const e = basis.get(p.variantId) ?? { qty: 0, cost: 0 };
-    e.qty += p.quantity;
-    e.cost += toNumber(p.totalCost);
-    basis.set(p.variantId, e);
-  }
+  // Inventory on hand, valued at each product's purchase cost (set on the product's edit page).
   let inventoryValue = 0;
-  let uncosted = 0;
+  const uncosted = new Map<string, string>();
   for (const v of variants) {
-    const b = basis.get(v.id);
-    if (b && b.qty > 0) inventoryValue += (b.cost / b.qty) * v.stockQty;
-    else if (v.stockQty > 0) uncosted++;
+    if (v.stockQty <= 0) continue;
+    if (v.product.purchaseCost != null) inventoryValue += toNumber(v.product.purchaseCost) * v.stockQty;
+    else uncosted.set(v.product.id, v.product.title);
   }
 
   const rows: PurchaseRow[] = purchases.map((p) => ({
@@ -58,10 +50,19 @@ export default async function FinanceStockPage({ searchParams }: Props) {
         <Kpi label="Stock bought (period)" value={formatTaka(total)} accent="yellow" delta={`${rows.length} purchases · ${range.label}`} />
         <Kpi label="Inventory on hand (at cost)" value={formatTaka(inventoryValue)} accent="cyan" />
       </div>
-      {uncosted > 0 && (
+      {uncosted.size > 0 && (
         <Panel className="mb-4.5">
           <p className="text-[13px] text-yellow">
-            {uncosted} variant{uncosted === 1 ? "" : "s"} in stock {uncosted === 1 ? "has" : "have"} no recorded purchase cost and {uncosted === 1 ? "is" : "are"} left out of that value.
+            {uncosted.size} product{uncosted.size === 1 ? "" : "s"} in stock {uncosted.size === 1 ? "has" : "have"} no purchase cost and {uncosted.size === 1 ? "is" : "are"} left out of that value, and stock purchases of {uncosted.size === 1 ? "it" : "them"} can&apos;t be recorded until it is set — open the product and fill in <strong>Purchase cost</strong>:{" "}
+            {[...uncosted.entries()].slice(0, 6).map(([id, title], i) => (
+              <span key={id}>
+                {i > 0 && ", "}
+                <Link href={`/admin/products/${id}`} prefetch={false} className="text-cyan hover:underline">
+                  {title}
+                </Link>
+              </span>
+            ))}
+            {uncosted.size > 6 && ` and ${uncosted.size - 6} more`}.
           </p>
         </Panel>
       )}
@@ -69,7 +70,7 @@ export default async function FinanceStockPage({ searchParams }: Props) {
         rows={rows}
         total={total}
         owners={owners.map((o) => ({ id: o.id, name: o.name }))}
-        variants={variants.map((v) => ({ id: v.id, label: `${v.product.title} — ${v.size}/${v.color} (${v.sku})` }))}
+        variants={variants.map((v) => ({ id: v.id, label: `${v.product.title} — ${v.size}/${v.color}`, sku: v.sku, cost: v.product.purchaseCost != null ? toNumber(v.product.purchaseCost) : null, stock: v.stockQty }))}
       />
     </div>
   );

@@ -142,6 +142,7 @@ export function ProductEditorForm({
   sizeGuideTemplates = [],
   couponOptions = [],
   standardDelivery,
+  canSeePurchaseCost = false,
 }: {
   initial:
     | (ProductFormInput & {
@@ -156,6 +157,8 @@ export function ProductEditorForm({
   couponOptions?: CouponOption[];
   /** What a product with no delivery charge of its own is charged, per zone (store-settings.ts). */
   standardDelivery: { insideDhaka: number; outsideDhaka: number };
+  /** Admins only (anyone who can open Finance). Staff never get the field, nor the saved figure. */
+  canSeePurchaseCost?: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -203,6 +206,7 @@ export function ProductEditorForm({
     initial?.categoryId ?? categories.find((c) => c.gender === "UNISEX")?.id ?? "",
   );
   const [basePrice, setBasePrice] = useState(initial?.basePrice ?? 1000);
+  const [purchaseCost, setPurchaseCost] = useState<number | "">(initial?.purchaseCost ?? "");
   const [discountType, setDiscountType] = useState<"PERCENT" | "AMOUNT" | null>(initial?.discountType ?? null);
   const [discountValue, setDiscountValue] = useState<number | "">(initial?.discountValue ?? "");
   const [status, setStatus] = useState<"DRAFT" | "ACTIVE">(initial?.status ?? "DRAFT");
@@ -465,6 +469,8 @@ export function ProductEditorForm({
           description,
           categoryId,
           basePrice,
+          // Only sent by accounts that can see the field; leaving it out tells the server "keep what's saved".
+          ...(canSeePurchaseCost ? { purchaseCost: purchaseCost === "" ? null : purchaseCost } : {}),
           discountType,
           discountValue: discountType && discountValue !== "" ? discountValue : null,
           status,
@@ -918,6 +924,52 @@ export function ProductEditorForm({
             </div>
           </Field>
         </Panel>
+
+        {canSeePurchaseCost && (
+          <Panel title="Purchase cost — admin only" className="mt-4.5">
+            <div>
+              <Field label="Cost per unit ৳">
+                <input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  inputMode="decimal"
+                  value={purchaseCost}
+                  onChange={(e) => setPurchaseCost(e.target.value === "" ? "" : Number(e.target.value))}
+                  placeholder="What one unit costs you"
+                  aria-label="Purchase cost per unit"
+                  className={inputClass}
+                />
+              </Field>
+              <div className="mt-2.5 text-[13px] text-muted">
+                {purchaseCost === "" ? (
+                  <p className="text-yellow">
+                    Not entered yet — until it is, units of this product that sell show as &ldquo;no cost&rdquo; in Finance and profit is overstated.
+                  </p>
+                ) : (
+                  (() => {
+                    const sellsFor =
+                      discountType && discountValue !== "" && discountValue > 0
+                        ? Math.max(discountType === "PERCENT" ? basePrice * (1 - discountValue / 100) : basePrice - discountValue, 0)
+                        : basePrice;
+                    const margin = sellsFor - purchaseCost;
+                    return (
+                      <p>
+                        Selling at <span className="text-paper">{formatTaka(sellsFor)}</span> leaves{" "}
+                        <span className={margin >= 0 ? "text-lime" : "text-error"}>{formatTaka(margin)}</span> per unit
+                        {sellsFor > 0 && <> ({Math.round((margin / sellsFor) * 100)}% margin)</>}, before delivery and expenses.
+                      </p>
+                    );
+                  })()
+                )}
+                <p className="mt-1.5 text-[12px] text-muted-2">
+                  What one unit costs you to buy or make — the same for every size and colour. Finance uses it to work out cost of goods and profit
+                  for every sale of this product, and for stock purchases. Only admins can see or change it; it never appears on the storefront.
+                </p>
+              </div>
+            </div>
+          </Panel>
+        )}
 
         <Panel title="Tags" className="mt-4.5">
           <div className="flex flex-wrap gap-3">

@@ -8,6 +8,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { Prisma } from "@/generated/prisma/client";
 import { requireAdminArea } from "@/lib/admin-guard";
+import { canAccessArea } from "@/lib/admin-areas";
 import { notifyPreorderShipDate } from "@/lib/notifications";
 import { uploadToImgBb } from "@/lib/imgbb";
 import { ensureMirrorCategories } from "@/actions/admin-categories";
@@ -115,6 +116,10 @@ const productSchema = z.object({
   description: z.string().trim().min(1, "Description is required."),
   categoryId: z.string().min(1, "Select a category."),
   basePrice: z.number().positive(),
+  // What one unit costs the business (admin-only; Finance prices cost of goods from it). Left out =
+  // "don't touch the saved value", null = clear it. Ignored entirely unless the signed-in account
+  // may use Finance — see saveProduct.
+  purchaseCost: z.number().min(0, "Purchase cost can't be negative.").max(10_000_000, "Purchase cost is too large.").nullable().optional(),
   // A standing markdown set directly on the product — null discountType means no discount (the
   // "off" state); when set, discountValue must be present too (enforced below, since zod can't
   // express "both or neither" with plain field types).
@@ -198,7 +203,10 @@ function formatProductValidationError(issues: z.ZodIssue[]) {
 }
 
 export async function saveProduct(input: ProductFormInput): Promise<ProductSaveResult> {
-  await requireAdmin();
+  const actor = await requireAdmin();
+  // The purchase cost is a finance figure: only an account that can open Finance may set or clear
+  // it. Staff saving a product leave it exactly as it was, whatever their request says.
+  const mayEditCost = canAccessArea(actor.role, "finance");
   const parsed = productSchema.safeParse(input);
   if (!parsed.success) {
     return { ok: false, error: formatProductValidationError(parsed.error.issues) };
@@ -257,6 +265,7 @@ export async function saveProduct(input: ProductFormInput): Promise<ProductSaveR
           gender: category.gender,
           categoryId: data.categoryId,
           basePrice: data.basePrice,
+          ...(mayEditCost && data.purchaseCost !== undefined ? { purchaseCost: data.purchaseCost } : {}),
           discountType: data.discountType,
           discountValue: data.discountValue,
           status: data.status,
@@ -278,6 +287,7 @@ export async function saveProduct(input: ProductFormInput): Promise<ProductSaveR
           gender: category.gender,
           categoryId: data.categoryId,
           basePrice: data.basePrice,
+          ...(mayEditCost && data.purchaseCost != null ? { purchaseCost: data.purchaseCost } : {}),
           discountType: data.discountType,
           discountValue: data.discountValue,
           status: data.status,

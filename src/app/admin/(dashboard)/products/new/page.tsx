@@ -1,4 +1,5 @@
 import { requireAdminPage } from "@/lib/admin-guard";
+import { canAccessArea } from "@/lib/admin-areas";
 import { db } from "@/lib/db";
 import { ProductEditorForm } from "@/components/admin/ProductEditorForm";
 import { parseSizeGuide, type SizeGuideTemplateOption } from "@/lib/size-guide";
@@ -6,7 +7,7 @@ import { getProductLockedCouponOptions } from "@/lib/coupon-options";
 import { getShippingRates } from "@/lib/store-settings";
 
 export default async function NewProductPage() {
-  await requireAdminPage("products");
+  const admin = await requireAdminPage("products");
   const [categories, sizeGuideTemplateRows, couponOptions, rates] = await Promise.all([
     db.category.findMany({ orderBy: [{ gender: "asc" }, { position: "asc" }] }),
     db.sizeGuideTemplate.findMany({ orderBy: { name: "asc" } }),
@@ -31,6 +32,7 @@ export default async function NewProductPage() {
       sizeGuideTemplates={sizeGuideTemplates}
       couponOptions={couponOptions}
       standardDelivery={{ insideDhaka: rates.INSIDE_DHAKA.cost, outsideDhaka: rates.OUTSIDE_DHAKA.cost }}
+      canSeePurchaseCost={canAccessArea(admin.role, "finance")}
     />
   );
 }

@@ -7,6 +7,7 @@ import type { Prisma } from "@/generated/prisma/client";
 import { getAdminForArea } from "@/lib/admin-guard";
 import { invalidateProduct } from "@/lib/invalidate";
 import { entryDate, todayDhaka } from "@/lib/finance-dates";
+import { toNumber } from "@/lib/money";
 
 export async function createStockOwner(
   _prev: { ok: boolean; error: string } | null,
@@ -33,21 +34,25 @@ export async function recordStockPurchase(
   const ownerId = String(formData.get("ownerId") ?? "");
   const variantId = String(formData.get("variantId") ?? "") || null;
   const quantity = Number(formData.get("quantity"));
-  const unitCost = Number(formData.get("unitCost"));
   const supplierName = String(formData.get("supplierName") ?? "").trim() || null;
   const purchaseDateRaw = String(formData.get("purchaseDate") ?? "");
   const notes = String(formData.get("notes") ?? "").trim() || null;
 
   if (!ownerId) return { ok: false, error: "Select an owner." };
   if (!variantId) return { ok: false, error: "Select a product variant." };
-  if (!Number.isFinite(quantity) || quantity <= 0) return { ok: false, error: "Quantity must be greater than zero." };
-  if (!Number.isFinite(unitCost) || unitCost < 0) return { ok: false, error: "Unit cost must be zero or more." };
+  if (!Number.isInteger(quantity) || quantity <= 0) return { ok: false, error: "Quantity must be a whole number above zero." };
 
   const owner = await db.stockOwner.findUnique({ where: { id: ownerId } });
   if (!owner) return { ok: false, error: "That owner no longer exists." };
 
-  const variant = await db.variant.findUnique({ where: { id: variantId }, include: { product: true } });
+  const variant = await db.variant.findUnique({ where: { id: variantId }, include: { product: { omit: { purchaseCost: false } } } });
   if (!variant) return { ok: false, error: "That variant no longer exists." };
+  // The price comes from the product's purchase cost — one place to keep it (Products → edit →
+  // Purchase cost) — and is frozen onto this record so a later change doesn't rewrite what was paid.
+  if (variant.product.purchaseCost == null) {
+    return { ok: false, error: `Set the purchase cost for “${variant.product.title}” on its product page first, then record the purchase.` };
+  }
+  const unitCost = toNumber(variant.product.purchaseCost);
 
   const purchaseDate = /^\d{4}-\d{2}-\d{2}$/.test(purchaseDateRaw) ? entryDate(purchaseDateRaw) : new Date();
   const totalCost = quantity * unitCost;
@@ -109,6 +114,8 @@ const expenseSchema = z.object({
   title: text(140).min(1, "Say what it was for."),
   paidTo: optional(120),
   method: methodSchema,
+  // The owner who made the payment — blank for "not recorded" / paid from the business account.
+  ownerId: z.preprocess((v) => (typeof v === "string" && v.trim() !== "" ? v.trim() : null), z.string().nullable()),
   notes: optional(500),
 });
 
@@ -118,6 +125,7 @@ export async function saveExpense(_prev: Result | null, formData: FormData): Pro
   const parsed = expenseSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return fail(firstError(parsed.error));
   const { id, date, ...rest } = parsed.data;
+  if (rest.ownerId && !(await db.stockOwner.findUnique({ where: { id: rest.ownerId }, select: { id: true } }))) return fail("That owner no longer exists.");
   const data = { ...rest, date: entryDate(date) };
   if (id) {
     const found = await db.expense.updateMany({ where: { id }, data });
@@ -198,8 +206,12 @@ export async function saveStockOwner(_prev: Result | null, formData: FormData): 
 
 export async function deleteStockOwner(id: string): Promise<Result> {
   if (!(await requireFinance())) return fail("Not authorized.");
-  const [inv, buys] = await Promise.all([db.investment.count({ where: { ownerId: id } }), db.stockPurchase.count({ where: { ownerId: id } })]);
-  if (inv + buys > 0) return fail("This owner has investments or stock purchases on record, so they can't be removed. Edit or delete those first.");
+  const [inv, buys, exp] = await Promise.all([
+    db.investment.count({ where: { ownerId: id } }),
+    db.stockPurchase.count({ where: { ownerId: id } }),
+    db.expense.count({ where: { ownerId: id } }),
+  ]);
+  if (inv + buys + exp > 0) return fail("This owner has investments, stock purchases or expenses on record, so they can't be removed. Edit or delete those first.");
   await db.stockOwner.deleteMany({ where: { id } });
   refresh();
   return OK;
