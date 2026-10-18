@@ -13,6 +13,7 @@ import {
   type ProductImageRow,
 } from "@/actions/admin-products";
 import { Panel } from "@/components/admin/Panel";
+import { DESCRIPTION_SECTIONS, SectionHeading, type DescriptionSectionKey } from "@/components/brand/DescriptionMarks";
 import { VariantStockStepper } from "@/components/admin/VariantStockStepper";
 import { SizeGuideTable } from "@/components/admin/SizeGuideTable";
 import { ManufacturerLinksPanel } from "@/components/admin/ManufacturerLinksPanel";
@@ -199,7 +200,12 @@ export function ProductEditorForm({
     setSlug(next);
     setSlugTouched(true);
   }
-  const [description, setDescription] = useState(initial?.description ?? "");
+  const descId = useId();
+  const [copy, setCopy] = useState<Record<DescriptionSectionKey, string>>({
+    mood: initial?.mood ?? "",
+    build: initial?.build ?? "",
+    wear: initial?.howToWear ?? "",
+  });
   const initialCategory = initial ? categories.find((c) => c.id === initial.categoryId) : undefined;
   const [branch, setBranch] = useState<Branch>(initialCategory?.gender ?? "UNISEX");
   const [categoryId, setCategoryId] = useState(
@@ -466,7 +472,9 @@ export function ProductEditorForm({
           id: initial?.id,
           title,
           slug,
-          description,
+          mood: copy.mood,
+          build: copy.build,
+          howToWear: copy.wear,
           categoryId,
           basePrice,
           // Only sent by accounts that can see the field; leaving it out tells the server "keep what's saved".
@@ -522,9 +530,6 @@ export function ProductEditorForm({
         <Panel title="Basics">
           <Field label="Title">
             <input value={title} onChange={(e) => handleTitleChange(e.target.value)} className={inputClass} />
-          </Field>
-          <Field label="Description">
-            <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} className={inputClass} />
           </Field>
           <div
             onDragOver={(e) => {
@@ -637,6 +642,36 @@ export function ProductEditorForm({
               ))}
             </div>
           )}
+        </Panel>
+
+        <Panel title="Description — three sections" className="mt-4.5">
+          <p className="mb-3 text-[12px] text-muted-2">
+            The product page shows these side by side on desktop and stacked on mobile. Mood is always needed;
+            Build and How n when to wear are required to publish (set the product to Active).
+          </p>
+          <div className="space-y-4">
+            {DESCRIPTION_SECTIONS.map((s) => {
+              const boxId = `${descId}-${s.key}`;
+              return (
+                <div key={s.key} data-section-box={s.key} className="border border-line-2 border-l-[3px] bg-ink/40 p-3" style={{ borderLeftColor: s.color }}>
+                  <div id={`${boxId}-label`}>
+                    <SectionHeading spec={s} idPrefix={`ed-${s.key}`} level="div" size="sm" />
+                  </div>
+                  <textarea
+                    id={boxId}
+                    aria-labelledby={`${boxId}-label`}
+                    value={copy[s.key]}
+                    onChange={(e) => setCopy((prev) => ({ ...prev, [s.key]: e.target.value }))}
+                    rows={s.key === "mood" ? 3 : 5}
+                    maxLength={2000}
+                    placeholder={s.placeholder}
+                    className={`${inputClass} mt-2.5`}
+                  />
+                  <p className="mt-1 text-[12px] text-muted-2">{s.hint}</p>
+                </div>
+              );
+            })}
+          </div>
         </Panel>
 
         <Panel title="Variants — colors" className="mt-4.5">

@@ -130,6 +130,11 @@ export default async function AdminProductsPage({ searchParams }: Props) {
                               {p._count.images} {p._count.images === 1 ? "photo" : "photos"}
                             </span>
                           </div>
+                          {(!p.build?.trim() || !p.howToWear?.trim()) && (
+                            <div className="mt-1 text-[12px] text-yellow">
+                              Needs {[!p.build?.trim() && "Build", !p.howToWear?.trim() && "How n when to wear"].filter(Boolean).join(" + ")}
+                            </div>
+                          )}
                         </div>
                       </div>
                     </td>

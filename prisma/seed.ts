@@ -4,6 +4,18 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../src/generated/prisma/client";
 import { generateOrderNumber } from "../src/lib/order-number";
 
+// The product page's description is three sections (Mood / Build / How n when to wear);
+// `description` mirrors Mood.
+const DEMO_MOOD = "Loud on purpose. A heavyweight piece with a boxy, easy cut and graphics that crack and fade like they've already lived a little — made to stand out in a crowd of plain.";
+const DEMO_COPY = {
+  description: DEMO_MOOD,
+  mood: DEMO_MOOD,
+  build:
+    "- 100% heavyweight cotton, brushed inside\n- Boxy cut with a dropped shoulder — size up for extra room\n- Screen-printed graphics, washed to crack and fade\n- Reinforced seams that hold up wash after wash",
+  howToWear:
+    "Throw it on over a plain tee for the weekend, or let it carry a whole look on its own.\n\nBest for: late nights out, campus days, studio sessions and cooler evenings.\n\nPair it with straight jeans and chunky sneakers, or cargos and boots.",
+};
+
 /** The 8 base category defs — each gets its own Men and Women row (see the categories
  * section in main()). Slugs match the NOUN pool keys below. */
 const CATEGORY_DEFS = [
@@ -157,8 +169,7 @@ async function main() {
           create: {
             slug: baseSlug,
             title,
-            description:
-              "Heavyweight cotton, boxy cut, screen-printed to crack and fade — on purpose. Made to stand out, built to last.",
+            ...DEMO_COPY,
             gender,
             basePrice,
             status: "ACTIVE",
@@ -242,8 +253,7 @@ async function main() {
       create: {
         slug: baseSlug,
         title,
-        description:
-          "Heavyweight cotton, boxy cut, screen-printed to crack and fade — on purpose. Made to stand out, built to last.",
+        ...DEMO_COPY,
         gender: "UNISEX",
         basePrice,
         status: "ACTIVE",

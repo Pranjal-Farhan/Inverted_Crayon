@@ -6,6 +6,7 @@ import { TagPill } from "@/components/ui/TagPill";
 import { AddToCartForm } from "@/components/storefront/AddToCartForm";
 import { ProductCard } from "@/components/ui/ProductCard";
 import { ProductGallery } from "@/components/storefront/ProductGallery";
+import { ProductDescription } from "@/components/storefront/ProductDescription";
 import { TrackRecentlyViewed, RecentlyViewedRail } from "@/components/storefront/RecentlyViewed";
 import { formatTaka } from "@/lib/money";
 import { toNumber } from "@/lib/money";
@@ -68,11 +69,6 @@ export default async function ProductPage({ params }: Props) {
             fallbackAccent={accent}
             soldOut={display.soldOut}
           />
-
-          <div className="mt-5 border-t border-line pt-3.5">
-            <h3 className="font-label text-base tracking-[1.4px]">DESCRIPTION</h3>
-            <p className="mt-1.5 text-[13px] text-muted">{product.description}</p>
-          </div>
         </div>
 
         <div className="min-w-0">
@@ -150,6 +146,8 @@ export default async function ProductPage({ params }: Props) {
           </div>
         </div>
       </div>
+
+      <ProductDescription copy={{ mood: product.mood ?? product.description, build: product.build, wear: product.howToWear }} />
 
       {related.length > 0 && (
         <>

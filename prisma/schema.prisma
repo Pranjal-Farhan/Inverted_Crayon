@@ -108,7 +108,13 @@ model Product {
   id                         String               @id @default(cuid())
   slug                       String               @unique
   title                      String
+  // The product page's description is three sections — Mood, Build, How n when to wear (mood /
+  // build / howToWear below). `description` is kept as the plain-text summary for anything that
+  // needs a single string (it always mirrors `mood`; saveProduct writes both).
   description                String
+  mood                       String?
+  build                      String?
+  howToWear                  String?
   gender                     Gender
   basePrice                  Decimal              @db.Decimal(10, 2)
   // A standing markdown set directly on the product (no start/end date — on until an admin

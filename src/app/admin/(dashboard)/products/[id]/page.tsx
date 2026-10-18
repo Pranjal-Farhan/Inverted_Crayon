@@ -53,7 +53,10 @@ export default async function EditProductPage({ params }: Props) {
         id: product.id,
         title: product.title,
         slug: product.slug,
-        description: product.description,
+        // Products written before the three sections existed carry their old description over as Mood.
+        mood: product.mood ?? product.description,
+        build: product.build ?? "",
+        howToWear: product.howToWear ?? "",
         categoryId: product.categoryId,
         basePrice: toNumber(product.basePrice),
         purchaseCost: canSeePurchaseCost && product.purchaseCost != null ? toNumber(product.purchaseCost) : null,
