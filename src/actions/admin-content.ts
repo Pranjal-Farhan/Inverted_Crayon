@@ -149,7 +149,7 @@ export type UploadHeroImagesResult =
   | { ok: true; urls: string[]; failed: { name: string; error: string }[] }
   | { ok: false; error: string };
 
-/** Each file uploads independently, same reasoning as uploadProductImages() — one bad or
+/** Each file uploads independently, same reasoning as addProductImage() in src/lib/product-images.ts — one bad or
  * oversized file in the batch no longer discards every other file alongside it. */
 export async function uploadHeroImages(formData: FormData): Promise<UploadHeroImagesResult> {
   await requireAdmin();

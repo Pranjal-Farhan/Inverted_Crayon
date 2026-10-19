@@ -6,7 +6,6 @@ import { useId, useMemo, useRef, useState, useTransition } from "react";
 import {
   saveProduct,
   deleteProduct,
-  uploadProductImages,
   deleteProductImage,
   reorderProductImages,
   type ProductFormInput,
@@ -21,61 +20,11 @@ import { ManufacturerLinksPanel } from "@/components/admin/ManufacturerLinksPane
 import type { ManufacturerLinkRow } from "@/actions/admin-manufacturer-links";
 import { DEFAULT_SIZE_GUIDE_COLUMNS, type SizeGuideRow, type SizeGuideTemplateOption } from "@/lib/size-guide";
 import { slugify } from "@/lib/slugify";
-import { prepareImageForUpload } from "@/lib/client-image";
+import { describeStage, uploadProductPhotos, type UploadStage } from "@/lib/client-upload";
 import { detectSizingMode, sizesForMode, type SizingMode } from "@/lib/sizes";
 import { formatTaka } from "@/lib/money";
 import { COUPON_STATUS_LABEL } from "@/lib/coupon-format";
 import type { CouponOption } from "@/lib/coupon-options";
-
-/** A call that has gone this long without an answer is treated as failed, so the editor can never
- * sit on "Uploading…" forever (a server action can't be cancelled, only stopped being waited on). */
-const UPLOAD_TIMEOUT_MS = 120_000;
-
-type UploadFilesResult = { images: ProductImageRow[]; failed: { name: string; error: string }[] };
-
-/** Uploads photos one request per image, in order, and never throws: every failure — too big for
- * the browser to shrink, rejected by the host, timed out, a real ImgBB error — comes back in
- * `failed` with the file's name while the other photos carry on. One image per request keeps each
- * call under the host's request-size cap (see src/lib/client-image.ts), which a single request
- * carrying every photo blew straight through. */
-async function uploadFiles(
-  productId: string,
-  files: File[],
-  opts: { onProgress?: (done: number, total: number) => void; onImage?: (image: ProductImageRow) => void } = {},
-): Promise<UploadFilesResult> {
-  const images: ProductImageRow[] = [];
-  const failed: { name: string; error: string }[] = [];
-  for (const [index, original] of files.entries()) {
-    try {
-      const file = await prepareImageForUpload(original);
-      const formData = new FormData();
-      formData.append("files", file);
-      let timer: ReturnType<typeof setTimeout> | undefined;
-      const res = await Promise.race([
-        uploadProductImages(productId, formData),
-        new Promise<never>((_, reject) => {
-          timer = setTimeout(() => reject(new Error("timed out waiting for the server")), UPLOAD_TIMEOUT_MS);
-        }),
-      ]).finally(() => clearTimeout(timer));
-      if (res.ok) {
-        for (const image of res.images) {
-          images.push(image);
-          opts.onImage?.(image);
-        }
-        for (const f of res.failed) failed.push({ name: original.name, error: f.error });
-      } else {
-        failed.push({ name: original.name, error: res.error });
-      }
-    } catch (e) {
-      failed.push({
-        name: original.name,
-        error: e instanceof Error ? e.message : "Upload failed — the server didn't accept it. Try again.",
-      });
-    }
-    opts.onProgress?.(index + 1, files.length);
-  }
-  return { images, failed };
-}
 
 type StagedImage = { file: File; previewUrl: string };
 type Branch = "MEN" | "WOMEN" | "UNISEX";
@@ -239,7 +188,7 @@ export function ProductEditorForm({
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, startDelete] = useTransition();
-  const [uploadProgress, setUploadProgress] = useState<{ done: number; total: number } | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<UploadStage | null>(null);
 
   const [title, setTitle] = useState(initial?.title ?? "");
   const [slug, setSlug] = useState(initial?.slug ?? "");
@@ -423,12 +372,12 @@ export function ProductEditorForm({
 
     if (initial?.id) {
       setUploading(true);
-      setUploadProgress({ done: 0, total: files.length });
+      setUploadProgress({ index: 0, total: files.length, phase: "preparing" });
       try {
         // Each image is added to the grid the moment it lands, and a failure in one is named
         // (not silently dropped) while the rest carry on — so the admin only retries what failed.
-        const { failed } = await uploadFiles(initial.id, files, {
-          onProgress: (done, total) => setUploadProgress({ done, total }),
+        const { failed } = await uploadProductPhotos(initial.id, files, {
+          onStage: setUploadProgress,
           onImage: (image) => setImages((prev) => [...prev, image]),
         });
         setUploadError(failed.length > 0 ? failed.map((f) => `"${f.name}": ${f.error}`).join(" ") : null);
@@ -557,12 +506,12 @@ export function ProductEditorForm({
         if (staged.length > 0) {
           // The product itself did save, so whatever happens to the photos we still route to it
           // below — a retry then edits the real product instead of creating a duplicate.
-          setUploadProgress({ done: 0, total: staged.length });
+          setUploadProgress({ index: 0, total: staged.length, phase: "preparing" });
           try {
-            const { failed } = await uploadFiles(
+            const { failed } = await uploadProductPhotos(
               res.id,
               staged.map((s) => s.file),
-              { onProgress: (done, total) => setUploadProgress({ done, total }) },
+              { onStage: setUploadProgress },
             );
             if (failed.length > 0) {
               // Some staged images made it, some didn't — the ones that failed would otherwise
@@ -619,7 +568,7 @@ export function ProductEditorForm({
             />
             {uploading
               ? uploadProgress
-                ? `Uploading image ${Math.min(uploadProgress.done + 1, uploadProgress.total)} of ${uploadProgress.total}…`
+                ? describeStage(uploadProgress)
                 : "Uploading…"
               : `Drag images here or click to browse · up to 20 per product · placeholder frames render automatically until photos are uploaded.`}
             {uploadError && <div className="mt-1 text-error">{uploadError}</div>}
@@ -1144,7 +1093,7 @@ export function ProductEditorForm({
           >
             {pending
               ? uploadProgress
-                ? `Uploading image ${Math.min(uploadProgress.done + 1, uploadProgress.total)} of ${uploadProgress.total}…`
+                ? describeStage(uploadProgress)
                 : "Saving…"
               : "Save product"}
           </button>

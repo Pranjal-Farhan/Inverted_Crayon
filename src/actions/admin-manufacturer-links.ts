@@ -13,7 +13,7 @@ type ActionResult = { ok: true } | { ok: false; error: string };
 
 /**
  * Admin-only, per-product notes — almost always a manufacturer page link, never shown to
- * customers. Mirrors the product image rows' pattern (uploadProductImages/reorderProductImages in
+ * customers. Mirrors the product image rows' pattern (addProductImage/reorderProductImages in
  * admin-products.ts): persisted immediately against a real productId, not staged in form state,
  * so it only applies to an already-saved product.
  */
