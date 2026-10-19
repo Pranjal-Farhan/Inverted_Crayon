@@ -101,7 +101,7 @@ export default async function ProductPage({ params }: Props) {
           {display.isPreorder && (
             <div className="mb-4 flex items-center gap-2.5 border border-dashed border-yellow bg-yellow/[0.07] px-3.5 py-2.5 text-sm">
               <Crown className="h-[22px] w-6 text-yellow" />
-              Preorder — ships {display.preorderShipDate ?? "TBA"}. Yours before it drops.
+              Preorder — yours before it drops. Our sales agent will reach out to confirm the details.
             </div>
           )}
 
@@ -116,8 +116,6 @@ export default async function ProductPage({ params }: Props) {
             slug={product.slug}
             title={product.title}
             variants={variantOptions}
-            isPreorder={display.isPreorder}
-            preorderShipDate={display.preorderShipDate}
             accentColor={accent.color}
             deliveryChargeInsideDhaka={
               product.deliveryChargeInsideDhaka != null ? toNumber(product.deliveryChargeInsideDhaka) : null

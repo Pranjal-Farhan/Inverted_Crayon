@@ -40,9 +40,6 @@ export default async function EditProductPage({ params }: Props) {
     return data ? [{ id: row.id, name: row.name, data }] : [];
   });
 
-  const preorderTag = product.tags.find((t) => t.tag.type === "PREORDER");
-  const preorderMeta = preorderTag?.meta as { shipDate?: string } | null | undefined;
-
   return (
     <ProductEditorForm
       // See new/page.tsx's key="new" for why this is required — without it, clicking from one
@@ -71,8 +68,7 @@ export default async function EditProductPage({ params }: Props) {
         seoTitle: product.seoTitle ?? undefined,
         seoDescription: product.seoDescription ?? undefined,
         tagNew: product.tags.some((t) => t.tag.type === "NEW"),
-        tagPreorder: Boolean(preorderTag),
-        preorderShipDate: preorderMeta?.shipDate ?? "",
+        tagPreorder: product.tags.some((t) => t.tag.type === "PREORDER"),
         tagLimited: product.tags.some((t) => t.tag.type === "LIMITED"),
         tagBestseller: product.tags.some((t) => t.tag.type === "BESTSELLER"),
         couponIds: product.coupons.map((c) => c.id),

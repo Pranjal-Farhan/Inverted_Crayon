@@ -9,7 +9,6 @@ import { db } from "@/lib/db";
 import { Prisma } from "@/generated/prisma/client";
 import { requireAdminArea } from "@/lib/admin-guard";
 import { canAccessArea } from "@/lib/admin-areas";
-import { notifyPreorderShipDate } from "@/lib/notifications";
 import { uploadToImgBb } from "@/lib/imgbb";
 import { ensureMirrorCategories } from "@/actions/admin-categories";
 import { slugify } from "@/lib/slugify";
@@ -139,7 +138,6 @@ const productSchema = z.object({
   deliveryChargeOutsideDhaka: z.number().min(0).nullable().default(null),
   tagNew: z.boolean().default(false),
   tagPreorder: z.boolean().default(false),
-  preorderShipDate: z.string().optional(),
   tagLimited: z.boolean().default(false),
   tagBestseller: z.boolean().default(false),
   // Product-locked coupons valid on this product (see Discount.scope). Anything that isn't
@@ -244,7 +242,7 @@ export async function saveProduct(input: ProductFormInput): Promise<ProductSaveR
     const existing = data.id
       ? await db.product.findUnique({
         where: { id: data.id },
-        include: { tags: { include: { tag: true } }, variants: true },
+        include: { variants: true },
       })
       : null;
     const existingVariants = existing?.variants ?? [];
@@ -256,8 +254,6 @@ export async function saveProduct(input: ProductFormInput): Promise<ProductSaveR
       );
       return match ? { ...variant, id: match.id } : variant;
     });
-    const wasPreorderTag = existing?.tags.find((t) => t.tag.type === "PREORDER");
-    const previousShipDate = (wasPreorderTag?.meta as { shipDate?: string } | null | undefined)?.shipDate;
     // Json? fields need the explicit JsonNull sentinel to clear them — plain `null` or `undefined`
     // would leave a previously-saved size guide in place instead of removing it.
     const sizeGuideValue = data.sizeGuide ?? Prisma.JsonNull;
@@ -384,16 +380,16 @@ export async function saveProduct(input: ProductFormInput): Promise<ProductSaveR
 
       // tags
       await tx.productTag.deleteMany({ where: { productId: productRecord.id } });
-      const tagInserts: { type: string; enabled: boolean; meta?: Record<string, unknown> }[] = [
+      const tagInserts: { type: string; enabled: boolean }[] = [
         { type: "NEW", enabled: data.tagNew },
-        { type: "PREORDER", enabled: data.tagPreorder, meta: { shipDate: data.preorderShipDate } },
+        { type: "PREORDER", enabled: data.tagPreorder },
         { type: "LIMITED", enabled: data.tagLimited },
         { type: "BESTSELLER", enabled: data.tagBestseller },
       ];
       for (const t of tagInserts) {
         if (t.enabled && tagByType[t.type]) {
           await tx.productTag.create({
-            data: { productId: productRecord.id, tagId: tagByType[t.type].id, meta: (t.meta ?? undefined) as never },
+            data: { productId: productRecord.id, tagId: tagByType[t.type].id },
           });
         }
       }
@@ -415,26 +411,6 @@ export async function saveProduct(input: ProductFormInput): Promise<ProductSaveR
 
       return productRecord;
     }, { timeout: 15000 }));
-
-    if (data.tagPreorder && data.preorderShipDate && data.preorderShipDate !== previousShipDate) {
-      const affected = await db.orderItem.findMany({
-        where: {
-          productId: product.id,
-          isPreorder: true,
-          order: { status: { in: ["PENDING", "PAID", "PROCESSING"] } },
-        },
-        include: { order: true },
-      });
-      const emails = [...new Set(affected.map((i) => i.order.email))];
-      for (const to of emails) {
-        await notifyPreorderShipDate({
-          to,
-          productName: product.title,
-          productSlug: product.slug,
-          shipDate: data.preorderShipDate,
-        });
-      }
-    }
 
     revalidatePath("/admin/products");
     revalidatePath(`/admin/products/${product.id}`);

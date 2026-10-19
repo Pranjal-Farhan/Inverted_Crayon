@@ -31,8 +31,6 @@ export function AddToCartForm({
   slug,
   title,
   variants,
-  isPreorder: productIsPreorder,
-  preorderShipDate,
   accentColor,
   deliveryChargeInsideDhaka = null,
   deliveryChargeOutsideDhaka = null,
@@ -41,9 +39,6 @@ export function AddToCartForm({
   slug: string;
   title: string;
   variants: VariantOption[];
-  /** Product-level Preorder tag — drives ship-date messaging when a variant also carries a real ship date. */
-  isPreorder: boolean;
-  preorderShipDate: string | null;
   accentColor: string;
   /** Product-level shipping override, snapshotted onto the cart line — null uses the store default. */
   deliveryChargeInsideDhaka?: number | null;
@@ -140,9 +135,7 @@ export function AddToCartForm({
         <div key={variant?.id ?? "none"} className="preorder-pulse mb-4 flex items-center gap-2.5 border border-dashed border-yellow bg-yellow/[0.07] px-3.5 py-2.5 text-sm">
           <Crown className="h-[22px] w-6 shrink-0 text-yellow" />
           <span>
-            {productIsPreorder && preorderShipDate
-              ? `Preorder — ships ${preorderShipDate}.`
-              : "This size just sold out — preorder it and our sales agent will reach out."}{" "}
+            This size just sold out — preorder it and our sales agent will reach out.{" "}
           </span>
         </div>
       )}
@@ -191,7 +184,6 @@ export function AddToCartForm({
                 unitPrice: variant.price,
                 qty,
                 isPreorder: preorderEligible,
-                preorderShipDate: productIsPreorder ? preorderShipDate : null,
                 preorderAdvanceAmount: preorderEligible ? advancePerUnit : null,
                 deliveryChargeInsideDhaka,
                 deliveryChargeOutsideDhaka,

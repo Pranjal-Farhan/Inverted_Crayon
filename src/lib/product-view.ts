@@ -31,7 +31,6 @@ export type ProductDisplay = {
   isLimited: boolean;
   isBestseller: boolean;
   isPreorder: boolean;
-  preorderShipDate: string | null;
   soldOut: boolean;
   totalStock: number;
   publishedAt: Date | null;
@@ -102,7 +101,6 @@ export function deriveProductDisplay(
     product.publishedAt != null &&
     now.getTime() - new Date(product.publishedAt).getTime() < NEW_WINDOW_DAYS * 24 * 60 * 60 * 1000;
 
-  const preorderMeta = preorderTag?.meta as { shipDate?: string } | null | undefined;
   const hasPreorderableVariant = product.variants.some(variantPreorderEligible);
 
   return {
@@ -120,7 +118,6 @@ export function deriveProductDisplay(
     isLimited: Boolean(limitedTag),
     isBestseller: Boolean(bestsellerTag),
     isPreorder: Boolean(preorderTag),
-    preorderShipDate: preorderMeta?.shipDate ?? null,
     soldOut,
     totalStock,
     publishedAt: product.publishedAt,

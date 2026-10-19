@@ -218,8 +218,8 @@ async function main() {
 
         createdProducts.push({ id: product.id, categorySlug: category.slug });
 
-        const tagsToAttach: { type: keyof typeof tagByType; meta?: Record<string, unknown> }[] = [];
-        if (isPreorder) tagsToAttach.push({ type: "PREORDER", meta: { shipDate: "15 Oct" } });
+        const tagsToAttach: { type: keyof typeof tagByType }[] = [];
+        if (isPreorder) tagsToAttach.push({ type: "PREORDER" });
         if (isNewFlag) tagsToAttach.push({ type: "NEW" });
         if (isLimited) tagsToAttach.push({ type: "LIMITED" });
         if (isBestseller) tagsToAttach.push({ type: "BESTSELLER" });
@@ -227,8 +227,8 @@ async function main() {
         for (const t of tagsToAttach) {
           await db.productTag.upsert({
             where: { productId_tagId: { productId: product.id, tagId: tagByType[t.type].id } },
-            update: { meta: (t.meta ?? undefined) as never },
-            create: { productId: product.id, tagId: tagByType[t.type].id, meta: (t.meta ?? undefined) as never },
+            update: {},
+            create: { productId: product.id, tagId: tagByType[t.type].id },
           });
         }
 

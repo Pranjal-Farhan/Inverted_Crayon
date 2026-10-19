@@ -86,7 +86,7 @@ export const DEFAULT_TERMS_PAGE: LegalPageData = {
     },
     {
       title: "Preorders",
-      body: "Preorder now and our sales agent will reach out to confirm the details — no advance payment is required online. Ship dates are estimates and may shift; we'll email you if a date changes.",
+      body: "Preorder now and our sales agent will reach out to confirm the details — no advance payment is required online.",
     },
     {
       title: "Payments",

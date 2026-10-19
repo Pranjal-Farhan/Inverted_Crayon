@@ -239,7 +239,6 @@ model Tag {
 model ProductTag {
   productId String
   tagId     String
-  meta      Json? // e.g. { "shipDate": "2026-10-15" } for preorder
   product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
   tag       Tag     @relation(fields: [tagId], references: [id], onDelete: Cascade)
 
@@ -594,6 +593,8 @@ enum EmailType {
   ORDER_CONFIRMED
   ORDER_SHIPPED
   BACK_IN_STOCK
+  // Retired: preorder ship dates no longer exist, so this email is never sent. Kept only because
+  // Postgres can't drop an enum value without rewriting the type, and old outbox rows carry it.
   PREORDER_SHIP_UPDATE
   CONTACT_RECEIVED
   ORDER_CANCELLATION_REQUESTED

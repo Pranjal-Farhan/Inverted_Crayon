@@ -10,7 +10,6 @@ export type CartLine = {
   unitPrice: number;
   qty: number;
   isPreorder: boolean;
-  preorderShipDate: string | null;
   /** Per-unit advance due now when isPreorder — 0 means "reserve free, all due on delivery". Null when not a preorder line. */
   preorderAdvanceAmount: number | null;
   /** Product-level shipping override, snapshotted when this line was added — null means "use the store's default rate for that zone". See resolveShippingCost() in src/lib/shipping.ts. */

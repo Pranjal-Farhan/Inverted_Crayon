@@ -7,10 +7,12 @@ import { getStoreInfo } from "@/lib/store-settings";
 import { EmailTestForm } from "@/components/admin/EmailTestForm";
 
 // Labels come from the template catalog so a new message type shows up here automatically; the
-// retired abandoned-bag reminder keeps a label only so old outbox rows still read properly.
+// retired abandoned-bag reminder and preorder ship-date email keep a label only so old outbox
+// rows still read properly.
 const TYPE_LABEL: Record<string, string> = {
   ...Object.fromEntries(TEMPLATES.map((t) => [t.key, t.title])),
   ABANDONED_CHECKOUT: "Abandoned checkout (retired)",
+  PREORDER_SHIP_UPDATE: "Preorder ship date update (retired)",
 };
 const CUSTOMER_TYPES = TEMPLATES.filter((t) => t.audience === "CUSTOMER");
 const BRAND_TYPES = TEMPLATES.filter((t) => t.audience === "BRAND");
@@ -74,6 +76,7 @@ export default async function AdminEmailsPage({ searchParams }: Props) {
             ))}
           </optgroup>
           <option value="ABANDONED_CHECKOUT">Abandoned checkout (retired)</option>
+          <option value="PREORDER_SHIP_UPDATE">Preorder ship date update (retired)</option>
         </select>
         <button type="submit" className="border border-line-2 px-3 py-2 text-sm hover:border-lime">
           Filter

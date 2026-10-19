@@ -13,6 +13,7 @@ import {
   type ProductImageRow,
 } from "@/actions/admin-products";
 import { Panel } from "@/components/admin/Panel";
+import { ConfirmDialog } from "@/components/admin/ConfirmDialog";
 import { DESCRIPTION_SECTIONS, SectionHeading, type DescriptionSectionKey } from "@/components/brand/DescriptionMarks";
 import { VariantStockStepper } from "@/components/admin/VariantStockStepper";
 import { SizeGuideTable } from "@/components/admin/SizeGuideTable";
@@ -20,10 +21,61 @@ import { ManufacturerLinksPanel } from "@/components/admin/ManufacturerLinksPane
 import type { ManufacturerLinkRow } from "@/actions/admin-manufacturer-links";
 import { DEFAULT_SIZE_GUIDE_COLUMNS, type SizeGuideRow, type SizeGuideTemplateOption } from "@/lib/size-guide";
 import { slugify } from "@/lib/slugify";
+import { prepareImageForUpload } from "@/lib/client-image";
 import { detectSizingMode, sizesForMode, type SizingMode } from "@/lib/sizes";
 import { formatTaka } from "@/lib/money";
 import { COUPON_STATUS_LABEL } from "@/lib/coupon-format";
 import type { CouponOption } from "@/lib/coupon-options";
+
+/** A call that has gone this long without an answer is treated as failed, so the editor can never
+ * sit on "Uploading…" forever (a server action can't be cancelled, only stopped being waited on). */
+const UPLOAD_TIMEOUT_MS = 120_000;
+
+type UploadFilesResult = { images: ProductImageRow[]; failed: { name: string; error: string }[] };
+
+/** Uploads photos one request per image, in order, and never throws: every failure — too big for
+ * the browser to shrink, rejected by the host, timed out, a real ImgBB error — comes back in
+ * `failed` with the file's name while the other photos carry on. One image per request keeps each
+ * call under the host's request-size cap (see src/lib/client-image.ts), which a single request
+ * carrying every photo blew straight through. */
+async function uploadFiles(
+  productId: string,
+  files: File[],
+  opts: { onProgress?: (done: number, total: number) => void; onImage?: (image: ProductImageRow) => void } = {},
+): Promise<UploadFilesResult> {
+  const images: ProductImageRow[] = [];
+  const failed: { name: string; error: string }[] = [];
+  for (const [index, original] of files.entries()) {
+    try {
+      const file = await prepareImageForUpload(original);
+      const formData = new FormData();
+      formData.append("files", file);
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const res = await Promise.race([
+        uploadProductImages(productId, formData),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(new Error("timed out waiting for the server")), UPLOAD_TIMEOUT_MS);
+        }),
+      ]).finally(() => clearTimeout(timer));
+      if (res.ok) {
+        for (const image of res.images) {
+          images.push(image);
+          opts.onImage?.(image);
+        }
+        for (const f of res.failed) failed.push({ name: original.name, error: f.error });
+      } else {
+        failed.push({ name: original.name, error: res.error });
+      }
+    } catch (e) {
+      failed.push({
+        name: original.name,
+        error: e instanceof Error ? e.message : "Upload failed — the server didn't accept it. Try again.",
+      });
+    }
+    opts.onProgress?.(index + 1, files.length);
+  }
+  return { images, failed };
+}
 
 type StagedImage = { file: File; previewUrl: string };
 type Branch = "MEN" | "WOMEN" | "UNISEX";
@@ -185,6 +237,9 @@ export function ProductEditorForm({
   const [dragActive, setDragActive] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleting, startDelete] = useTransition();
+  const [uploadProgress, setUploadProgress] = useState<{ done: number; total: number } | null>(null);
 
   const [title, setTitle] = useState(initial?.title ?? "");
   const [slug, setSlug] = useState(initial?.slug ?? "");
@@ -225,7 +280,6 @@ export function ProductEditorForm({
   );
   const [tagNew, setTagNew] = useState(initial?.tagNew ?? false);
   const [tagPreorder, setTagPreorder] = useState(initial?.tagPreorder ?? false);
-  const [preorderShipDate, setPreorderShipDate] = useState(initial?.preorderShipDate ?? "");
   const [tagLimited, setTagLimited] = useState(initial?.tagLimited ?? false);
   const [tagBestseller, setTagBestseller] = useState(initial?.tagBestseller ?? false);
   const [couponIds, setCouponIds] = useState<string[]>(initial?.couponIds ?? []);
@@ -361,25 +415,28 @@ export function ProductEditorForm({
   async function handleFiles(fileList: FileList | File[]) {
     const files = Array.from(fileList).filter((f) => f.type.startsWith("image/"));
     if (files.length === 0) return;
+    if (uploading) {
+      setUploadError("An upload is still running — wait for it to finish, then add more.");
+      return;
+    }
     setUploadError(null);
 
     if (initial?.id) {
       setUploading(true);
-      const formData = new FormData();
-      files.forEach((f) => formData.append("files", f));
-      const res = await uploadProductImages(initial.id, formData);
-      setUploading(false);
-      if (!res.ok) {
-        setUploadError(res.error);
-        return;
+      setUploadProgress({ done: 0, total: files.length });
+      try {
+        // Each image is added to the grid the moment it lands, and a failure in one is named
+        // (not silently dropped) while the rest carry on — so the admin only retries what failed.
+        const { failed } = await uploadFiles(initial.id, files, {
+          onProgress: (done, total) => setUploadProgress({ done, total }),
+          onImage: (image) => setImages((prev) => [...prev, image]),
+        });
+        setUploadError(failed.length > 0 ? failed.map((f) => `"${f.name}": ${f.error}`).join(" ") : null);
+      } finally {
+        // Whatever happened above, the box must never be left saying "Uploading…".
+        setUploading(false);
+        setUploadProgress(null);
       }
-      setImages((prev) => [...prev, ...res.images]);
-      // Partial failure — some files in the batch uploaded fine (already added above) and some
-      // didn't, each for its own reason (too big, wrong type, a real upload error). Naming them
-      // means the admin only has to retry the ones that actually failed, not the whole batch.
-      setUploadError(
-        res.failed.length > 0 ? res.failed.map((f) => `"${f.name}": ${f.error}`).join(" ") : null,
-      );
     } else {
       setStaged((prev) => [...prev, ...files.map((file) => ({ file, previewUrl: URL.createObjectURL(file) }))]);
     }
@@ -487,7 +544,6 @@ export function ProductEditorForm({
           deliveryChargeOutsideDhaka: deliveryChargeOutsideDhaka === "" ? null : deliveryChargeOutsideDhaka,
           tagNew,
           tagPreorder,
-          preorderShipDate,
           tagLimited,
           tagBestseller,
           couponIds,
@@ -499,21 +555,25 @@ export function ProductEditorForm({
           return;
         }
         if (staged.length > 0) {
-          const formData = new FormData();
-          staged.forEach((s) => formData.append("files", s.file));
-          const uploadRes = await uploadProductImages(res.id, formData);
-          if (!uploadRes.ok) {
-            // The product itself did save — route there anyway (below) so a retry edits the
-            // real product instead of creating a duplicate; this just flags the image upload
-            // specifically needs retrying from that page.
-            setError(`Product saved, but image upload failed: ${uploadRes.error}`);
-          } else if (uploadRes.failed.length > 0) {
-            // Some staged images made it, some didn't — the ones that failed would otherwise
-            // vanish silently (the product still saves and redirects below), so name them.
-            setError(
-              `Product saved. ${uploadRes.failed.length} of ${staged.length} images didn't upload — retry from this page: ` +
-                uploadRes.failed.map((f) => `"${f.name}": ${f.error}`).join(" "),
+          // The product itself did save, so whatever happens to the photos we still route to it
+          // below — a retry then edits the real product instead of creating a duplicate.
+          setUploadProgress({ done: 0, total: staged.length });
+          try {
+            const { failed } = await uploadFiles(
+              res.id,
+              staged.map((s) => s.file),
+              { onProgress: (done, total) => setUploadProgress({ done, total }) },
             );
+            if (failed.length > 0) {
+              // Some staged images made it, some didn't — the ones that failed would otherwise
+              // vanish silently (the product still saves and redirects below), so name them.
+              setError(
+                `Product saved. ${failed.length} of ${staged.length} images didn't upload — retry from this page: ` +
+                  failed.map((f) => `"${f.name}": ${f.error}`).join(" "),
+              );
+            }
+          } finally {
+            setUploadProgress(null);
           }
         }
         router.push(`/admin/products/${res.id}`);
@@ -558,7 +618,9 @@ export function ProductEditorForm({
               }}
             />
             {uploading
-              ? "Uploading…"
+              ? uploadProgress
+                ? `Uploading image ${Math.min(uploadProgress.done + 1, uploadProgress.total)} of ${uploadProgress.total}…`
+                : "Uploading…"
               : `Drag images here or click to browse · up to 20 per product · placeholder frames render automatically until photos are uploaded.`}
             {uploadError && <div className="mt-1 text-error">{uploadError}</div>}
           </div>
@@ -1013,15 +1075,6 @@ export function ProductEditorForm({
             <Chk checked={tagLimited} onChange={setTagLimited} label="Limited" />
             <Chk checked={tagBestseller} onChange={setTagBestseller} label="Bestseller" />
           </div>
-          {tagPreorder && (
-            <Field label="Preorder ship date" className="mt-2.5">
-              <input value={preorderShipDate} onChange={(e) => setPreorderShipDate(e.target.value)} placeholder="15 Oct" className={inputClass} />
-              <p className="mt-1 text-[12px] text-muted-2">
-                Shown on the product page. Whenever you change this and save, every customer with an open preorder for
-                this product is emailed the new date (edit that email under Templates).
-              </p>
-            </Field>
-          )}
         </Panel>
 
         <Panel title="Coupons" className="mt-4.5">
@@ -1089,17 +1142,44 @@ export function ProductEditorForm({
             disabled={pending}
             className="btn-primary w-full bg-lime px-4 py-2.5 font-impact text-sm text-ink disabled:opacity-50"
           >
-            {pending ? "Saving…" : "Save product"}
+            {pending
+              ? uploadProgress
+                ? `Uploading image ${Math.min(uploadProgress.done + 1, uploadProgress.total)} of ${uploadProgress.total}…`
+                : "Saving…"
+              : "Save product"}
           </button>
           {initial?.id && (
-            <button
-              onClick={() => {
-                if (confirm("Delete this product permanently?")) startTransition(() => deleteProduct(initial.id!));
-              }}
-              className="mt-2 w-full border border-line-2 px-4 py-2 text-sm text-error hover:border-error"
-            >
-              Delete product
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={() => setConfirmingDelete(true)}
+                className="mt-2 w-full border border-line-2 px-4 py-2 text-sm text-error hover:border-error"
+              >
+                Delete product
+              </button>
+              <ConfirmDialog
+                open={confirmingDelete}
+                title="Delete this product?"
+                confirmLabel="Yes, delete it"
+                busyLabel="Deleting…"
+                cancelLabel="No, keep it"
+                busy={deleting}
+                onCancel={() => setConfirmingDelete(false)}
+                onConfirm={() => startDelete(() => deleteProduct(initial.id!))}
+              >
+                <p>
+                  You&apos;re about to permanently delete{" "}
+                  <strong className="text-paper">{initial.title || "this product"}</strong>
+                  {initial.status === "ACTIVE" ? " — it's live on the store right now" : ""}.
+                </p>
+                <p>
+                  Its {images.length} {images.length === 1 ? "photo" : "photos"}, {variants.length}{" "}
+                  {variants.length === 1 ? "size/colour row" : "size/colour rows"}, tags, wishlist saves and manufacturer notes are
+                  removed. Past orders keep their line items.
+                </p>
+                <p className="text-error">This can&apos;t be undone. To just hide it, set it to Draft instead.</p>
+              </ConfirmDialog>
+            </>
           )}
         </Panel>
       </div>

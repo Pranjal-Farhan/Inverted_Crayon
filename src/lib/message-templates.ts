@@ -70,7 +70,6 @@ export const PLACEHOLDERS = {
   productName: "The product's name",
   variantLabel: "The size and colour",
   productUrl: "A link to the product page",
-  shipDate: "The preorder's ship date",
   stockNow: "Units in stock right now",
 } as const;
 
@@ -106,7 +105,6 @@ export type TemplateKey =
   | "ORDER_CANCELLATION_REQUESTED"
   | "ORDER_CANCELLED"
   | "BACK_IN_STOCK"
-  | "PREORDER_SHIP_UPDATE"
   | "CONTACT_RECEIVED"
   // emails to the brand
   | "ADMIN_CONTACT_MESSAGE"
@@ -216,15 +214,6 @@ Questions? Just reply to this email or write to {storeEmail}.`,
     subject: "Back in stock",
     defaultBody: "{productName} ({variantLabel}) is back — grab it before it's gone again. {productUrl}",
     placeholders: ["productName", "variantLabel", "productUrl", ...STORE],
-  },
-  {
-    key: "PREORDER_SHIP_UPDATE",
-    audience: "CUSTOMER",
-    title: "Preorder ship date update",
-    when: "When an admin sets or changes a preorder product's ship date — to customers with an open preorder for it.",
-    subject: "Your preorder ships soon",
-    defaultBody: "{productName} now ships {shipDate}. We'll keep you posted if that changes.",
-    placeholders: ["productName", "shipDate", "productUrl", ...STORE],
   },
   {
     key: "WELCOME",
@@ -490,6 +479,5 @@ export const SAMPLE_VALUES: Record<PlaceholderName, string> = {
   productName: "Crown Straight Jeans",
   variantLabel: "S / Black",
   productUrl: "https://invertedcrayon.com/product/crown-straight-jeans-men",
-  shipDate: "30 Oct",
   stockNow: "0",
 };

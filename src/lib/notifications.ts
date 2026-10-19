@@ -211,16 +211,6 @@ export async function notifyBackInStock(input: { to: string; productName: string
   });
 }
 
-/** One customer's "your preorder's ship date changed" email. */
-export async function notifyPreorderShipDate(input: { to: string; productName: string; productSlug: string; shipDate: string }) {
-  const { origin } = await getMessageContext();
-  await sendTemplatedEmail({
-    key: "PREORDER_SHIP_UPDATE",
-    to: input.to,
-    vars: { productName: input.productName, shipDate: input.shipDate, productUrl: `${origin}/product/${input.productSlug}` },
-  });
-}
-
 // ---------------------------------------------------------------------------- accounts and security
 
 /** A customer account was created: tell the brand. */
