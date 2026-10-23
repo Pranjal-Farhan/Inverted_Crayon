@@ -1,7 +1,9 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { ConfirmDialog } from "@/components/admin/ConfirmDialog";
 import { btnDanger, btnGhost } from "./ui";
+import { attempt } from "@/lib/attempt";
 
 /** Which rows are ticked, for the "delete several at once" bars. */
 export function useSelection(allIds: string[]) {
@@ -30,8 +32,8 @@ export function RowCheck({ checked, onChange, label }: { checked: boolean; onCha
 }
 
 /**
- * The bar that appears when rows are ticked. Each button is one bulk action; it asks first and
- * shows any refusal (e.g. "some of that stock is already sold") right here.
+ * The bar that appears when rows are ticked. Each button is one bulk action; it asks in a popup
+ * first and shows any refusal (e.g. "some of that stock is already sold") right here, in words.
  */
 export function BulkBar({
   count,
@@ -44,36 +46,53 @@ export function BulkBar({
 }) {
   const [pending, start] = useTransition();
   const [error, setError] = useState("");
+  const [asking, setAsking] = useState<number | null>(null);
   if (count === 0) return null;
+  const current = asking != null ? actions[asking] : undefined;
   return (
     <div className="mb-3 border border-lime/40 bg-lime/[0.07] px-3.5 py-2.5" role="region" aria-label="Selected rows">
       <div className="flex flex-wrap items-center gap-2.5">
         <span className="text-sm">
           <span className="font-medium text-lime">{count}</span> selected
         </span>
-        {actions.map((a) => (
+        {actions.map((a, i) => (
           <button
             key={a.label}
             type="button"
             disabled={pending}
             className={a.danger === false ? btnGhost : btnDanger}
             onClick={() => {
-              if (!confirm(a.confirmText)) return;
               setError("");
-              start(async () => {
-                const r = await a.run();
-                if (!r.ok) setError(r.error);
-                else onClear();
-              });
+              setAsking(i);
             }}
           >
-            {pending ? "Working…" : a.label}
+            {a.label}
           </button>
         ))}
         <button type="button" onClick={onClear} className={btnGhost}>
           Clear selection
         </button>
       </div>
+      <ConfirmDialog
+        open={current != null}
+        title="Are you sure?"
+        confirmLabel="Yes, go ahead"
+        busyLabel="Working…"
+        cancelLabel="Cancel"
+        busy={pending}
+        onCancel={() => setAsking(null)}
+        onConfirm={() =>
+          start(async () => {
+            if (!current) return;
+            const r = await attempt(current.run);
+            setAsking(null);
+            if (!r.ok) setError(r.error);
+            else onClear();
+          })
+        }
+      >
+        <p>{current?.confirmText}</p>
+      </ConfirmDialog>
       {error && (
         <p role="alert" className="mt-1.5 text-[13px] text-error">
           {error}

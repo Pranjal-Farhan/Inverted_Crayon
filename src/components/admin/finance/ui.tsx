@@ -20,11 +20,14 @@ export function Money({ value, tone = "auto" }: { value: number; tone?: "auto" |
   return <span className={`tabular-nums ${cls}`}>{formatTakaPrecise(value)}</span>;
 }
 
+/** The order statuses as designed for Orders (ADMIN_STATUS_LABEL) — Finance uses exactly these. */
 const STATUS_TONE: Record<string, string> = {
-  COMPLETED: "bg-lime/[0.16] text-lime",
-  IN_PROGRESS: "bg-cyan/[0.16] text-cyan",
-  UNPAID: "bg-yellow/[0.16] text-yellow",
-  LOST: "bg-error/[0.16] text-error",
+  NOT_CLEARED: "bg-yellow/[0.16] text-yellow",
+  SHIPPED: "bg-cyan/[0.16] text-cyan",
+  DELIVERED: "bg-lime/[0.16] text-lime",
+  CANCELLED: "bg-error/[0.16] text-error",
+  REFUNDED: "bg-error/[0.16] text-error",
+  RETURNED: "bg-error/[0.16] text-error",
 };
 
 export function SaleStatusChip({ status, label }: { status: string; label: string }) {
@@ -35,19 +38,9 @@ export function SaleStatusChip({ status, label }: { status: string; label: strin
   );
 }
 
-const KIND_TONE: Record<string, string> = {
-  SALE: "text-lime",
-  EXPENSE: "text-error",
-  INVESTMENT: "text-cyan",
-};
-export function KindChip({ kind, label }: { kind: string; label: string }) {
-  return <span className={`font-label whitespace-nowrap text-[12px] tracking-[0.8px] ${KIND_TONE[kind] ?? ""}`}>{label.toUpperCase()}</span>;
-}
-
 export const METHOD_OPTIONS = [
   ["CASH", "Cash"],
   ["BKASH", "bKash"],
-  ["NAGAD", "Nagad"],
   ["BANK", "Bank transfer"],
   ["CARD", "Card"],
   ["OTHER", "Other"],

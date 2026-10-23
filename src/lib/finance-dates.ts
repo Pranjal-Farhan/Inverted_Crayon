@@ -32,7 +32,7 @@ export function dayAfter(day: string): Date {
   return new Date(dayStart(day).getTime() + 24 * 3600 * 1000);
 }
 
-/** Entries typed in as a plain date (an expense, an investment…) are stored at midday Dhaka time, so no timezone can nudge them onto the neighbouring day. */
+/** Entries typed in as a plain date (an expense…) are stored at midday Dhaka time, so no timezone can nudge them onto the neighbouring day. */
 export function entryDate(day: string): Date {
   return new Date(`${day}T12:00:00${OFFSET}`);
 }

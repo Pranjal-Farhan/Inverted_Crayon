@@ -133,8 +133,8 @@ export async function priceCartLines(
 
 /** Whether this shopper has no previous order — by account when logged in, else by email. */
 export async function isFirstOrder(customerId: string | null | undefined, email?: string | null): Promise<boolean> {
-  if (customerId) return (await db.order.count({ where: { customerId } })) === 0;
-  if (email) return (await db.order.count({ where: { email } })) === 0;
+  if (customerId) return (await db.order.count({ where: { customerId, source: "ONLINE" } })) === 0;
+  if (email) return (await db.order.count({ where: { email, source: "ONLINE" } })) === 0;
   return true;
 }
 

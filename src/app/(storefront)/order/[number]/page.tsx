@@ -11,7 +11,7 @@ type Props = { params: Promise<{ number: string }> };
 
 export default async function OrderConfirmationPage({ params }: Props) {
   const { number } = await params;
-  const order = await db.order.findUnique({ where: { number }, include: { items: true } });
+  const order = await db.order.findFirst({ where: { number, source: "ONLINE" }, include: { items: true } });
   if (!order) notFound();
 
   const zoneLabel = order.shippingZone === "INSIDE_DHAKA" ? "2–3 days · Dhaka" : "3–5 days";

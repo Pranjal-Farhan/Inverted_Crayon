@@ -13,6 +13,7 @@ const NAV: { group: string; items: NavItem[] }[] = [
     items: [
       { href: "/admin/orders", label: "Orders", icon: "▤", area: "orders" },
       { href: "/admin/products", label: "Products", icon: "▦", area: "products" },
+      { href: "/admin/inventory", label: "Inventory", icon: "▣", area: "inventory" },
       { href: "/admin/finance", label: "Finance", icon: "৳", area: "finance" },
       { href: "/admin/categories", label: "Categories", icon: "☰", area: "categories" },
       { href: "/admin/size-guides", label: "Size guides", icon: "▭", area: "size-guides" },

@@ -14,6 +14,8 @@ import { slugify } from "@/lib/slugify";
 import { APPAREL_SIZES, ONE_SIZE } from "@/lib/sizes";
 import { MAX_SIZE_GUIDE_COLUMNS } from "@/lib/size-guide";
 import { invalidateProduct } from "@/lib/invalidate";
+import { recordOpening, recordRemoval } from "@/lib/stock";
+import { describeError } from "@/lib/action-errors";
 
 const VALID_SIZES = [...APPAREL_SIZES, ONE_SIZE] as [string, ...string[]];
 
@@ -362,7 +364,12 @@ export async function saveProduct(input: ProductFormInput): Promise<ProductSaveR
           },
         });
         keepIds.push(record.id);
+        // A brand-new size/colour starts with the count typed in the form — record it as its opening balance.
+        if (!v.id) await recordOpening(tx, record.id, { actorEmail: actor.email });
       }
+      // Sizes removed from the form go with whatever stock they still had — written to the stock history first.
+      const removedVariants = await tx.variant.findMany({ where: { productId: productRecord.id, id: { notIn: keepIds } }, select: { id: true } });
+      await recordRemoval(tx, removedVariants.map((r) => r.id), { actorEmail: actor.email });
       await tx.variant.deleteMany({ where: { productId: productRecord.id, id: { notIn: keepIds } } });
 
       // tags
@@ -415,15 +422,20 @@ export async function saveProduct(input: ProductFormInput): Promise<ProductSaveR
       return { ok: false, error: `That ${target} is already in use — try saving again.` };
     }
     console.error("saveProduct failed:", e);
-    return { ok: false, error: "Something went wrong saving this product. Please try again." };
+    return { ok: false, error: `This product couldn't be saved. ${describeError(e)}` };
   }
 }
 
 export async function deleteProduct(id: string) {
-  await requireAdmin();
+  const admin = await requireAdmin();
   const existing = await db.product.findUnique({ where: { id }, select: { slug: true } });
   try {
-    await db.product.delete({ where: { id } });
+    await db.$transaction(async (tx) => {
+      // The stock the product still holds leaves with it — written to the stock history first.
+      const variants = await tx.variant.findMany({ where: { productId: id }, select: { id: true } });
+      await recordRemoval(tx, variants.map((v) => v.id), { actorEmail: admin.email, note: "Product deleted while it still had stock" });
+      await tx.product.delete({ where: { id } });
+    });
   } catch (e) {
     // P2025 = record already gone (double-submit) — deleting is idempotent, just continue.
     if (!(e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2025")) throw e;

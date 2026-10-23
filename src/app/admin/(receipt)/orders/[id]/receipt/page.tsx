@@ -67,7 +67,7 @@ export default async function OrderReceiptPage({ params }: Props) {
             <div className="mt-1">
               <span className="text-ink/50">Payment</span>{" "}
               <span className="font-label tracking-[0.6px]">
-                {order.paymentMethod} · {order.paymentStatus}
+                {order.source === "RECORDED" ? (order.recordedMethod ?? "Recorded sale") : order.paymentMethod} · {order.paymentStatus}
               </span>
             </div>
           </div>

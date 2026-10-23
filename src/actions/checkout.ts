@@ -15,7 +15,7 @@ import { getSiteOrigin } from "@/lib/site-url";
 import { restockAndCancelOrder } from "@/lib/payments/rollback";
 import { bkashConfigured, createBkashPayment } from "@/lib/payments/bkash";
 import { sslcommerzConfigured, initSslcommerzSession } from "@/lib/payments/sslcommerz";
-import { invalidateProduct } from "@/lib/invalidate";
+import { afterStockChanged, changeStock, StockError, type StockChange } from "@/lib/stock";
 
 const MAX_ORDER_NUMBER_ATTEMPTS = 5;
 
@@ -187,6 +187,7 @@ export async function placeOrder(input: CheckoutInput): Promise<CheckoutResult> 
 
   let orderNumber = "";
   let succeeded = false;
+  const stockChanges: StockChange[] = [];
 
   for (let attempt = 1; attempt <= MAX_ORDER_NUMBER_ATTEMPTS && !succeeded; attempt++) {
     orderNumber = generateOrderNumber();
@@ -195,16 +196,20 @@ export async function placeOrder(input: CheckoutInput): Promise<CheckoutResult> 
         // Guarded, atomic decrement: only succeeds if enough stock is still there at write time.
         // Without the `gte` guard, two concurrent checkouts for the last unit could both pass the
         // earlier read-time check and both commit a decrement, overselling.
+        stockChanges.length = 0; // a retry after an order-number collision starts clean
         for (const item of orderItemsData) {
           if (!item.isPreorder) {
-            const updated = await tx.variant.updateMany({
-              where: { id: item.variantId, stockQty: { gte: item.qty } },
-              data: { stockQty: { decrement: item.qty } },
-            });
-            if (updated.count === 0) {
-              throw new CheckoutConflictError(
-                `Not enough stock left for ${item.productTitleSnapshot} (${item.variantLabelSnapshot}). Update your bag and try again.`,
+            try {
+              stockChanges.push(
+                await changeStock(tx, { variantId: item.variantId, delta: -item.qty, reason: "ORDER_PLACED", orderNumber, note: "Website order" }),
               );
+            } catch (e) {
+              if (e instanceof StockError) {
+                throw new CheckoutConflictError(
+                  `Not enough stock left for ${item.productTitleSnapshot} (${item.variantLabelSnapshot}). Update your bag and try again.`,
+                );
+              }
+              throw e;
             }
           }
         }
@@ -274,10 +279,8 @@ export async function placeOrder(input: CheckoutInput): Promise<CheckoutResult> 
   // a sold-out/preorder badge on every public page that shows these products. Reads above this
   // point all went straight to the DB per ground rule 3 — this invalidation only affects what the
   // *next* visitor sees, never this order's own pricing/stock.
-  const orderedProducts = new Map(variants.map((v) => [v.productId, v.product.slug]));
-  for (const [productId, slug] of orderedProducts) {
-    invalidateProduct({ id: productId, slug });
-  }
+  // (afterStockChanged also refreshes the storefront caches and the admin Inventory screen.)
+  await afterStockChanged(stockChanges);
 
   if (usesLiveGateway) {
     const order = await db.order.findUniqueOrThrow({ where: { number: orderNumber } });

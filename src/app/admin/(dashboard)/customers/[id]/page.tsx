@@ -30,7 +30,7 @@ export default async function AdminCustomerDetailPage({ params }: Props) {
   // Orders this person placed with the same email while logged out are not linked to the account in
   // the database — they're still theirs, so they're shown here too (tagged "guest checkout").
   const guestOrders = await db.order.findMany({
-    where: { customerId: null, email: { equals: customer.email, mode: "insensitive" } },
+    where: { customerId: null, source: "ONLINE", email: { equals: customer.email, mode: "insensitive" } },
     orderBy: { createdAt: "desc" },
     include: { items: true },
   });

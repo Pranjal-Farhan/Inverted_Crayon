@@ -12,6 +12,7 @@ export type AdminArea =
   // open to staff
   | "orders"
   | "products"
+  | "inventory"
   | "customers"
   | "discounts"
   | "size-guides"
@@ -31,6 +32,7 @@ export type AdminArea =
 const STAFF_AREAS: ReadonlySet<AdminArea> = new Set<AdminArea>([
   "orders",
   "products",
+  "inventory",
   "customers",
   "discounts",
   "size-guides",

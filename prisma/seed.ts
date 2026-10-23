@@ -279,6 +279,27 @@ async function main() {
 
   console.log(`Seeded ${createdProducts.length} products.`);
 
+  // Stock history: a variant's starting count is its OPENING movement, so the movements always add
+  // up to the stock count (the Inventory screen checks that). Only variants with none yet — re-runnable.
+  const needOpening = await db.variant.findMany({
+    where: { stockQty: { gt: 0 }, stockMovements: { none: {} } },
+    include: { product: { select: { title: true } } },
+  });
+  if (needOpening.length > 0) {
+    await db.stockMovement.createMany({
+      data: needOpening.map((v) => ({
+        variantId: v.id,
+        productTitle: v.product.title,
+        variantLabel: `${v.size} / ${v.color}`,
+        sku: v.sku,
+        delta: v.stockQty,
+        qtyAfter: v.stockQty,
+        reason: "OPENING" as const,
+        note: "Seeded starting stock",
+      })),
+    });
+  }
+
   // ---------- discounts ----------
   await db.discount.upsert({
     where: { code: "INVERT10" },

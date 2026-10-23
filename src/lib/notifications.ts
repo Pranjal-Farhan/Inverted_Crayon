@@ -46,7 +46,7 @@ async function receiptAttachments(order: ReceiptOrder, store: StoreInfo): Promis
 /** A new order (or preorder) was placed: confirm to the customer, tell the brand, text the customer. */
 export async function notifyOrderPlaced(orderNumber: string) {
   const [order, ctx] = await Promise.all([loadOrder({ number: orderNumber }), getMessageContext()]);
-  if (!order) return;
+  if (!order || order.source === "RECORDED") return; // a sale recorded by hand has no customer to email and isn't announced
   const vars = orderVars(order, ctx);
   const attachments = await receiptAttachments(order, ctx.store);
 
@@ -66,7 +66,7 @@ export async function notifyOrderPlaced(orderNumber: string) {
 /** An admin marked the order as sent for delivery: tell the customer and the brand. */
 export async function notifyOrderShipped(orderId: string, actor: AdminActor) {
   const [order, ctx] = await Promise.all([loadOrder({ id: orderId }), getMessageContext()]);
-  if (!order) return;
+  if (!order || order.source === "RECORDED") return; // a sale recorded by hand has no customer to email and isn't announced
   const vars = orderVars(order, ctx);
   const attachments = await receiptAttachments(order, ctx.store);
 
@@ -89,7 +89,7 @@ export async function notifyOrderShipped(orderId: string, actor: AdminActor) {
 /** An admin marked the order delivered — the brand hears about it (the customer isn't messaged). */
 export async function notifyOrderDelivered(orderId: string, actor: AdminActor) {
   const [order, ctx] = await Promise.all([loadOrder({ id: orderId }), getMessageContext()]);
-  if (!order) return;
+  if (!order || order.source === "RECORDED") return; // a sale recorded by hand has no customer to email and isn't announced
   await sendTemplatedEmail({
     key: "ADMIN_ORDER_DELIVERED",
     vars: { ...orderVars(order, ctx), updatedBy: actorLabel(actor), updatedAt: formatDhaka(new Date()) },
@@ -101,7 +101,7 @@ export async function notifyOrderDelivered(orderId: string, actor: AdminActor) {
 /** Any other change to an order (refund, COD balance collected) — a short note to the brand. */
 export async function notifyOrderUpdated(orderId: string, update: string, actor: AdminActor) {
   const [order, ctx] = await Promise.all([loadOrder({ id: orderId }), getMessageContext()]);
-  if (!order) return;
+  if (!order || order.source === "RECORDED") return; // a sale recorded by hand has no customer to email and isn't announced
   await sendTemplatedEmail({
     key: "ADMIN_ORDER_UPDATE",
     vars: { ...orderVars(order, ctx), update, updatedBy: actorLabel(actor), updatedAt: formatDhaka(new Date()) },
@@ -113,7 +113,7 @@ export async function notifyOrderUpdated(orderId: string, update: string, actor:
 /** A customer asked to cancel an order that hasn't shipped: acknowledge to them, tell the brand. */
 export async function notifyCancellationRequested(orderId: string, reason: string) {
   const [order, ctx] = await Promise.all([loadOrder({ id: orderId }), getMessageContext()]);
-  if (!order) return;
+  if (!order || order.source === "RECORDED") return; // a sale recorded by hand has no customer to email and isn't announced
   const vars = { ...orderVars(order, ctx), reason: reason.trim() || "No reason given" };
   const attachments = await receiptAttachments(order, ctx.store);
   await Promise.all([
@@ -129,7 +129,7 @@ export async function notifyCancellationRequested(orderId: string, reason: strin
  */
 export async function notifyOrderCancelled(orderId: string, update: string, actor: AdminActor) {
   const [order, ctx] = await Promise.all([loadOrder({ id: orderId }), getMessageContext()]);
-  if (!order) return;
+  if (!order || order.source === "RECORDED") return; // a sale recorded by hand has no customer to email and isn't announced
   const vars = { ...orderVars(order, ctx), reason: order.cancellationReason?.trim() || "No reason given" };
   const attachments = await receiptAttachments(order, ctx.store);
   await Promise.all([
@@ -146,7 +146,7 @@ export async function notifyOrderCancelled(orderId: string, update: string, acto
 /** A customer asked to return some items from a delivered order. */
 export async function notifyReturnRequested(orderId: string, orderItemIds: string[], reason: string) {
   const [order, ctx] = await Promise.all([loadOrder({ id: orderId }), getMessageContext()]);
-  if (!order) return;
+  if (!order || order.source === "RECORDED") return; // a sale recorded by hand has no customer to email and isn't announced
   const returned = order.items.filter((i) => orderItemIds.includes(i.id));
   await sendTemplatedEmail({
     key: "ADMIN_RETURN_REQUEST",

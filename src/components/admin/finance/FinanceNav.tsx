@@ -7,7 +7,6 @@ const TABS = [
   ["/admin/finance", "Overview"],
   ["/admin/finance/sales", "Sales"],
   ["/admin/finance/expenses", "Expenses"],
-  ["/admin/finance/investments", "Investments"],
   ["/admin/finance/statement", "Statement"],
 ] as const;
 

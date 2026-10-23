@@ -27,7 +27,7 @@ export default async function AdminGuestDetailPage({ params }: Props) {
   const email = decodeEmail((await params).email);
 
   const orders = await db.order.findMany({
-    where: { customerId: null, email: { equals: email, mode: "insensitive" } },
+    where: { customerId: null, source: "ONLINE", email: { equals: email, mode: "insensitive" } },
     orderBy: { createdAt: "desc" },
     include: { items: true },
   });

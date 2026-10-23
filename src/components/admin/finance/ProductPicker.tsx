@@ -6,8 +6,10 @@ import { inputCls } from "./ui";
 export type PickerOption = {
   id: string;
   label: string;
-  /** Extra text that can be searched but isn't shown (SKU, colour…). */
+  /** Extra text that can be searched but isn't shown (SKU, colour, category, tags…). */
   search?: string;
+  /** A small second line under the label, e.g. "SKU · category · ৳1,200". */
+  sub?: string;
   /** Shown on the right, e.g. "9 in stock". */
   hint?: string;
   dim?: boolean;
@@ -16,8 +18,8 @@ export type PickerOption = {
 const MAX_SHOWN = 60;
 
 /**
- * A product chooser you can type into: start writing part of a name, size, colour or SKU and the
- * list narrows to what matches (every word you type has to appear). Arrow keys + Enter pick,
+ * A product chooser you can type into: start writing any detail — name, SKU, size, colour, category,
+ * price — and the list narrows to what matches (every word you type has to appear). Arrow keys + Enter pick,
  * Escape closes. `customLabel` adds a first entry that clears the choice (e.g. "Custom item").
  * With `name`, the chosen id is also submitted as a hidden field, so it works inside a plain form.
  */
@@ -145,7 +147,10 @@ export function ProductPicker({
             >
               {r.option ? (
                 <>
-                  <span className="min-w-0 break-words">{r.option.label}</span>
+                  <span className="min-w-0">
+                    <span className="break-words">{r.option.label}</span>
+                    {r.option.sub && <span className="block break-words text-[11px] text-muted-2">{r.option.sub}</span>}
+                  </span>
                   {r.option.hint && <span className="shrink-0 text-[12px] text-muted-2">{r.option.hint}</span>}
                 </>
               ) : (

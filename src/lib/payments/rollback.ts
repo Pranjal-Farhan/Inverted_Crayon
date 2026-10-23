@@ -1,29 +1,30 @@
 import "server-only";
 import { db } from "@/lib/db";
-import { invalidateProduct } from "@/lib/invalidate";
 import { releaseCouponForOrder } from "@/lib/coupon";
+import { afterStockChanged, changeStock, type StockChange } from "@/lib/stock";
 
 /** Used when a gateway payment fails/cancels/errors after the order (and its stock hold) was already created. */
 export async function restockAndCancelOrder(orderId: string) {
-  const restockedProductIds = new Set<string>();
+  const changes: StockChange[] = [];
 
   await db.$transaction(async (tx) => {
     const order = await tx.order.findUnique({ where: { id: orderId }, include: { items: true } });
-    if (!order || order.status === "CANCELLED") return;
+    if (!order) return;
+    // Atomic claim: when the gateway calls back twice (fail + cancel, or a retry), only one of them
+    // wins the CANCELLED transition and restocks — the other finds it already claimed and stops.
+    const claimed = await tx.order.updateMany({ where: { id: orderId, status: { not: "CANCELLED" } }, data: { status: "CANCELLED", paymentStatus: "FAILED" } });
+    if (claimed.count === 0) return;
 
     for (const item of order.items) {
       if (!item.isPreorder && item.variantId) {
-        await tx.variant.update({ where: { id: item.variantId }, data: { stockQty: { increment: item.qty } } });
-        if (item.productId) restockedProductIds.add(item.productId);
+        changes.push(
+          await changeStock(tx, { variantId: item.variantId, delta: item.qty, reason: "ORDER_RESTORED", orderId, orderNumber: order.number, note: "Payment failed or was cancelled" }),
+        );
       }
     }
     await releaseCouponForOrder(tx, order);
-    await tx.order.update({ where: { id: orderId }, data: { status: "CANCELLED", paymentStatus: "FAILED" } });
   });
 
-  // Restocking can flip a sold-out/preorder badge back — invalidate every affected product.
-  if (restockedProductIds.size > 0) {
-    const products = await db.product.findMany({ where: { id: { in: [...restockedProductIds] } }, select: { id: true, slug: true } });
-    for (const p of products) invalidateProduct({ id: p.id, slug: p.slug });
-  }
+  // Restocking can flip a sold-out/preorder badge back — refresh every affected product's pages.
+  await afterStockChanged(changes);
 }

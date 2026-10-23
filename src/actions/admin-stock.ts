@@ -3,62 +3,95 @@
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { requireAdminArea } from "@/lib/admin-guard";
-import { notifyBackInStock } from "@/lib/notifications";
-import { invalidateProduct } from "@/lib/invalidate";
+import { afterStockChanged, changeStock, reconcileStockLedger, setStockCount, type StockChange } from "@/lib/stock";
+import { fail, guarded, UserError, type Result } from "@/lib/action-errors";
+import { loadStockHistory, type StockHistoryRow } from "@/lib/inventory";
 
-export async function setVariantStock(variantId: string, stockQty: number) {
-  await requireAdminArea("products");
+/**
+ * Stock edits from the Inventory screen and the product editor's stepper. Every one is a change by
+ * a DELTA (or a guarded stock-take) through src/lib/stock.ts — never "write this absolute number" —
+ * so two people, or a sale landing at the same moment, can't overwrite each other. Each answers
+ * { ok, error, qty }: `qty` is the true count afterwards, which the screen shows instead of
+ * assuming its own arithmetic.
+ */
 
-  const before = await db.variant.findUniqueOrThrow({ where: { id: variantId }, include: { product: true } });
-  const nextQty = Math.max(stockQty, 0);
-  await db.variant.update({ where: { id: variantId }, data: { stockQty: nextQty } });
+export type StockResult = Result & { qty?: number };
 
-  if (before.stockQty === 0 && nextQty > 0) {
-    const subs = await db.backInStockSubscription.findMany({ where: { variantId, notifiedAt: null } });
-    const subscriberEmails = new Set(subs.map((s) => s.email.toLowerCase()));
-    const variantLabel = `${before.size} / ${before.color}`;
-    for (const sub of subs) {
-      await notifyBackInStock({ to: sub.email, productName: before.product.title, productSlug: before.product.slug, variantLabel });
-    }
-    if (subs.length > 0) {
-      await db.backInStockSubscription.updateMany({
-        where: { variantId, notifiedAt: null },
-        data: { notifiedAt: new Date() },
-      });
-    }
+const MAX_UNITS = 1_000_000;
 
-    // Also notify anyone who's wishlisted this product (wishlist is product-level, not
-    // variant-level, so this fires on any variant of the product coming back) — skip anyone
-    // already emailed above via an explicit "notify me" subscription, and anyone already
-    // notified since the product last went fully out of stock (see the reset below).
-    const wishlisters = await db.wishlistItem.findMany({
-      where: { productId: before.productId, notifiedAt: null },
-      include: { customer: true },
+function whole(n: unknown, what: string): number {
+  const v = Number(n);
+  if (!Number.isFinite(v) || !Number.isInteger(v)) throw new UserError(`${what} must be a whole number.`);
+  return v;
+}
+
+async function requireInventory() {
+  return requireAdminArea("inventory");
+}
+
+/** Adds units to a size — the everyday "a delivery came in" action. */
+export async function addStock(variantId: string, quantity: number, note?: string): Promise<StockResult> {
+  return guarded("addStock", async () => {
+    const admin = await requireInventory();
+    const qty = whole(quantity, "The quantity");
+    if (qty < 1) return fail("Enter how many units to add (1 or more).");
+    if (qty > MAX_UNITS) return fail("That quantity is too large.");
+    let change!: StockChange;
+    await db.$transaction(async (tx) => {
+      change = await changeStock(tx, { variantId, delta: qty, reason: "RESTOCK", note, actorEmail: admin.email });
     });
-    const toNotify = wishlisters.filter((w) => !subscriberEmails.has(w.customer.email.toLowerCase()));
-    for (const w of toNotify) {
-      await notifyBackInStock({ to: w.customer.email, productName: before.product.title, productSlug: before.product.slug, variantLabel });
-    }
-    if (toNotify.length > 0) {
-      await db.wishlistItem.updateMany({
-        where: { id: { in: toNotify.map((w) => w.id) } },
-        data: { notifiedAt: new Date() },
-      });
-    }
-  }
+    await afterStockChanged([change]);
+    return { ok: true, error: "", qty: change.after };
+  });
+}
 
-  if (before.stockQty > 0 && nextQty === 0) {
-    const remainingStock = await db.variant.aggregate({
-      where: { productId: before.productId },
-      _sum: { stockQty: true },
+/** Takes units off a size for a reason that isn't a sale (damaged, lost, a miscount). A note is required so the history says why. */
+export async function removeStock(variantId: string, quantity: number, note: string): Promise<StockResult> {
+  return guarded("removeStock", async () => {
+    const admin = await requireInventory();
+    const qty = whole(quantity, "The quantity");
+    if (qty < 1) return fail("Enter how many units to remove (1 or more).");
+    if (!note?.trim()) return fail("Say why the units are being removed (damaged, lost, miscounted…) so the history explains it.");
+    let change!: StockChange;
+    await db.$transaction(async (tx) => {
+      change = await changeStock(tx, { variantId, delta: -qty, reason: "CORRECTION", note, actorEmail: admin.email });
     });
-    if ((remainingStock._sum.stockQty ?? 0) === 0) {
-      // Fully sold out again — clear the notified flag so a future restock re-notifies wishlisters.
-      await db.wishlistItem.updateMany({ where: { productId: before.productId }, data: { notifiedAt: null } });
-    }
-  }
+    await afterStockChanged([change]);
+    return { ok: true, error: "", qty: change.after };
+  });
+}
 
-  revalidatePath("/admin/products");
-  // Stock drives the sold-out/preorder badges on every public listing + the PDP itself.
-  invalidateProduct({ id: before.productId, slug: before.product.slug });
+/** A stock-take: set a size's count to what is on the shelf. Refused if the count changed since it was read. */
+export async function setStockTo(variantId: string, expectedQty: number, newQty: number, note?: string): Promise<StockResult> {
+  return guarded("setStockTo", async () => {
+    const admin = await requireInventory();
+    const expected = whole(expectedQty, "The count you saw");
+    const target = whole(newQty, "The new count");
+    if (target < 0) return fail("The count can't be below zero.");
+    if (target > MAX_UNITS) return fail("That count is too large.");
+    let change!: StockChange;
+    await db.$transaction(async (tx) => {
+      change = await setStockCount(tx, { variantId, expected, target, note, actorEmail: admin.email });
+    });
+    await afterStockChanged([change]);
+    return { ok: true, error: "", qty: change.after };
+  });
+}
+
+/** Admin only: writes a correcting entry for any variant whose history no longer adds up to its count. */
+export async function reconcileLedger(): Promise<Result & { fixed?: number }> {
+  return guarded("reconcileLedger", async () => {
+    const admin = await requireAdminArea("finance");
+    const fixed = await reconcileStockLedger(admin.email);
+    revalidatePath("/admin/inventory");
+    return { ok: true, error: "", fixed };
+  });
+}
+
+/** The recent stock movements of one product, for the Inventory screen's detail view. */
+export async function getStockHistory(productId: string): Promise<Result & { rows?: StockHistoryRow[] }> {
+  return guarded("getStockHistory", async () => {
+    await requireInventory();
+    return { ok: true, error: "", rows: await loadStockHistory(productId) };
+  });
 }

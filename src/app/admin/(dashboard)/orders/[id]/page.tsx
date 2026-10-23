@@ -8,6 +8,12 @@ import { OrderTimeline } from "@/components/storefront/OrderTimeline";
 import { OrderActions } from "@/components/admin/OrderActions";
 import { Avatar } from "@/components/ui/Avatar";
 import { formatDhaka } from "@/lib/message-vars";
+import { getAdminForArea } from "@/lib/admin-guard";
+import { loadVariantOptions } from "@/lib/variant-options";
+import { RecordedSaleAdmin } from "@/components/admin/RecordedSaleAdmin";
+import { ADMIN_STATUS_LABEL } from "@/lib/order-status";
+import { METHOD_LABEL } from "@/lib/finance";
+import { dhakaDay, formatDayOf, todayDhaka } from "@/lib/finance-dates";
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -17,12 +23,18 @@ export default async function AdminOrderDetailPage({ params }: Props) {
   const order = await db.order.findUnique({
     where: { id },
     include: {
-      items: { include: { product: { select: { slug: true } } } },
+      items: { include: { product: { select: { slug: true } }, variant: { select: { sku: true } } } },
       customer: true,
       couponRedemption: { include: { discount: { select: { code: true, type: true } } } },
     },
   });
   if (!order) notFound();
+
+  const recorded = order.source === "RECORDED";
+  const financeAdmin = recorded ? await getAdminForArea("finance") : null;
+  const variantOptions = financeAdmin ? await loadVariantOptions({ includeCost: false }) : [];
+  const editable = ["PENDING", "PAID", "PROCESSING", "SHIPPED", "DELIVERED"].includes(order.status);
+  const paymentLabel = recorded ? (METHOD_LABEL[order.recordedMethod ?? "OTHER"] ?? order.recordedMethod) : order.paymentMethod;
 
   return (
     <div>
@@ -42,11 +54,22 @@ export default async function AdminOrderDetailPage({ params }: Props) {
         <Panel>
           <div className="mb-3.5 flex items-center gap-2.5">
             <h3 className="font-impact text-[17px] uppercase tracking-[0.5px]">Order #{order.number}</h3>
+            {recorded && (
+              <span className="font-label inline-block bg-cyan px-2.5 py-0.5 text-[11px] tracking-[0.8px] text-ink">RECORDED SALE</span>
+            )}
             {order.isPreorder && (
               <span className="font-label inline-block bg-yellow px-2.5 py-0.5 text-[11px] tracking-[0.8px] text-ink">
                 PREORDER ITEM
               </span>
             )}
+          </div>
+          <div className="mb-3.5 flex flex-wrap gap-x-6 gap-y-1 text-[13px] text-muted">
+            <span>
+              Status: <strong className="text-paper">{ADMIN_STATUS_LABEL[order.status]}</strong>
+            </span>
+            <span>{recorded ? "Sale date" : "Placed"}: {formatDayOf(order.createdAt)}</span>
+            {order.deliveredAt && <span>Delivered: {formatDayOf(order.deliveredAt)}</span>}
+            <span>Order number: {order.number}</span>
           </div>
           {order.cancellationRequestedAt && (
             <div className="mb-3.5 border border-yellow/40 bg-yellow/[0.07] px-3.5 py-2.5 text-sm">
@@ -68,7 +91,7 @@ export default async function AdminOrderDetailPage({ params }: Props) {
             <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-line-2 text-left text-muted">
-                {["Item", "Variant", "Qty", "Total"].map((h) => (
+                {["Item", "Variant", "SKU", "Qty", "Price", "Total"].map((h) => (
                   <th key={h} className="font-label pb-2 text-[13px] tracking-[0.8px]">
                     {h}
                   </th>
@@ -88,8 +111,10 @@ export default async function AdminOrderDetailPage({ params }: Props) {
                     )}{" "}
                     {item.isPreorder && <span className="text-yellow">· preorder</span>}
                   </td>
-                  <td className="py-2">{item.variantLabelSnapshot}</td>
+                  <td className="py-2">{item.variantLabelSnapshot || "—"}</td>
+                  <td className="py-2 text-[12px] text-muted">{item.variant?.sku ?? "—"}</td>
                   <td className="py-2">{item.qty}</td>
+                  <td className="py-2">{formatTaka(toNumber(item.unitPrice))}</td>
                   <td className="py-2">{formatTaka(toNumber(item.lineTotal))}</td>
                 </tr>
               ))}
@@ -112,13 +137,30 @@ export default async function AdminOrderDetailPage({ params }: Props) {
                 </span>
               </div>
             )}
+            <div className="mb-1 flex justify-between text-sm text-muted">
+              <span>Products</span>
+              <span>{formatTaka(toNumber(order.subtotal))}</span>
+            </div>
+            {toNumber(order.discountAmount) > 0 && !order.discountCode && (
+              <div className="mb-1 flex justify-between text-sm text-muted">
+                <span>Discount</span>
+                <span className="text-lime">−{formatTaka(toNumber(order.discountAmount))}</span>
+              </div>
+            )}
+            <div className="mb-2 flex justify-between text-sm text-muted">
+              <span>Delivery</span>
+              <span>{formatTaka(toNumber(order.shippingCost))}</span>
+            </div>
             <div className="flex justify-between text-paper">
               <span className="font-impact">Order total</span>
               <span className="font-impact">{formatTaka(toNumber(order.total))}</span>
             </div>
             <div className="mt-1 flex justify-between text-sm text-muted">
               <span>Payment method</span>
-              <span>{order.paymentMethod}</span>
+              <span>
+                {paymentLabel}
+                {recorded && ` · ${order.paymentStatus === "PAID" ? "payment received" : "payment not received yet"}`}
+              </span>
             </div>
             {order.isPreorder && (
               <p className="mt-2 text-[13px] text-yellow">Preorder Now and Our Sales Agent Will Reach Out.</p>
@@ -131,14 +173,42 @@ export default async function AdminOrderDetailPage({ params }: Props) {
               notes={order.internalNotes ?? ""}
               balanceDue={toNumber(order.balanceDue)}
               balanceCollected={order.balanceCollected}
-              cashCollectedOn={order.cashCollectedAt ? order.cashCollectedAt.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric", timeZone: "Asia/Dhaka" }) : null}
+              cashCollectedOn={order.cashCollectedAt && !recorded ? order.cashCollectedAt.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric", timeZone: "Asia/Dhaka" }) : null}
+              source={order.source}
             />
+            {recorded && financeAdmin && (
+              <RecordedSaleAdmin
+                canEditItems={editable}
+                variants={variantOptions}
+                today={todayDhaka()}
+                initial={{
+                  id: order.id,
+                  number: order.number,
+                  date: dhakaDay(order.createdAt),
+                  customerName: order.shippingFullName,
+                  customerPhone: order.phone,
+                  customerEmail: order.email,
+                  customerAddress: order.shippingLine1,
+                  method: order.recordedMethod ?? "CASH",
+                  paymentReceived: order.paymentStatus === "PAID",
+                  statusLabel: ADMIN_STATUS_LABEL[order.status],
+                  discount: toNumber(order.discountAmount),
+                  deliveryCharge: toNumber(order.shippingCost),
+                  notes: order.internalNotes ?? "",
+                  items: order.items.map((i) => ({ variantId: i.variantId, label: i.productTitleSnapshot, qty: i.qty, unitPrice: toNumber(i.unitPrice) })),
+                }}
+              />
+            )}
           </div>
         </Panel>
 
         <div>
           <Panel title="Customer">
-            {order.customer ? (
+            {recorded ? (
+              <span className="font-label mb-2 inline-block px-2 py-0.5 text-[11px] tracking-[0.8px] text-cyan">
+                RECORDED SALE — MADE OUTSIDE THE WEBSITE
+              </span>
+            ) : order.customer ? (
               <span className="font-label mb-2 inline-block px-2 py-0.5 text-[11px] tracking-[0.8px] text-lime">
                 HAS ACCOUNT
               </span>
@@ -152,9 +222,19 @@ export default async function AdminOrderDetailPage({ params }: Props) {
                 <Avatar src={order.customer.avatarUrl} name={order.shippingFullName} email={order.email} size={40} />
               )}
               <p className="text-sm text-muted">
-                {order.shippingFullName} · {order.email} · {order.phone}
+                {order.shippingFullName}
+                {order.email && ` · ${order.email}`}
+                {order.phone && ` · ${order.phone}`}
                 <br />
-                {order.shippingLine1}, {order.shippingArea}, {order.shippingDistrict} {order.shippingPostcode}
+                {recorded
+                  ? order.shippingLine1 || "No address recorded"
+                  : `${order.shippingLine1}, ${order.shippingArea}, ${order.shippingDistrict} ${order.shippingPostcode}`}
+                {recorded && order.recordedBy && (
+                  <>
+                    <br />
+                    <span className="text-[12px] text-muted-2">Recorded by {order.recordedBy}</span>
+                  </>
+                )}
               </p>
             </div>
             {order.customer && (

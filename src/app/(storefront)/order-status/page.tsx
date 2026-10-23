@@ -22,8 +22,8 @@ export default async function OrderStatusPage({ searchParams }: Props) {
   const trimmed = number?.trim();
 
   const order = trimmed
-    ? await db.order.findUnique({
-        where: { number: trimmed },
+    ? await db.order.findFirst({
+        where: { number: trimmed, source: "ONLINE" }, // sales recorded by hand are never looked up by customers
         include: { items: { include: { product: { select: { slug: true } } } } },
       })
     : null;

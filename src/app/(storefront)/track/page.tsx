@@ -13,7 +13,7 @@ export default async function TrackPage({ searchParams }: Props) {
 
   if (number && email) {
     order = await db.order.findFirst({
-      where: { number: number.trim(), email: { equals: email.trim(), mode: "insensitive" } },
+      where: { number: number.trim(), source: "ONLINE", email: { equals: email.trim(), mode: "insensitive" } },
     });
     if (!order) notFoundMsg = true;
   }

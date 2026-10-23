@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { attempt } from "@/lib/attempt";
 
 type Result = { ok: boolean; error: string };
 
@@ -17,7 +18,7 @@ export function useServerForm(action: (prev: Result | null, formData: FormData) 
     e.preventDefault();
     const data = new FormData(e.currentTarget);
     start(async () => {
-      const result = await action(null, data);
+      const result = await attempt(() => action(null, data));
       setState(result);
       if (result.ok) onSuccess?.();
     });

@@ -6,10 +6,11 @@ import { StatusBadge } from "@/components/admin/StatusBadge";
 import { Panel } from "@/components/admin/Panel";
 import { AutoSubmitSelect } from "@/components/admin/AutoSubmitSelect";
 import { parseSearchAmount, parseSearchDateRange } from "@/lib/admin-search";
+import { METHOD_LABEL } from "@/lib/finance";
 import type { $Enums, Prisma } from "@/generated/prisma/client";
 
 type Props = {
-  searchParams: Promise<{ status?: string; payment?: string; q?: string }>;
+  searchParams: Promise<{ status?: string; payment?: string; source?: string; q?: string }>;
 };
 
 const STATUSES: $Enums.OrderStatus[] = [
@@ -23,10 +24,11 @@ const STATUSES: $Enums.OrderStatus[] = [
   "RETURNED",
 ];
 const PAYMENT_METHODS: $Enums.PaymentMethod[] = ["BKASH", "SSLCOMMERZ", "COD"];
+const SOURCES = [["", "Website + recorded"], ["ONLINE", "Website orders"], ["RECORDED", "Recorded sales"]] as const;
 
 export default async function AdminOrdersPage({ searchParams }: Props) {
   await requireAdminPage("orders");
-  const { status, payment, q: rawQ } = await searchParams;
+  const { status, payment, source, q: rawQ } = await searchParams;
   const q = rawQ?.trim();
 
   const searchConditions: Prisma.OrderWhereInput[] = [];
@@ -48,6 +50,7 @@ export default async function AdminOrdersPage({ searchParams }: Props) {
   const orders = await db.order.findMany({
     where: {
       status: status && STATUSES.includes(status as $Enums.OrderStatus) ? (status as $Enums.OrderStatus) : undefined,
+      source: source === "ONLINE" || source === "RECORDED" ? source : undefined,
       paymentMethod:
         payment && PAYMENT_METHODS.includes(payment as $Enums.PaymentMethod)
           ? (payment as $Enums.PaymentMethod)
@@ -67,6 +70,13 @@ export default async function AdminOrdersPage({ searchParams }: Props) {
           placeholder="Search order #, name, email, phone, tracking, amount, date…"
           className="min-w-[280px] border border-line-2 bg-panel px-2.5 py-2 text-sm outline-none focus:border-lime"
         />
+        <AutoSubmitSelect name="source" defaultValue={source ?? ""} className="border border-line-2 bg-panel px-2.5 py-2 text-sm">
+          {SOURCES.map(([v, l]) => (
+            <option key={v} value={v}>
+              {l}
+            </option>
+          ))}
+        </AutoSubmitSelect>
         <AutoSubmitSelect name="status" defaultValue={status ?? ""} className="border border-line-2 bg-panel px-2.5 py-2 text-sm">
           <option value="">All statuses</option>
           {STATUSES.map((s) => (
@@ -106,6 +116,9 @@ export default async function AdminOrdersPage({ searchParams }: Props) {
                 <td className="p-0">
                   <Link href={`/admin/orders/${o.id}`} className="flex items-center gap-1.5 px-4 py-2.5 group-hover:text-lime">
                     {o.number}
+                    {o.source === "RECORDED" && (
+                      <span className="font-label inline-block bg-cyan px-1.5 py-0.5 text-[10px] tracking-[0.6px] text-ink">RECORDED</span>
+                    )}
                     {o.isPreorder && (
                       <span className="font-label inline-block bg-yellow px-1.5 py-0.5 text-[10px] tracking-[0.6px] text-ink">
                         PREORDER
@@ -115,7 +128,7 @@ export default async function AdminOrdersPage({ searchParams }: Props) {
                 </td>
                 <td className="p-0">
                   <Link href={`/admin/orders/${o.id}`} className="block px-4 py-2.5">
-                    {o.email}
+                    {o.source === "RECORDED" ? `${o.shippingFullName}${o.phone ? ` · ${o.phone}` : ""}` : o.email}
                   </Link>
                 </td>
                 <td className="p-0">
@@ -125,7 +138,7 @@ export default async function AdminOrdersPage({ searchParams }: Props) {
                 </td>
                 <td className="p-0">
                   <Link href={`/admin/orders/${o.id}`} className="block px-4 py-2.5">
-                    {o.paymentMethod}
+                    {o.source === "RECORDED" ? (METHOD_LABEL[o.recordedMethod ?? "OTHER"] ?? o.recordedMethod) : o.paymentMethod}
                   </Link>
                 </td>
                 <td className="p-0">

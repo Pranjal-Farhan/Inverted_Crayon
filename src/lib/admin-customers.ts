@@ -141,7 +141,7 @@ export async function loadPeople(q: string | undefined, kind: "all" | "registere
 
   // Orders placed while logged out (or by someone with no account), newest first.
   const unlinked = await db.order.findMany({
-    where: { customerId: null },
+    where: { customerId: null, source: "ONLINE" }, // a sale recorded by hand is not a guest customer
     select: LIST_ORDER_SELECT,
     orderBy: { createdAt: "desc" },
     take: GUEST_ORDER_POOL,
@@ -206,7 +206,7 @@ export async function loadPeople(q: string | undefined, kind: "all" | "registere
   if (wantGuests) {
     let matched: Set<string> | null = null;
     if (q) {
-      const rows = await db.order.findMany({ where: { AND: [{ customerId: null }, guestOrderSearchWhere(q)] }, select: { email: true } });
+      const rows = await db.order.findMany({ where: { AND: [{ customerId: null, source: "ONLINE" }, guestOrderSearchWhere(q)] }, select: { email: true } });
       matched = new Set(rows.map((r) => lc(r.email)));
     }
     const groups = [...unlinkedByEmail.entries()].filter(([email]) => !registeredEmails.has(email) && (!matched || matched.has(email)));
