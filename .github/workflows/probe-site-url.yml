@@ -1,0 +1,23 @@
+name: Probe site URL (temporary)
+on: workflow_dispatch
+permissions: {}
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - run: |
+          out=""
+          for host in \
+            invertedcrayon-pranjals-projects-16d3b4ec.vercel.app \
+            invertedcrayon-git-claude-hopeful-pasteur-r8e53m-pranjals-projects-16d3b4ec.vercel.app \
+            invertedcrayon-2xlflw86f-pranjals-projects-16d3b4ec.vercel.app \
+            inverted-crayon.vercel.app \
+            invertedcrayon-store.vercel.app \
+            invertedcrayon.com \
+            www.invertedcrayon.com ; do
+            line=$(curl --silent --max-time 20 --head --write-out '%{http_code}' --output /tmp/h.txt "https://$host/api/health" || echo "000")
+            err=$(grep -i '^x-vercel-error' /tmp/h.txt | tr -d '\r' | head -1)
+            out="${out}${host} -> HTTP ${line} ${err}%0A"
+          done
+          echo "::notice title=Probe results::${out}"
