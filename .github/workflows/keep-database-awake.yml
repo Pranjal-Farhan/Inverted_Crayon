@@ -39,8 +39,9 @@ jobs:
             sleep 20
           done
           echo "::warning::$url did not answer 200 after 3 tries (last: HTTP $code). The site or its database may be down."
-          echo "--- what the health URL answered (headers):"
-          curl --silent --show-error --max-time 30 --head "$url" || true
-          echo "--- what the home page answers:"
-          curl --silent --show-error --max-time 30 --head "${SITE_URL%/}/" | head -n 12 || true
+          # Also surface the response as annotations (they show on the run's summary page).
+          h1=$(curl --silent --show-error --max-time 30 --head "$url" 2>&1 | tr -d '\r' | head -n 14 | sed ':a;N;$!ba;s/\n/%0A/g')
+          h2=$(curl --silent --show-error --max-time 30 --head "${SITE_URL%/}/" 2>&1 | tr -d '\r' | head -n 14 | sed ':a;N;$!ba;s/\n/%0A/g')
+          echo "::warning title=Health URL response::${h1}"
+          echo "::warning title=Home page response::${h2}"
           exit 0
