@@ -1,19 +1,29 @@
 name: Keep database awake
 
-# Pings the site's /api/health every 5 minutes through the day. That endpoint runs a trivial query,
-# which keeps a database that suspends itself when idle (Neon, Supabase, …) from going to sleep
-# between visitors.
+# Keeps a database that suspends itself when idle (Neon, Supabase, …) from going to sleep between
+# visitors, by touching it every 5 minutes through the day.
 #
 # Schedule: cron is in UTC. "1-17" = 01:00–17:59 UTC = 07:00–23:59 in Bangladesh (UTC+6), so the
-# database is awake while customers are, and is left to nap overnight. Providers that bill by
-# compute time (Neon's free allowance) then aren't kept running 24/7. For round-the-clock pings
-# change the hours to "*" — i.e. "*/5 * * * *".
+# database is awake while customers are and is left to nap overnight (providers that bill by compute
+# time, like Neon's free allowance, then aren't kept running 24/7). Round the clock: "*/5 * * * *".
 #
-# Which site: the repository variable SITE_URL (Settings → Secrets and variables → Actions →
-# Variables) if set — e.g. when a custom domain is added — otherwise the production URL below.
+# HOW IT TOUCHES THE DATABASE — set up ONE of these under Settings → Secrets and variables → Actions:
 #
-# This job never fails: if the site or database is down it only writes a warning to the run log, so
-# an outage doesn't also send a failure e-mail every five minutes.
+#   A. Secret  DATABASE_URL   (simplest, most reliable)
+#      The same Postgres connection string the site uses. The job runs `select 1` against it
+#      directly, so it doesn't depend on the website, Vercel's login protection or Cloudflare.
+#
+#   B. Secret  VERCEL_PROTECTION_BYPASS   (+ optional Variable  SITE_URL)
+#      Calls the site's /api/health. If the Vercel project has "Vercel Authentication" turned on,
+#      anonymous requests are redirected to a Vercel login page and never reach the app; create a
+#      "Protection Bypass for Automation" secret (Vercel → Project → Settings → Deployment
+#      Protection) and store it here. SITE_URL defaults to the project's vercel.app address; set it
+#      if the site lives on a custom domain (and make sure Cloudflare doesn't challenge GitHub).
+#
+# With neither set, it still tries the site anonymously and reports what stopped it.
+#
+# This job never fails: problems appear as yellow warnings on the run, so an outage doesn't also
+# send a failure e-mail every five minutes.
 
 on:
   schedule:
@@ -25,23 +35,47 @@ permissions: {}
 jobs:
   ping:
     runs-on: ubuntu-latest
-    timeout-minutes: 4
+    timeout-minutes: 5
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      VERCEL_PROTECTION_BYPASS: ${{ secrets.VERCEL_PROTECTION_BYPASS }}
+      SITE_URL: ${{ vars.SITE_URL || 'https://invertedcrayon-pranjals-projects-16d3b4ec.vercel.app' }}
     steps:
-      - name: Call /api/health
-        env:
-          SITE_URL: ${{ vars.SITE_URL || 'https://invertedcrayon.vercel.app' }}
+      - name: Touch the database
         run: |
+          set +e
+
+          if [ -n "$DATABASE_URL" ]; then
+            # psql rejects Prisma's "?schema=public" parameter, so drop it
+            conn=$(printf '%s' "$DATABASE_URL" | sed -E 's/\?schema=[^&]*&/?/; s/[?&]schema=[^&]*//; s/[?&]$//')
+            echo "::add-mask::$conn"
+            for attempt in 1 2 3; do
+              out=$(psql "$conn" -v ON_ERROR_STOP=1 -t -A -c 'select 1' 2>&1)
+              if [ $? -eq 0 ]; then echo "attempt $attempt: database answered"; exit 0; fi
+              echo "attempt $attempt failed: $out"
+              sleep 15
+            done
+            echo "::warning title=Database did not answer::3 tries failed — the database may be down, or DATABASE_URL may be wrong."
+            exit 0
+          fi
+
           url="${SITE_URL%/}/api/health"
+          args=(--silent --show-error --max-time 60)
+          [ -n "$VERCEL_PROTECTION_BYPASS" ] && args+=(--header "x-vercel-protection-bypass: $VERCEL_PROTECTION_BYPASS")
           for attempt in 1 2 3; do
-            code=$(curl --silent --show-error --max-time 60 --output /tmp/health.json --write-out '%{http_code}' "$url" || echo "000")
-            echo "attempt $attempt: HTTP $code from $url — $(cat /tmp/health.json 2>/dev/null)"
-            if [ "$code" = "200" ]; then exit 0; fi
+            code=$(curl "${args[@]}" --dump-header /tmp/h.txt --output /tmp/h.json --write-out '%{http_code}' "$url" || echo 000)
+            echo "attempt $attempt: HTTP $code from $url — $(cat /tmp/h.json 2>/dev/null | head -c 200)"
+            [ "$code" = "200" ] && exit 0
             sleep 20
           done
-          echo "::warning::$url did not answer 200 after 3 tries (last: HTTP $code). The site or its database may be down."
-          # Also surface the response as annotations (they show on the run's summary page).
-          h1=$(curl --silent --show-error --max-time 30 --head "$url" 2>&1 | tr -d '\r' | head -n 14 | sed ':a;N;$!ba;s/\n/%0A/g')
-          h2=$(curl --silent --show-error --max-time 30 --head "${SITE_URL%/}/" 2>&1 | tr -d '\r' | head -n 14 | sed ':a;N;$!ba;s/\n/%0A/g')
-          echo "::warning title=Health URL response::${h1}"
-          echo "::warning title=Home page response::${h2}"
+
+          hint="The site or its database may be down."
+          if grep -qi 'vercel.com/sso-api' /tmp/h.txt; then
+            hint="Vercel's login protection answered instead of the site, so nothing reached the database. Add the repository secret DATABASE_URL (pings the database directly), or VERCEL_PROTECTION_BYPASS."
+          elif grep -qi 'x-vercel-error: DEPLOYMENT_NOT_FOUND' /tmp/h.txt; then
+            hint="Vercel has no deployment at $SITE_URL. Set the repository variable SITE_URL to the site's real address."
+          elif grep -qi 'cf-mitigated' /tmp/h.txt; then
+            hint="Cloudflare is challenging GitHub's request. Allow it in Cloudflare, or add the repository secret DATABASE_URL instead."
+          fi
+          echo "::warning title=Health check failed (HTTP $code)::$hint"
           exit 0
