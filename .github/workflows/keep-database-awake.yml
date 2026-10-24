@@ -1,0 +1,42 @@
+name: Keep database awake
+
+# Pings the site's /api/health every 5 minutes through the day. That endpoint runs a trivial query,
+# which keeps a database that suspends itself when idle (Neon, Supabase, …) from going to sleep
+# between visitors.
+#
+# Schedule: cron is in UTC. "1-17" = 01:00–17:59 UTC = 07:00–23:59 in Bangladesh (UTC+6), so the
+# database is awake while customers are, and is left to nap overnight. Providers that bill by
+# compute time (Neon's free allowance) then aren't kept running 24/7. For round-the-clock pings
+# change the hours to "*" — i.e. "*/5 * * * *".
+#
+# Which site: the repository variable SITE_URL (Settings → Secrets and variables → Actions →
+# Variables) if set — e.g. when a custom domain is added — otherwise the production URL below.
+#
+# This job never fails: if the site or database is down it only writes a warning to the run log, so
+# an outage doesn't also send a failure e-mail every five minutes.
+
+on:
+  schedule:
+    - cron: "*/5 1-17 * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - name: Call /api/health
+        env:
+          SITE_URL: ${{ vars.SITE_URL || 'https://invertedcrayon.vercel.app' }}
+        run: |
+          url="${SITE_URL%/}/api/health"
+          for attempt in 1 2 3; do
+            code=$(curl --silent --show-error --max-time 60 --output /tmp/health.json --write-out '%{http_code}' "$url" || echo "000")
+            echo "attempt $attempt: HTTP $code from $url — $(cat /tmp/health.json 2>/dev/null)"
+            if [ "$code" = "200" ]; then exit 0; fi
+            sleep 20
+          done
+          echo "::warning::$url did not answer 200 after 3 tries (last: HTTP $code). The site or its database may be down."
+          exit 0

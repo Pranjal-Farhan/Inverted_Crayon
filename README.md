@@ -64,6 +64,18 @@ Google sign-in for **admin and staff accounts** only ever logs in to an account 
 - **Checkout is safe under concurrent load**: stock decrements and coupon redemptions use guarded atomic updates inside the order transaction (not read-then-write), so two simultaneous checkouts for the last unit of stock (or the last use of a limited coupon) can't both succeed — one gets a clear "not enough stock" / "code fully redeemed" error instead of silently overselling.
 - **Product photo uploads use ImgBB** when `IMGBB_API_KEY` is configured (up to 20 images per product). The homepage logo and hero-carousel uploads under `/admin/content` use the same ImgBB integration. Existing Base64 or legacy local-file URLs remain readable, but new uploads are stored as CDN URLs.
 
+## Quiet spells: a sleeping database
+
+Managed Postgres hosts (Neon, Supabase and similar free tiers) suspend a database that has been idle, and the first visitor afterwards used to meet a hung or failed page while it woke up. Three things now deal with that:
+
+1. **The database connection limits and retries itself** (`src/lib/db-resilience.ts`). Each connection attempt is cut off after **7 seconds** (including the database's start-up handshake, so a database that accepts the connection but never answers can't hang a page) and is retried up to **3 times** with short pauses. Only "couldn't get a connection / the database isn't up yet" failures are retried — those happen before any SQL is sent, so a query is never run twice; wrong passwords and errors inside a query show up immediately. A database that wakes in under ~20 seconds is absorbed silently; a visitor just waits a moment. Tune with `DB_CONNECT_TIMEOUT_MS` (500–60000) and `DB_CONNECT_ATTEMPTS` (1–6) if your host needs it; the defaults suit most. Each retry is logged as `[db] connection attempt n/3 failed …`, so the Vercel logs show when this is happening.
+2. **A friendly retry page** replaces the bare "server error". If a page still can't be built, the visitor sees **"Warming up…"** in the shop's style (the site header stays on storefront pages), a countdown, and the page **retries by itself** after 3, 5, 8, 12 and 20 seconds and recovers without a click once the database is back. After those tries it says "Still waking up" and offers a **Try again** button. The admin panel gets the same behaviour with admin wording, and stays signed in.
+3. **A periodic ping keeps the database awake.** `/api/health` runs a trivial query and answers `{"ok":true}` (or `503` when the database can't be reached). It is called:
+   - **every 5 minutes, 07:00–23:55 Bangladesh time** by the GitHub Action `.github/workflows/keep-database-awake.yml` (free: the repository is public). It pings the repository variable `SITE_URL` if you set one (Settings → Secrets and variables → Actions → Variables — do this if you add a custom domain), otherwise `https://invertedcrayon.vercel.app`. It never fails the run, so an outage doesn't send an e-mail every five minutes; look for a yellow warning in the Actions tab instead. Run it by hand from the Actions tab (**Run workflow**) to test.
+   - **once a day** by Vercel Cron (`vercel.json`) as a safety net — Vercel's free plan only allows daily crons, and GitHub switches scheduled workflows off after 60 days without repository activity.
+
+   The ping window is deliberately daytime-only: providers that bill by compute time (Neon's free allowance) would otherwise be kept running all night. For round-the-clock pings change the cron in the workflow to `*/5 * * * *`. Any uptime monitor (UptimeRobot, Better Stack…) pointed at `/api/health` works as well or instead.
+
 ## Project structure
 
 ```
