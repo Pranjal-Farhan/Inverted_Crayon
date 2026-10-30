@@ -101,10 +101,11 @@ const productSchema = z.object({
   id: z.string().optional(),
   title: z.string().trim().min(2, "Title must be at least 2 characters."),
   slug: z.string().trim().min(2, "Slug must be at least 2 characters."),
-  // The description is three sections on the product page. Mood is always required (it is also the
-  // plain-text summary stored in Product.description); a product can only be published once all
-  // three are filled in — see the superRefine below.
-  mood: z.string().trim().min(1, "Mood is required — a line or two on the feel of the piece.").max(2000, "Mood is too long (2000 characters max)."),
+  // The description is three sections on the product page — all optional, to save a draft or to
+  // publish. A section left empty is simply not shown on the product page (ProductDescription), so
+  // a listing can go up now and be written up later. Mood is also the plain-text summary stored in
+  // Product.description, which is "" when Mood is empty.
+  mood: z.string().trim().max(2000, "Mood is too long (2000 characters max).").default(""),
   build: z.string().trim().max(2000, "Build is too long (2000 characters max).").default(""),
   howToWear: z.string().trim().max(2000, "How n when to wear is too long (2000 characters max).").default(""),
   categoryId: z.string().min(1, "Select a category."),
@@ -141,10 +142,6 @@ const productSchema = z.object({
     .nullable()
     .default(null),
 }).superRefine((data, ctx) => {
-  if (data.status === "ACTIVE") {
-    if (!data.build) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["build"], message: "Build is required to publish — fabric, fit and details." });
-    if (!data.howToWear) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["howToWear"], message: "How n when to wear is required to publish — styling and occasions." });
-  }
   if (data.discountType && data.discountValue == null) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["discountValue"], message: "Enter a discount amount or percent." });
   }
@@ -193,8 +190,8 @@ function formatProductValidationError(issues: z.ZodIssue[]) {
         const label = typeof variantField === "string" ? variantField.toUpperCase() : "VALUE";
         return `Variant ${index + 1} ${label}: ${issue.message}`;
       }
-      // The description messages already name their section ("Build is required to publish…"),
-      // and the field key (howToWear) isn't what the admin sees on screen — so no prefix.
+      // The description messages already name their section ("Build is too long…"), and the field
+      // key (howToWear) isn't what the admin sees on screen — so no prefix.
       if (field === "mood" || field === "build" || field === "howToWear") return issue.message;
       return `${typeof field === "string" ? field : "Product"}: ${issue.message}`;
     })
@@ -259,7 +256,7 @@ export async function saveProduct(input: ProductFormInput): Promise<ProductSaveR
           title: data.title,
           slug: finalSlug,
           description: data.mood,
-          mood: data.mood,
+          mood: data.mood || null,
           build: data.build || null,
           howToWear: data.howToWear || null,
           gender: category.gender,
@@ -284,7 +281,7 @@ export async function saveProduct(input: ProductFormInput): Promise<ProductSaveR
           title: data.title,
           slug: finalSlug,
           description: data.mood,
-          mood: data.mood,
+          mood: data.mood || null,
           build: data.build || null,
           howToWear: data.howToWear || null,
           gender: category.gender,

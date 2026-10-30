@@ -655,10 +655,10 @@ export function ProductEditorForm({
           )}
         </Panel>
 
-        <Panel title="Description — three sections" className="mt-4.5">
+        <Panel title="Description — optional" className="mt-4.5">
           <p className="mb-3 text-[12px] text-muted-2">
-            The product page shows these side by side on desktop and stacked on mobile. Mood is always needed;
-            Build and How n when to wear are required to publish (set the product to Active).
+            All three are optional — you can save and publish the listing now and write these later. The product
+            page shows the ones you fill in, side by side on desktop and stacked on mobile; a blank one is left out.
           </p>
           <div className="space-y-4">
             {DESCRIPTION_SECTIONS.map((s) => {

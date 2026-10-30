@@ -232,9 +232,9 @@ A product saved before this scheme existed (or before XXXL did) can have a color
 
 Every product page has three description sections instead of one block of text: **Mood** (the feel of the piece), **Build** (fabric, fit, construction, care) and **How n when to wear** (styling and occasions). On desktop the three sit side by side across the full width of the page, each in its own card; on mobile they stack one under another. Each heading is in its own brand colour (pink, cyan, lime) and wrapped in crayon marks from the brand sheet — `{ }`, `[ ]` and `## … !!`.
 
-In the admin, the product editor has a **Description — three sections** panel with one box per section. Type plain text: leave a blank line between paragraphs, and start a line with `- ` to make a bullet (handy for Build). **Mood is always required. Build and How n when to wear are required to publish** — a Draft can be saved half-written, but switching a product to Active needs all three. A section left empty is simply not shown on the storefront.
+In the admin, the product editor has a **Description — three sections** panel with one box per section. Type plain text: leave a blank line between paragraphs, and start a line with `- ` to make a bullet (handy for Build). **All three sections are optional** — a listing can be saved, and published (Active), with any of them blank, and written up later. A section left empty is simply not shown on the storefront (and if all three are empty the description block is left off the page).
 
-Products that existed before this change keep their old description as their **Mood**; Build and How n when to wear start empty. Until you fill them in, those products show only the Mood card, and they can't be saved as Active again until all three are written. The product list marks each such product with a yellow "Needs Build + How n when to wear" note under its status, so you can see what's left to write. (`Product.description` is still kept in step with Mood.)
+Products that existed before this change keep their old description as their **Mood**; Build and How n when to wear start empty, so those products show only the Mood card until you write the others — nothing forces you to. (`Product.description` is still kept in step with Mood.)
 
 ## Admin product editor reliability fixes
 
