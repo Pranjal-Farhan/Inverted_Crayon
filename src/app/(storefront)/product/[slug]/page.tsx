@@ -10,6 +10,7 @@ import { ProductDescription } from "@/components/storefront/ProductDescription";
 import { TrackRecentlyViewed, RecentlyViewedRail } from "@/components/storefront/RecentlyViewed";
 import { formatTaka } from "@/lib/money";
 import { toNumber } from "@/lib/money";
+import { parseSizeGuide } from "@/lib/size-guide";
 import { pickAccent } from "@/lib/accent-color";
 import { Crown } from "@/components/brand/Crown";
 import { WishlistButton } from "@/components/storefront/WishlistButton";
@@ -48,6 +49,7 @@ export default async function ProductPage({ params }: Props) {
   const accent = pickAccent(product.id);
   const genderLabel = product.gender === "MEN" ? "Men" : product.gender === "WOMEN" ? "Women" : "Unisex";
   const genderPath = product.gender === "WOMEN" ? "women" : "men";
+  const hasSizeGuide = parseSizeGuide(product.sizeGuide) !== null;
 
   const variantOptions = product.variants.map((v) => ({
     id: v.id,
@@ -133,9 +135,14 @@ export default async function ProductPage({ params }: Props) {
           )}
 
           <div className="mt-5 mb-1 flex items-center justify-between">
-            <p className="font-label text-sm text-cyan">
-              <Link href={`/size-guide?product=${product.slug}`} prefetch={false}>Size guide →</Link>
-            </p>
+            {/* Only products whose admins entered a size guide get the link — there's no default chart. */}
+            {hasSizeGuide ? (
+              <p className="font-label text-sm text-cyan">
+                <Link href={`/size-guide?product=${product.slug}`} prefetch={false}>Size guide →</Link>
+              </p>
+            ) : (
+              <span />
+            )}
             <WishlistButton productId={product.id} />
           </div>
 

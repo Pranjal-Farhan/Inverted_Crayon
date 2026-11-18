@@ -1,8 +1,6 @@
 import type { SizeGuideData } from "@/lib/size-guide";
 
-/** Plain read-only rendering of a size guide — shared by the static page shell (the server-
- * rendered generic chart, also the Suspense fallback) and SizeGuideClient.tsx (the product-
- * specific swap) so the two never drift out of sync visually. */
+/** Plain read-only rendering of a product's admin-entered size guide (used by SizeGuideClient.tsx). */
 export function SizeGuideReadTable({ table }: { table: SizeGuideData }) {
   return (
     <div className="doc py-4">

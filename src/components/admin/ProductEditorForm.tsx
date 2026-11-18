@@ -818,8 +818,8 @@ export function ProductEditorForm({
 
         <Panel title="Size guide" className="mt-4.5">
           <p className="mb-2 text-[12px] text-muted-2">
-            Measurements shown on this product&apos;s PDP under &quot;Size guide →&quot;. Leave every row empty to
-            fall back to the generic reference chart instead.
+            Measurements shown on this product&apos;s PDP under &quot;Size guide →&quot;. Leave every row empty and
+            this product simply has no size guide — the link is hidden and no default chart is shown.
           </p>
           <div className="mb-2.5 flex flex-wrap items-center gap-2">
             <button

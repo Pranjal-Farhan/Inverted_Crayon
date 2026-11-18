@@ -140,7 +140,8 @@ model Product {
   deliveryChargeInsideDhaka  Decimal?             @db.Decimal(10, 2)
   deliveryChargeOutsideDhaka Decimal?             @db.Decimal(10, 2)
   // { columns: string[]; rows: { size: string; values: string[] }[] } — see src/lib/size-guide.ts.
-  // Null = this product has no measurements entered yet; the PDP falls back to a generic chart.
+  // Null = this product has no measurements entered yet; it simply has no size guide (no link on the
+  // PDP, no default chart).
   sizeGuide                  Json?
   // What one unit of this product costs the business to buy/make — admin-only (never selected by
   // a storefront query, never shown to staff). Finance prices cost of goods from it (src/lib/finance.ts):
