@@ -4,9 +4,13 @@ import { unstable_cache } from "next/cache";
 import { db } from "@/lib/db";
 import { parseSizeGuide, type SizeGuideData } from "@/lib/size-guide";
 
+// What slugify() produces — anything else can't be a product, and isn't worth a cache entry.
+const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
 const getCachedSizeGuideProduct = (slug: string) =>
   unstable_cache(
-    () => db.product.findUnique({ where: { slug }, select: { title: true, sizeGuide: true } }),
+    // ACTIVE only, like the product page itself: a draft's name stays private until it's published.
+    () => db.product.findUnique({ where: { slug, status: "ACTIVE" }, select: { title: true, sizeGuide: true } }),
     ["public-size-guide-product", slug],
     { tags: ["products", `product:${slug}`] },
   )();
@@ -23,6 +27,7 @@ export type SizeGuideLookupResult = { title: string; table: SizeGuideData | null
  * the title with `table: null`).
  */
 export async function getSizeGuideForProduct(slug: string): Promise<SizeGuideLookupResult> {
+  if (typeof slug !== "string" || slug.length > 160 || !SLUG_PATTERN.test(slug)) return null;
   const product = await getCachedSizeGuideProduct(slug);
   if (!product) return null;
   return { title: product.title, table: parseSizeGuide(product.sizeGuide) };

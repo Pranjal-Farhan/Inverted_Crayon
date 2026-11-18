@@ -11,7 +11,8 @@ import {
   getAdmin2FAPending,
   clearAdmin2FAPending,
 } from "@/lib/session";
-import { isLocked, lockoutMessage, nextLockoutState } from "@/lib/login-lockout";
+import { STAND_IN_PASSWORD_HASH, TOO_MANY_LOGIN_ATTEMPTS, isLocked, lockoutMessage, nextLockoutState } from "@/lib/login-lockout";
+import { RATE_LIMITED_MESSAGE, RATE_LIMITS, consumeRateLimit, consumeRateLimitForClient, resetRateLimit } from "@/lib/rate-limit";
 import { notifyLoginLockout } from "@/lib/notifications";
 import { consumeSecondFactor } from "@/lib/two-factor";
 
@@ -22,13 +23,26 @@ export async function adminLogin(
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   const password = String(formData.get("password") ?? "");
 
+  if (!(await consumeRateLimitForClient(RATE_LIMITS.adminLoginIp))) {
+    return { ok: false, error: RATE_LIMITED_MESSAGE, needsTwoFactor: false };
+  }
+  // Counted before the password is checked, atomically, and for unknown emails too: the lockout below
+  // is read-then-write, so without this a burst of parallel guesses would all get checked before it
+  // kicks in. Given back on a successful login.
+  if (!(await consumeRateLimit(RATE_LIMITS.adminLoginAccount, email))) {
+    return { ok: false, error: TOO_MANY_LOGIN_ATTEMPTS, needsTwoFactor: false };
+  }
+
   const user = await db.adminUser.findUnique({ where: { email } });
 
   if (user && isLocked(user.lockedUntil)) {
     return { ok: false, error: lockoutMessage(user.lockedUntil!), needsTwoFactor: false };
   }
 
-  if (!user || !user.passwordHash || !(await bcrypt.compare(password, user.passwordHash))) {
+  // Always pays for one bcrypt comparison — against a stand-in hash when there's no account or no
+  // password on it — so an unknown email isn't answered measurably faster than a wrong password.
+  const passwordOk = await bcrypt.compare(password, user?.passwordHash ?? STAND_IN_PASSWORD_HASH);
+  if (!user || !user.passwordHash || !passwordOk) {
     if (user) {
       const next = nextLockoutState(user.failedLoginCount);
       await db.adminUser.update({ where: { id: user.id }, data: next });
@@ -55,6 +69,7 @@ export async function adminLogin(
   if (user.failedLoginCount > 0) {
     await db.adminUser.update({ where: { id: user.id }, data: { failedLoginCount: 0, lockedUntil: null } });
   }
+  await resetRateLimit(RATE_LIMITS.adminLoginAccount, email);
 
   await setAdminSession({ adminId: user.id, email: user.email, name: user.name, role: user.role });
   redirect(homeFor(user.role));
@@ -69,6 +84,9 @@ export async function verifyAdminTwoFactor(
   _prev: { ok: boolean; error: string } | null,
   formData: FormData,
 ): Promise<{ ok: boolean; error: string }> {
+  if (!(await consumeRateLimitForClient(RATE_LIMITS.adminLoginIp))) {
+    return { ok: false, error: RATE_LIMITED_MESSAGE };
+  }
   const pending = await getAdmin2FAPending();
   if (!pending) {
     return { ok: false, error: "Your login attempt expired. Please log in again." };
@@ -80,6 +98,11 @@ export async function verifyAdminTwoFactor(
     return { ok: false, error: "Your login attempt expired. Please log in again." };
   }
 
+  // The same per-account budget as the password step, so parallel code guesses all count too.
+  if (!(await consumeRateLimit(RATE_LIMITS.adminLoginAccount, user.email))) {
+    return { ok: false, error: TOO_MANY_LOGIN_ATTEMPTS };
+  }
+
   if (isLocked(user.lockedUntil)) {
     return { ok: false, error: lockoutMessage(user.lockedUntil!) };
   }
@@ -88,6 +111,7 @@ export async function verifyAdminTwoFactor(
 
   if (await consumeSecondFactor(user, code)) {
     await db.adminUser.update({ where: { id: user.id }, data: { failedLoginCount: 0, lockedUntil: null } });
+    await resetRateLimit(RATE_LIMITS.adminLoginAccount, user.email);
     await clearAdmin2FAPending();
     await setAdminSession({ adminId: user.id, email: user.email, name: user.name, role: user.role });
     redirect(homeFor(user.role));

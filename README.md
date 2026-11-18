@@ -38,6 +38,8 @@ npm run dev              # http://localhost:3000
 
 Admin panel: `/admin/login`. Customer account: `/account/login`.
 
+These passwords are only ever used for a database on your own machine. The seed refuses a database anywhere else unless you set `ALLOW_REMOTE_SEED=true` — and then it needs your own `ADMIN_PASSWORD` and gives the demo staff/customer logins random passwords, printed once.
+
 ## Going live: third-party integrations
 
 Everything below is fully wired in code and falls back to a safe mock when its env vars are unset — local dev needs none of this. Add credentials to `.env` (see `.env.example`) to switch each one on for real:
@@ -52,15 +54,15 @@ Everything below is fully wired in code and falls back to a safe mock when its e
 | Image hosting | `IMGBB_API_KEY` | imgbb.com — create an API key in your account settings |
 | Payment-gateway callback URLs | `SITE_URL` (e.g. `https://yourstore.com`) | Recommended in production so callback URLs are stable and correct behind any proxy; without it the app derives the origin from request headers |
 
-Google sign-in for **admin and staff accounts** only ever logs in to an account that already exists (matched by email) — it never self-registers a new admin, so there's no privilege-escalation path from someone else's OAuth login. Customer sign-in, by contrast, creates a new customer account on first login, same as registering with a password.
+Google sign-in for **admin and staff accounts** only ever logs in to an account that already exists (matched by email) — it never self-registers a new admin, so there's no privilege-escalation path from someone else's OAuth login. Customer sign-in, by contrast, creates a new customer account on first login, same as registering with a password — but it never attaches to an existing account that has a password (that customer logs in with their password; see "Security" below).
 
 ## Deploying to a real server
 
 - **`SESSION_SECRET` is required in production** — the app refuses to start without it (`src/lib/session.ts`) rather than silently signing session cookies with a well-known fallback. Generate one with `openssl rand -base64 48`.
 - **`DATABASE_URL`** must point at your production Postgres (managed providers' `?sslmode=require` connection strings work as-is). The app also refuses to start without it.
-- **Don't run `npx prisma db seed` against production** — it's a demo dataset with known test-account passwords (see the table above) and refuses to run when `NODE_ENV=production` unless you explicitly set `ALLOW_PRODUCTION_SEED=true` (and, for the admin account specifically, `ADMIN_EMAIL`/`ADMIN_PASSWORD` of your choosing). Run `npx prisma migrate deploy` to apply the schema instead, then create your real admin user by hand.
-- **Admin/customer login lock out after 5 failed attempts** for 15 minutes per account (`src/lib/login-lockout.ts`) — there's no rate limiting in front of the app otherwise (no WAF/CDN assumed), so this is the only brute-force guard.
-- **Security headers** (`X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, a permissive-by-default `Permissions-Policy`, and HSTS when served over HTTPS) are set for every response in `src/proxy.ts`. No CSP is set — add one if you need it, testing carefully since a wrong CSP silently breaks pages rather than erroring.
+- **Don't run `npx prisma db seed` against production** — it's a demo dataset with known test-account passwords (see the table above). It refuses to run when `NODE_ENV=production` unless you set `ALLOW_PRODUCTION_SEED=true`, and refuses any database that isn't on your machine unless you set `ALLOW_REMOTE_SEED=true` plus your own `ADMIN_PASSWORD`. Run `npx prisma migrate deploy` to apply the schema instead, then create your real admin user by hand.
+- **Admin/customer login lock out after 5 failed attempts** for 15 minutes per account (`src/lib/login-lockout.ts`), behind per-IP rate limits and an atomic per-account attempt budget (see "Security" below).
+- **Security headers** (`X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, a locked-down `Permissions-Policy`, HSTS, and a narrow CSP: `frame-ancestors 'none'; object-src 'none'; base-uri 'self'`) are set for every response in `next.config.ts`, which also turns off the `X-Powered-By` header.
 - **Checkout is safe under concurrent load**: stock decrements and coupon redemptions use guarded atomic updates inside the order transaction (not read-then-write), so two simultaneous checkouts for the last unit of stock (or the last use of a limited coupon) can't both succeed — one gets a clear "not enough stock" / "code fully redeemed" error instead of silently overselling.
 - **Product photo uploads use ImgBB** when `IMGBB_API_KEY` is configured (up to 20 images per product). The homepage logo and hero-carousel uploads under `/admin/content` use the same ImgBB integration. Existing Base64 or legacy local-file URLs remain readable, but new uploads are stored as CDN URLs.
 
@@ -328,7 +330,25 @@ The storefront carries a small ambient/interactive motion layer, all opt-out via
 
 The `Button` scribble treatment covers the shared `Button.tsx` component, which is what every real storefront CTA (Shop now, Add to cart, Preorder, Notify me, Checkout, etc.) is built from. Smaller account/admin-area raw `<button>` elements (form saves, qty steppers, accordion toggles) intentionally don't carry it — the effect is sized and paced for a primary call-to-action, not a utility control.
 
+## Security
+
+A full security audit in November 2026 found and fixed, among others, a two-factor bypass, public payment URLs that let anyone cancel any order, a way to settle an expensive order with a cheap payment, and a vulnerable Next.js version — the full list, worst first, is in `ARCHITECTURE.md` §18.1. What it means in practice:
+
+- **Everyone was signed out once** when this shipped: session cookies are now bound to the one cookie they were issued for.
+- **Rate limits** (`src/lib/rate-limit.ts`, counted in the `RateLimit` table) sit in front of logins, sign-up, the contact form, newsletter and back-in-stock sign-ups, coupon checks, placing an order and the order-lookup pages — loose enough for shoppers who share a mobile carrier's IP, tight enough to stop scripts. Over the limit, people see "Too many attempts from your network. Please wait a few minutes and try again."
+- **Signing up with a password no longer claims guest orders** placed under that email — nothing proves the address is theirs. Signing up with Google (a verified address) still does, and anyone can track a guest order with its number + email at `/track`.
+- **Google sign-in never takes over a password account**: a customer who registered with a password keeps logging in with it.
+- **Draft products are private**: their page is a 404 and they can't be ordered until published.
+- **The contact form's auto-reply** goes to an address at most 3 times a day, and repeats the sender's name without links, digits or symbols — so the form can't be used to send spam with the brand's name on it. The brand's own copy is untouched.
+- **Payment callbacks** only act on what bKash/SSLCommerz confirm server-to-server (`ARCHITECTURE.md` §9.7). Both gateways are still switched off (COD only); before switching one on, run a sandbox payment end to end.
+
+**Still to do by the store owner:**
+1. **Rotate the ImgBB API key** at imgbb.com, then update `IMGBB_API_KEY` in Vercel — the old key was committed to this public repo and remains in its git history.
+2. Make sure `SESSION_SECRET` is a long random value (`openssl rand -base64 48`; the app warns if it's under 32 characters) and `SITE_URL` is set in Vercel.
+3. If the production database was ever seeded, delete or re-password `staff@invertedcrayon.com` and `rex@example.com` (their passwords are in this README).
+
 ## Notes for further work
 
 - The free-delivery tag is presentational only; making it actually waive the shipping fee would mean threading it into `src/actions/checkout.ts`'s shipping-cost calculation.
-- OAuth account linking is by email match — if someone's Google email differs from the email on their existing password account, they'll get a second, separate account rather than a merge prompt.
+- Google sign-in never attaches to an existing password account, and a Google email that differs from an existing account's email makes a second, separate account — there's no "link Google to my account" option for a signed-in customer yet.
+- Password sign-ups have no email verification; adding one would let them claim guest orders again safely.

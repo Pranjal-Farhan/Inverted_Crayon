@@ -12,22 +12,31 @@ async function requireCustomer() {
   return session;
 }
 
+// Strings only, trimmed and clipped: a server action takes whatever the caller sends, and the name
+// is also copied into the session cookie (which browsers drop past ~4 KB).
+const profileSchema = z.object({
+  name: z.string().transform((s) => s.trim().slice(0, 80)),
+  phone: z.string().transform((s) => s.trim().slice(0, 30)),
+});
+
 export async function updateProfile(name: string, phone: string) {
   const session = await requireCustomer();
-  const customer = await db.customer.update({ where: { id: session.customerId }, data: { name, phone } });
+  const data = profileSchema.parse({ name, phone });
+  const customer = await db.customer.update({ where: { id: session.customerId }, data });
   await setCustomerSession({ customerId: customer.id, email: customer.email, name: customer.name, avatarUrl: customer.avatarUrl });
   revalidatePath("/account");
 }
 
+// Same bounds as an order's shipping address (src/actions/checkout.ts), which these prefill.
 const addressSchema = z.object({
-  id: z.string().optional(),
-  fullName: z.string().min(2),
-  phone: z.string().min(6),
-  line1: z.string().min(4),
-  area: z.string().min(2),
-  district: z.string().min(2),
-  postcode: z.string().min(3),
-  country: z.string().min(2),
+  id: z.string().max(64).optional(),
+  fullName: z.string().min(2).max(100),
+  phone: z.string().min(6).max(30),
+  line1: z.string().min(4).max(200),
+  area: z.string().min(2).max(100),
+  district: z.string().min(2).max(100),
+  postcode: z.string().min(3).max(20),
+  country: z.string().min(2).max(60),
   isDefault: z.boolean(),
 });
 
@@ -98,9 +107,13 @@ export async function toggleWishlist(productId: string): Promise<{ inWishlist: b
 }
 
 const returnSchema = z.object({
-  orderId: z.string().min(1),
-  orderItemIds: z.array(z.string()).min(1),
-  reason: z.string().min(1),
+  orderId: z.string().min(1).max(64),
+  orderItemIds: z
+    .array(z.string().max(64))
+    .min(1)
+    .max(50)
+    .transform((ids) => [...new Set(ids)]),
+  reason: z.string().trim().min(1).max(500),
 });
 
 export async function requestReturn(input: z.infer<typeof returnSchema>) {
@@ -119,6 +132,9 @@ export async function requestReturn(input: z.infer<typeof returnSchema>) {
   if (!data.orderItemIds.every((id) => ownItemIds.has(id))) {
     throw new Error("One or more items aren't part of this order.");
   }
+  // One open request per order — each one emails the team, so re-submitting can't flood their inbox.
+  const open = await db.returnRequest.findFirst({ where: { orderId: order.id, status: "REQUESTED" }, select: { id: true } });
+  if (open) throw new Error("There's already a return request open for this order.");
 
   await db.returnRequest.create({
     data: {

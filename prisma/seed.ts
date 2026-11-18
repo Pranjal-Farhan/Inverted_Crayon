@@ -1,5 +1,6 @@
 import "dotenv/config";
 import bcrypt from "bcryptjs";
+import { randomBytes } from "node:crypto";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../src/generated/prisma/client";
 import { generateOrderNumber } from "../src/lib/order-number";
@@ -28,7 +29,7 @@ const CATEGORY_DEFS = [
   { slug: "headwear", name: "Headwear" },
   { slug: "accessories", name: "Accessories" },
 ] as const;
-import { DEFAULT_STORE_INFO } from "../src/lib/store-settings";
+import { DEFAULT_STORE_INFO } from "../src/lib/store-info-defaults";
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const db = new PrismaClient({ adapter });
@@ -85,6 +86,21 @@ function slugify(s: string): string {
     .replace(/(^-|-$)/g, "");
 }
 
+/** Whether DATABASE_URL points at this machine (or a local socket) — the only place the README's demo passwords belong. */
+const isLocalDatabase = (() => {
+  try {
+    const host = new URL(process.env.DATABASE_URL ?? "").hostname;
+    return ["", "localhost", "127.0.0.1", "[::1]", "::1"].includes(host);
+  } catch {
+    return false;
+  }
+})();
+
+/** The README's demo password on a local database; anywhere else a random one nobody else can know. */
+function demoPassword(published: string): string {
+  return isLocalDatabase ? published : randomBytes(12).toString("base64url");
+}
+
 async function main() {
   // This script is a demo/dev dataset — it creates test customer accounts with known passwords
   // (e.g. rex@example.com / Password123!) and a demo staff login, published in this repo's README.
@@ -96,6 +112,24 @@ async function main() {
         "catalog as a starting point, set ALLOW_PRODUCTION_SEED=true and re-run.",
     );
   }
+  // NODE_ENV alone doesn't catch the easy mistake: running `prisma db seed` on a laptop whose .env
+  // points at the live database. So any database not on this machine needs an explicit opt-in, and
+  // even then gets no account with a password from the README: the admin password must come from
+  // ADMIN_PASSWORD, and the demo staff/customer logins get random passwords, printed once below.
+  if (!isLocalDatabase && process.env.ALLOW_REMOTE_SEED !== "true") {
+    throw new Error(
+      "Refusing to seed a database that isn't on this machine (DATABASE_URL host isn't localhost). " +
+        "If that's really what you want, set ALLOW_REMOTE_SEED=true (and ADMIN_PASSWORD) and re-run.",
+    );
+  }
+  const adminEmail = process.env.ADMIN_EMAIL ?? "admin@invertedcrayon.com";
+  // `||`, not `??`: an ADMIN_PASSWORD that is set but empty must not become an admin with no password.
+  const adminPassword = process.env.ADMIN_PASSWORD || (isLocalDatabase ? "StandOut123!" : "");
+  if (!isLocalDatabase && (adminPassword.length < 8 || adminPassword === "StandOut123!")) {
+    throw new Error("Set ADMIN_PASSWORD to a strong password of your own before seeding a database that isn't on this machine.");
+  }
+  const staffPassword = demoPassword("StaffPass123!");
+  const customerPassword = demoPassword("Password123!");
 
   console.log("Seeding…");
 
@@ -325,8 +359,7 @@ async function main() {
   });
 
   // ---------- admin users ----------
-  const adminEmail = process.env.ADMIN_EMAIL ?? "admin@invertedcrayon.com";
-  const adminPassword = process.env.ADMIN_PASSWORD ?? "StandOut123!";
+
   await db.adminUser.upsert({
     where: { email: adminEmail },
     update: {},
@@ -342,7 +375,7 @@ async function main() {
     update: {},
     create: {
       email: "staff@invertedcrayon.com",
-      passwordHash: await bcrypt.hash("StaffPass123!", 10),
+      passwordHash: await bcrypt.hash(staffPassword, 10),
       name: "Mitu (Staff)",
       role: "STAFF",
     },
@@ -354,7 +387,7 @@ async function main() {
     update: {},
     create: {
       email: "rex@example.com",
-      passwordHash: await bcrypt.hash("Password123!", 10),
+      passwordHash: await bcrypt.hash(customerPassword, 10),
       name: "Rex O.",
       phone: "+880 1711-000000",
       segmentTags: ["VIP"],
@@ -474,8 +507,10 @@ async function main() {
   });
 
   console.log("Seed complete.");
-  console.log(`Admin login → ${adminEmail} / ${adminPassword}`);
-  console.log(`Customer login → rex@example.com / Password123!`);
+  console.log(`Admin login → ${adminEmail} / ${isLocalDatabase ? adminPassword : "(your ADMIN_PASSWORD)"}`);
+  console.log(`Staff login → staff@invertedcrayon.com / ${staffPassword}`);
+  console.log(`Customer login → rex@example.com / ${customerPassword}`);
+  console.log("(Logins that already existed keep the password they had — the seed never changes one.)");
 }
 
 main()

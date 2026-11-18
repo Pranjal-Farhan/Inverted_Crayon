@@ -1,12 +1,9 @@
-import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/lib/db";
-import { restockAndCancelOrder } from "@/lib/payments/rollback";
+import type { NextRequest } from "next/server";
+import { handleSslcommerzUnpaidReturn } from "@/lib/payments/sslcommerz-returns";
 
+// SSLCommerz sends the shopper back here (a form POST) when they cancel on its payment page. Anyone can
+// call this URL with any order number, so it only cancels an order the gateway itself records as
+// cancelled or failed.
 export async function POST(req: NextRequest) {
-  const origin = req.nextUrl.origin;
-  const form = await req.formData();
-  const tranId = form.get("tran_id")?.toString();
-  const order = tranId ? await db.order.findUnique({ where: { number: tranId } }) : null;
-  if (order) await restockAndCancelOrder(order.id);
-  return NextResponse.redirect(`${origin}/checkout?payment=cancelled`);
+  return handleSslcommerzUnpaidReturn(req, "cancelled");
 }

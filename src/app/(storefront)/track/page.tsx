@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { db } from "@/lib/db";
 import { OrderTimeline } from "@/components/storefront/OrderTimeline";
+import { RATE_LIMITED_MESSAGE, RATE_LIMITS, consumeRateLimitForClient } from "@/lib/rate-limit";
 
 export const metadata: Metadata = { title: "Track order" };
 
@@ -10,12 +11,21 @@ export default async function TrackPage({ searchParams }: Props) {
   const { number, email } = await searchParams;
   let order = null;
   let notFoundMsg = false;
+  let limited = false;
 
-  if (number && email) {
-    order = await db.order.findFirst({
-      where: { number: number.trim(), source: "ONLINE", email: { equals: email.trim(), mode: "insensitive" } },
-    });
-    if (!order) notFoundMsg = true;
+  if (typeof number === "string" && typeof email === "string" && number && email) {
+    // Capped per client like /order-status, so number + email pairs can't be tried by a script.
+    limited = !(await consumeRateLimitForClient(RATE_LIMITS.orderLookupIp));
+    if (!limited) {
+      order = await db.order.findFirst({
+        where: {
+          number: number.trim().slice(0, 40),
+          source: "ONLINE",
+          email: { equals: email.trim().slice(0, 254), mode: "insensitive" },
+        },
+      });
+      if (!order) notFoundMsg = true;
+    }
   }
 
   return (
@@ -35,6 +45,7 @@ export default async function TrackPage({ searchParams }: Props) {
         <p className="crumb my-1.5 mb-3.5">Enter your order number and email.</p>
       )}
       {notFoundMsg && <p className="mt-2 text-[13px] text-error">No order matched those details.</p>}
+      {limited && <p className="mt-2 text-[13px] text-error">{RATE_LIMITED_MESSAGE}</p>}
 
       <form className="mt-4" action="/track" method="get">
         <div className="frow grid grid-cols-2 gap-2.5">

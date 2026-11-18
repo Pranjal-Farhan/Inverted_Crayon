@@ -65,6 +65,15 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ prov
 
     if (!customer) {
       const existing = await db.customer.findUnique({ where: { email } });
+      // Signing up with a password never proves the address is yours, so someone could register a
+      // password account under another person's email *before* that person ever shows up, wait for
+      // them to "Continue with Google" into it, and keep logging in with the password they set.
+      // So Google is only ever attached to an account that has no other way in; a password account
+      // keeps logging in with its password, and an account tied to a different Google identity is
+      // left alone.
+      if (existing && (existing.passwordHash || existing.googleId)) {
+        return NextResponse.redirect(`${origin}${loginPath}?oauth=${existing.passwordHash ? "password_account" : "error"}`);
+      }
       if (existing) {
         customer = await db.customer.update({
           where: { id: existing.id },

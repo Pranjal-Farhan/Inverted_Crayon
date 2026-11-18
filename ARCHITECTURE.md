@@ -149,7 +149,7 @@ src/
     login-lockout.ts            shared brute-force guard for admin + customer login
     totp.ts                     RFC 6238 TOTP (Google Authenticator-compatible 2FA) — hand-rolled, no dependency
     oauth/                      google.ts — Google OAuth code
-    payments/                   bkash.ts, sslcommerz.ts, rollback.ts
+    payments/                   bkash.ts, sslcommerz.ts, settle.ts (paid/cancel transitions), returns.ts, sslcommerz-returns.ts
     email-provider.ts           real email delivery: SMTP (the official mailbox, via nodemailer) or Resend; carries attachments
     receipt-pdf.ts              builds the PDF receipt attached to order emails (pdfkit + bundled Noto Sans / Bengali fonts)
     site-url.ts                 resolves the app's own origin for callback URLs
@@ -263,16 +263,20 @@ Scheduled workflows run from the repository's default branch (here the working b
 
 `secure: true` is set automatically whenever `NODE_ENV === "production"`. The signing secret comes from `SESSION_SECRET`; **the app refuses to start in production without it** (throws at module-load time) rather than falling back to a hardcoded value — a real vulnerability that existed here once and was fixed (see §18's audit).
 
+**Each token only works in the cookie it was issued for.** Every token carries an audience claim (`ic:admin-session`, `ic:customer-session`, `ic:admin-2fa-pending`) that `getAdminSession` / `getCustomerSession` / `getAdmin2FAPending` check, along with the payload's shape (`adminId`/`role`, `customerId`, …). All three share one secret, so before the November 2026 audit (§18.1) the 5-minute "password OK, code still owed" token could be pasted into the admin cookie to skip the 2FA step entirely, and an admin token pasted into the customer cookie arrived with no `customerId` — and a Prisma filter on `customerId: undefined` silently matches every row. Old tokens have no audience, so that deploy signed everyone out once.
+
 There's no session revocation list — logging out just deletes the cookie; a stolen cookie stays valid until it expires or `SESSION_SECRET` is rotated (which invalidates everyone). This is a known, accepted limitation for a project this size, not an oversight — see §21.
 
 ### 7.2 Login lockout
 
-`src/lib/login-lockout.ts` — the *only* brute-force guard in the app (there's no rate limiting anywhere else, no WAF assumed). Shared by both `adminLogin` and `customerLogin` (`src/actions/admin-auth.ts`, `src/actions/customer-auth.ts`):
+`src/lib/login-lockout.ts` — the per-account brute-force guard, shared by both `adminLogin` and `customerLogin` (`src/actions/admin-auth.ts`, `src/actions/customer-auth.ts`). Per-IP limits and an atomic per-account attempt budget sit in front of it (§7.7):
 
 - 5 failed attempts locks that specific account for 15 minutes (`MAX_LOGIN_ATTEMPTS`, `LOCKOUT_MINUTES`).
 - The lock is checked **before** password comparison — so the 6th attempt is rejected even with the *correct* password, closing a timing/enumeration gap.
 - A non-existent email never touches the failure counter (can't lock out an account that doesn't exist) and returns the same generic "Invalid email or password" message either way, so login failures don't leak whether an email is registered.
 - A successful login resets the counter to 0.
+- **bcrypt runs on every attempt** — against `STAND_IN_PASSWORD_HASH` when the email has no account (or no password), so an unknown email isn't answered measurably faster than a wrong password (measured: ~243 ms vs ~228 ms median; before, an unknown email skipped bcrypt entirely).
+- The counter is read-then-write, so a burst of parallel guesses could all be checked before it trips. The per-account attempt budget (§7.7) is counted atomically **before** any password check, keyed by the typed email (so unknown emails are capped too), and given back on a successful login.
 
 ### 7.3 OAuth (Google)
 
@@ -283,14 +287,14 @@ Hand-rolled Authorization Code flow, no SDK (`src/lib/oauth/google.ts`), routed 
 2. The route generates a random `state` UUID, sets it in an `httpOnly` cookie (`oauth_state`) alongside the `intent` (`oauth_intent`), and redirects to Google's consent screen with that `state` embedded.
 3. Google redirects back to `/api/auth/google/callback?code=...&state=...`.
 4. The callback checks `state` against the cookie (CSRF protection — a forged callback without the matching cookie is rejected), reads `intent` back out, exchanges `code` for an access token, fetches the user's profile (id + email + name), then:
-   - **`intent=customer`**: find-or-create a `Customer` row (match by `googleId` first, then by email — Google must have verified that email — linking an existing password account to the OAuth id on first match), claim any guest orders under that email (same as password registration does), set the customer session cookie, redirect to `/account`.
+   - **`intent=customer`**: find-or-create a `Customer` row — match by `googleId` first, then by email (Google must report the address as verified: `email_verified === true`). An account found by email is linked only if it has no other way in: a **password account is refused** (`?oauth=password_account`, "log in with your email and password instead"), and one already tied to a different Google identity is refused too. Signing up with a password never proves the address is yours, so linking would let someone pre-register a victim's email, wait for the victim to "Continue with Google" into it, and keep logging in with the password they set. A brand-new Google account claims any guest orders under that email — Google has verified the address, which password registration can't, so this is now the only path that claims them (§18.1). Then the customer session cookie is set and it redirects to `/account`.
    - **`intent=admin`**: find an **existing** `AdminUser` by OAuth id or email. **If none exists, it does not create one** — it redirects back with `?oauth=no_account`. This is the one deliberate asymmetry between the two intents, and it exists for a specific reason: allowing OAuth to self-register an admin account would let *anyone with a Google account* grant themselves store-admin access. Admin/staff accounts can only ever be created by an existing admin (`inviteStaff` in `src/actions/admin-staff.ts`) or the seed script; OAuth can only ever be a second way to *log in* to an account that already exists.
 
 When `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` aren't set, `googleConfigured()` returns false and the `start` route redirects straight back with `?oauth=not_configured` — the buttons are always visible (`src/components/auth/OAuthButtons.tsx`, rendered on `/account/login`, `/account/register`, `/admin/login`) but degrade to a clear message instead of a broken redirect.
 
 ### 7.4 Security headers
 
-`src/proxy.ts` (Next.js 16's renamed `middleware.ts` — the framework flags the old filename as deprecated, and this repo follows that) sets on every response: `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, a locked-down default `Permissions-Policy`, and HSTS when served over HTTPS. No CSP is set (deliberately — a wrong CSP silently breaks pages rather than erroring, and none was judged necessary yet).
+`next.config.ts`'s `headers()` (moved there from `src/proxy.ts` so no function runs per request) sets on every response: `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, a locked-down default `Permissions-Policy`, HSTS, and a deliberately narrow CSP — `frame-ancestors 'none'; object-src 'none'; base-uri 'self'`: only directives that can't break the site's own scripts, styles, images or the payment/OAuth redirects. A full `script-src` policy would need a per-request nonce, which forces every page to render dynamically (no static/ISR pages) — see Next's own CSP guide. `poweredByHeader: false` drops the `X-Powered-By: Next.js` header.
 
 ### 7.5 Admin two-factor authentication (TOTP)
 
@@ -314,6 +318,30 @@ It is enforced on the server, three ways, and the menu is only a convenience on 
 - **Changing your own password** (`changeOwnPassword` in `src/actions/admin-password.ts`, form in Settings → Security / "My security"): needs the current password — a wrong one feeds the same `failedLoginCount`/`lockedUntil` lockout as login (and sends the same lockout notification when it trips) so a stolen session can't be used to guess it. Success stamps `AdminUser.passwordChangedAt`; `getCurrentAdmin()` rejects any session cookie whose `iat` is older than that, which signs the account out everywhere else, and the action re-issues this device's cookie so it stays signed in. Only your own account is ever touched; an OAuth-only account (no password) is told it has none to change.
 
 The section list (`AdminNav.tsx`, used by both the desktop sidebar and the phone menu — §10) hides what an account can't use and drops empty groups; the Roles tab carries a one-line legend of the split.
+
+
+### 7.7 Rate limiting
+
+`src/lib/rate-limit.ts` with the `RateLimit` table (migration `20261118120000_rate_limit`). Fixed windows, counted in Postgres with one atomic `INSERT … ON CONFLICT DO UPDATE … RETURNING count`, so a budget holds across every serverless instance and under concurrency (verified: 50 parallel attempts against a budget of 6 → exactly 6 through, every count distinct). The client IP is `x-real-ip` (else the first `x-forwarded-for` entry) — on Vercel both are set by the edge itself, so a client can't pick its own. It **fails open**: if the counter can't be written the request goes ahead — a rate limit must never be what takes logins or checkout down. Expired rows are pruned now and then.
+
+Budgets are loose on purpose: many shoppers in Bangladesh share a mobile carrier's IPs, so these stop scripts, not people.
+
+| What | Budget | Counted per |
+|---|---|---|
+| Admin login + 2FA code step | 10 / 15 min | IP |
+| Admin login attempts | 6 / 15 min, reset on success | typed email (§7.2) |
+| Customer login | 30 / 15 min | IP |
+| Customer login attempts | 6 / 15 min, reset on success | typed email |
+| Registration | 10 / hour | IP |
+| Contact form | 5 / hour | IP |
+| Contact auto-reply | 3 / day | recipient address — the message itself still reaches the brand |
+| Newsletter sign-up | 10 / hour | IP |
+| Back-in-stock sign-up | 20 / hour | IP |
+| Coupon check (`/api/discount`) | 60 / 10 min | IP (`429`) |
+| Place order | 20 / hour | IP |
+| `/order-status`, `/track` lookups | 30 / 10 min | IP |
+
+The payment-gateway return URLs are not rate limited: a shopper who has just paid must never be turned away, and each of them only acts on an order the gateway confirms (§9.7).
 
 ## 8. Storefront walkthrough
 
@@ -460,18 +488,23 @@ Since COD is the only method and nothing is ever captured online regardless (§9
 
 `bkashConfigured()` / `sslcommerzConfigured()` (`src/lib/payments/{bkash,sslcommerz}.ts`) just check whether the relevant env vars are set. This single boolean, computed per payment method at the top of `placeOrder()`, branches the entire rest of the function:
 
-**Gateway not configured (default, zero external credentials needed):** the order is created with `status: "PAID"` immediately (or `"PENDING"` for COD) — this is the original, always-worked mocked behavior, completely unchanged by the payment integration work. The customer goes straight to `/order/[number]`.
+**Gateway not configured (default, zero external credentials needed):** in development the order is created with `status: "PAID"` immediately (or `"PENDING"` for COD) — the original mocked behavior, so local dev needs no credentials. **In production `placeOrder()` refuses** an online method with no gateway behind it ("choose cash on delivery"): the mock would otherwise hand out orders marked paid that nobody paid for. (Today bKash and SSLCommerz are switched off in `placeOrder()` and `CheckoutView.tsx` anyway — COD only.)
 
 **Gateway configured:** the order is created with `status: "PENDING"` first (stock is still decremented immediately — the stock hold happens at order-creation regardless of payment method, so overselling protection is unconditional). *After* the transaction commits, `placeOrder()` calls out to the gateway:
 
 - **bKash** (`createBkashPayment`): grants an auth token (cached ~55 min), calls bKash's Tokenized Checkout "create payment" endpoint with the advance amount and a callback URL, gets back a `bkashURL` + `paymentID`. The `paymentID` is immediately saved onto the order (`paymentTransactionId`) so the callback can look the order back up. `placeOrder()` returns `{ ok: true, orderNumber, redirectUrl: bkashURL }`; the client does a full-page `window.location.href` redirect (not a `router.push` — this has to leave the Next.js app).
 - **SSLCommerz** (`initSslcommerzSession`): posts store credentials + amount + customer info + three callback URLs (success/fail/cancel) to SSLCommerz's session API, gets back a `GatewayPageURL`, redirects the same way. The `tran_id` sent to SSLCommerz *is* the order number, so its callbacks can look the order up directly with no extra token to track.
-- If gateway-session creation itself throws (network error, bad credentials), `restockAndCancelOrder()` (`src/lib/payments/rollback.ts`) runs immediately: restocks every non-preorder variant, gives the coupon use back if one was applied (`releaseCouponForOrder()`, §9.4a), marks the order `CANCELLED`/`FAILED` — and the customer sees a clean error, never an oversold or orphaned order.
+- If gateway-session creation itself throws (network error, bad credentials), `cancelUnpaidGatewayOrder()` (`src/lib/payments/settle.ts`) runs immediately: restocks every non-preorder variant, gives the coupon use back if one was applied (`releaseCouponForOrder()`, §9.4a), marks the order `CANCELLED`/`FAILED` — and the customer sees a clean error, never an oversold or orphaned order.
 
-**The callback routes** (`src/app/api/payments/bkash/callback`, `.../sslcommerz/{success,fail,cancel}`) are where the loop closes:
-- bKash: GET with `?paymentID=&status=`. On `status=success`, calls `executeBkashPayment()` to actually finalize the charge server-side (bKash's flow is create-then-execute, two separate calls); on any other status, or if execute fails, `restockAndCancelOrder()` runs and the customer bounces back to `/checkout?payment=failed` (or `cancelled`). `CheckoutView.tsx` reads that `?payment=` query param on mount and shows a matching banner, telling the customer their bag was restored.
-- SSLCommerz: POST (form-encoded) to `/success`, `/fail`, or `/cancel` depending on what happened at the gateway. `/success` validates the `val_id` server-to-server (`validateSslcommerzTransaction`) before trusting it — never trusts the browser redirect alone. `/fail` and `/cancel` both just look the order up by `tran_id` and roll it back.
-- On success, either callback marks `paymentStatus: "PAID"`, `status: "PAID"`, sends the order-confirmed email, and redirects to `/order/[number]`.
+**The callback routes** (`src/app/api/payments/bkash/callback`, `.../sslcommerz/{success,fail,cancel}`) are where the loop closes. They are public URLs — anyone can call them with any order number, payment id or status — so **nothing in the request is believed; only the gateway's own server-to-server answer moves an order**, and every move goes through `src/lib/payments/settle.ts`:
+- **State-guarded, atomic transitions.** `markGatewayOrderPaid()` and `cancelUnpaidGatewayOrder()` only touch an order that was paid through *that* gateway and is still waiting for the money (`status` and `paymentStatus` both `PENDING`), as one guarded `updateMany`. A COD order, an order already paid/shipped/cancelled, or one an earlier callback handled is never touched, so replaying a URL can't cancel a paid order, restock twice or send the emails twice. Both routes are a no-op (`?payment=error`) while their gateway isn't configured.
+- **SSLCommerz `/success`** (form POST): validates the `val_id` with SSLCommerz and requires it to be a completed payment **for this order** (`tran_id` = our order number), in BDT, for exactly `advanceAmount` (`amountsMatch()`). A valid `val_id` on its own only proves that *some* payment happened — before November 2026 a `val_id` from a cheap order settled an expensive one. If it doesn't hold up, the order is left alone (`?payment=review`), unless SSLCommerz itself records the order's payment as failed, in which case it's tidied up like `/fail`.
+- **SSLCommerz `/fail`, `/cancel`**: ask SSLCommerz for the order's transaction statuses (`querySslcommerzTransactionStatuses()`, the merchant-transaction-id API — twice, 1.5 s apart, in case its record trails the redirect) and cancel only if it records a failure/cancellation and never a successful payment. Before, these cancelled **any** order by number — COD orders included — for anyone who POSTed it.
+- **bKash** (GET `?paymentID=&status=`): the `paymentID` is only ever seen by the payer, and money moves only when *this server* executes the payment. On `status=success` it executes and requires the completed amount (and invoice number, when bKash returns it) to match. Otherwise — or when execute fails, e.g. on a repeat after an earlier execute — it asks bKash (`queryBkashPayment()`): `Completed` and matching → paid; any other answer → nothing was charged, so the order is cancelled; no answer → left pending.
+- Paid: marks `PAID`/`PAID` (SSLCommerz also stores the `val_id`), sends the order-placed emails once, redirects to `/order/[number]` (303, so the gateway's POST becomes a GET). A payment that arrives for an order that was cancelled meanwhile is logged loudly (`console.error`, "refund it or restore the order by hand") and the shopper sees `?payment=review`.
+- `CheckoutView.tsx` reads `?payment=failed|cancelled|error|review` on mount and shows the matching banner — `review` says "we couldn't confirm your payment yet; if money left your account, don't pay again — contact us".
+
+Tested against a local stand-in for both gateways (22 forged, replayed and genuine callback scenarios) — the real gateways need merchant credentials this project doesn't have yet, so try a sandbox payment end to end before switching either one on.
 
 ### 9.8 The receipt
 
@@ -554,7 +587,7 @@ The table UI itself (`SizeGuideTable.tsx`) is a presentational component shared 
 
 Inventory is its own admin area (`AdminArea` `inventory`, open to staff — sidebar: Sell → Inventory), outside Finance. `inventory/page.tsx` calls `requireAdminPage("inventory")`, then `loadInventory({ includeCost })` (`src/lib/inventory.ts`) — `includeCost` is true only for accounts that can open Finance, and only then is `Product.purchaseCost` asked for (`omit: { purchaseCost: false }`, §5), so a staff browser never receives a buying cost. It also runs `stockLedgerMismatches()`. The page hands the whole data set to `InventoryManager` (client): the summary strip (units, inventory at buying cost, worth when sold at `variantUnitPrice`, profit once sold, sizes low/out) is computed from the same data the rows use, so it moves the instant a count does. Rows are buttons (search is "every word typed appears in the product's search blob": title, slug, category, gender words, tags, every SKU/size/colour); a click opens `StockOverlay` — a portal with a `bg-black/60` backdrop and a translucent panel listing every size/colour with `VariantLine`: count, LOW/SOLD OUT marker, worth, an "add" input (Enter or the Add button; +1/+5/+10 accumulate into the input and nothing is sent until Add), and **More ▾** for `removeStock` (reason required) and `setStockTo` (stock-take). Each answer carries the true new count (`qty`), which the screen applies, and the action's `revalidatePath("/admin/inventory")` re-renders the page's data; the panel also loads `getStockHistory(productId)` (latest 40 `StockMovement`s) and reloads it after every change.
 
-**`src/lib/stock.ts` is the only place `Variant.stockQty` is written.** `changeStock(tx, { variantId, delta, reason, orderId?, orderNumber?, note?, actorEmail? })` applies a *delta* in one SQL statement — `stockQty = stockQty + n` (via `increment`), or for a take an `updateMany` with `where: { stockQty: { gte: n } }` and a `decrement` — and throws `StockError` (a `UserError`, so the message reaches the admin) when the guard fails or the size is gone; it then inserts the `StockMovement` row **in the same transaction**. `setStockCount(tx, { variantId, expected, target })` is the stock-take: `WHERE stockQty = expected`, so it refuses (naming the current count) if anything changed since the person looked — a stale screen can never overwrite a sale. `recordOpening` / `recordRemoval` write the OPENING row for a new size and the history for a size or product deleted while holding stock. `afterStockChanged(changes)` runs *after* the transaction commits: it invalidates the affected products' storefront caches (`invalidateProduct`), revalidates the admin pages, sends back-in-stock/wishlist emails on 0 → >0, and resets wishlist notification flags on >0 → 0; failures there are logged, never rethrown (the stock change is already saved). Callers: `checkout.ts` (in the order transaction; `stockChanges` is reset per retry attempt), `payments/rollback.ts` (atomic claim `status != CANCELLED`, then `ORDER_RESTORED`), `admin-orders.ts` (cancel/refund), `admin-sales.ts` (recorded sales), `admin-stock.ts`, `admin-products.ts`. Integrity is checked three ways: the DB `CHECK (stockQty >= 0)`, the ledger identity (`stockLedgerMismatches()` returns variants whose count ≠ sum of their movements; `reconcileLedger()` — admin only — writes a CORRECTION row per mismatch, never touching the counts), and a concurrency check run against a real database during development (parallel checkouts, recorded sales and restocks on one size ended with count = opening + adds − sold, never negative, and every sale either succeeded or was refused with "not enough stock").
+**`src/lib/stock.ts` is the only place `Variant.stockQty` is written.** `changeStock(tx, { variantId, delta, reason, orderId?, orderNumber?, note?, actorEmail? })` applies a *delta* in one SQL statement — `stockQty = stockQty + n` (via `increment`), or for a take an `updateMany` with `where: { stockQty: { gte: n } }` and a `decrement` — and throws `StockError` (a `UserError`, so the message reaches the admin) when the guard fails or the size is gone; it then inserts the `StockMovement` row **in the same transaction**. `setStockCount(tx, { variantId, expected, target })` is the stock-take: `WHERE stockQty = expected`, so it refuses (naming the current count) if anything changed since the person looked — a stale screen can never overwrite a sale. `recordOpening` / `recordRemoval` write the OPENING row for a new size and the history for a size or product deleted while holding stock. `afterStockChanged(changes)` runs *after* the transaction commits: it invalidates the affected products' storefront caches (`invalidateProduct`), revalidates the admin pages, sends back-in-stock/wishlist emails on 0 → >0, and resets wishlist notification flags on >0 → 0; failures there are logged, never rethrown (the stock change is already saved). Callers: `checkout.ts` (in the order transaction; `stockChanges` is reset per retry attempt), `payments/settle.ts` (atomic claim on "still awaiting payment through this gateway", then `ORDER_RESTORED`), `admin-orders.ts` (cancel/refund), `admin-sales.ts` (recorded sales), `admin-stock.ts`, `admin-products.ts`. Integrity is checked three ways: the DB `CHECK (stockQty >= 0)`, the ledger identity (`stockLedgerMismatches()` returns variants whose count ≠ sum of their movements; `reconcileLedger()` — admin only — writes a CORRECTION row per mismatch, never touching the counts), and a concurrency check run against a real database during development (parallel checkouts, recorded sales and restocks on one size ended with count = opening + adds − sold, never negative, and every sale either succeeded or was refused with "not enough stock").
 
 **Errors are always shown.** Every action in Finance, Inventory and Orders is wrapped in `guarded(label, fn)` (`src/lib/action-errors.ts`) and returns `{ ok, error }` (never throws): an intentional refusal is a `UserError` whose message is shown as written; Zod errors show their first issue; Prisma errors go through `describeError` (unique violation, still-in-use, record gone, timeout…) and are logged with the full detail; Next's redirect/not-found signals are rethrown untouched. On the client every call goes through `attempt()` (`src/lib/attempt.ts`), which turns a failed *trip* (offline, redeployed, timed out) into `{ ok: false, error: NETWORK_ERROR }` so the reason appears next to the control and no error boundary is hit.
 
@@ -801,7 +834,7 @@ A running list of hardening measures, each with the reasoning:
 
 - **`SESSION_SECRET` required in production** (§7.1) — no hardcoded fallback secret reachable at runtime.
 - **`DATABASE_URL` validated at startup** (`src/lib/db.ts`) — fails fast and clearly rather than a confusing low-level connection error.
-- **Login lockout** (§7.2) on both admin and customer login — the only brute-force guard in the app.
+- **Login lockout** (§7.2) on both admin and customer login, behind per-IP limits and an atomic per-account attempt budget (§7.7).
 - **Security headers on every response** (§7.4).
 - **Image upload hardening** (§12) — SVG rejected, size/count caps, UUID filenames.
 - **Checkout race-safety** (§9.3) — guarded atomic updates for stock and discount redemption, not read-then-write.
@@ -810,8 +843,34 @@ A running list of hardening measures, each with the reasoning:
 - **Price tampering closed** (§9.1) — checkout never trusts a client-supplied price.
 - **Admin 2FA secret/backup codes never reach the client** (§7.5, §10.13) — `TwoFactorSetup.tsx` only ever receives a boolean `enabled` prop from the server; the secret and hashed backup codes stay server-side, read only inside the `"use server"` actions in `admin-2fa.ts`.
 - **TOTP built from the RFC, not a dependency** (§7.5) — verified against RFC 6238's official Appendix B test vector before being wired into login.
-- **Seed-script production guard** (`prisma/seed.ts`) — refuses to run against `NODE_ENV=production` unless explicitly opted into with `ALLOW_PRODUCTION_SEED=true`, because it creates demo accounts with passwords published in this repo's README.
+- **Seed-script production guard** (`prisma/seed.ts`) — refuses to run against `NODE_ENV=production` unless explicitly opted into with `ALLOW_PRODUCTION_SEED=true`, because it creates demo accounts with passwords published in this repo's README. Since November 2026 it also refuses any database that isn't on this machine (the easy mistake: a laptop `.env` pointing at the live database) unless `ALLOW_REMOTE_SEED=true`, and even then it requires your own `ADMIN_PASSWORD` (8+ characters, not the README's) and gives the demo staff/customer logins random passwords, printed once.
 - **Graceful error handling** on public-facing mutations (contact, newsletter, discount save, product delete) — wrapped so a transient DB error or a double-submit returns a clean `{ok:false}` instead of crashing to a raw error page.
+
+
+### 18.1 Security audit — November 2026
+
+A full pass over every route, server action, auth path, payment flow, header, dependency and the git history. What was found, worst first, and what changed:
+
+| Severity | Finding | Fix |
+|---|---|---|
+| Critical | **2FA bypass.** The 5-minute "password OK, code still owed" token was a valid admin session if pasted into the admin cookie (same secret, no audience). | Tokens are bound to their cookie by audience + payload checks (§7.1). |
+| Critical | **Anyone could cancel any order** by POSTing its number to `/api/payments/sslcommerz/{fail,cancel,success}` — COD orders included, gateways on or off. Each call also put the stock back and released the coupon again, so repeating it inflated stock. | Callbacks act only on an order awaiting payment through that gateway, only on the gateway's own confirmation, via atomic transitions (§9.7). |
+| Critical (dormant: gateways off) | **Pay 500, settle 5,000.** SSLCommerz `/success` checked that the `val_id` was valid but not that it was for this order or this amount. | `tran_id`, currency and amount must match the order. |
+| Critical (dependency) | `next@16.3.6`: unauthenticated RCE via the image optimizer (SVG), image-optimizer SSRF, Server Actions DoS, cache poisoning. | `next@16.4.6`; also `prisma`/`@prisma/client` 7.10.1, `zod` 4.6.7 (memory DoS), `nodemailer` 10.6.0 (address-parser recipient injection), `sharp`, `source-map-js`, `fast-uri`. `npm audit`: 0. |
+| High | **Leaked secret.** A real ImgBB API key was committed in `.env.example` (public repo). | Replaced with a placeholder. **The key itself must be rotated at imgbb.com** — it stays in git history. |
+| High | **Guest orders handed to whoever registers their email.** Password registration claimed every guest order under the typed email — no proof of ownership — exposing name, phone and home address. | Only a Google sign-up (verified email) claims guest orders now (§7.3). Guests still find orders by number + email on `/track`. |
+| High | **Account pre-hijacking.** Google sign-in linked onto an existing password account by email, so a pre-registered account kept its attacker-set password. Also accepted a missing `email_verified`. | Password accounts aren't auto-linked; `email_verified === true` required (§7.3). |
+| High | **Unauthenticated write.** `ensureMirrorCategories` was exported from a `"use server"` file — a public endpoint with no permission check — letting anyone create categories in the storefront navigation. | Moved to `src/lib/categories.ts` (server-only, not an action). |
+| High | **No rate limiting anywhere** — password spraying, coupon-code guessing, contact-form mail bombing, fake COD orders holding stock, order-number walking. | §7.7. |
+| Medium | Login lockout bypassable with parallel requests; unknown emails answered faster (no bcrypt) — account enumeration by timing. | Atomic per-account budget; stand-in bcrypt (§7.2). |
+| Medium | **Contact form as a spam/phishing relay**: the auto-reply went from the brand's address to any typed address, repeating the typed name (and optionally message) verbatim. | 3 auto-replies/day per address; the auto-reply's name keeps letters only (no links/digits/dots) and its message has links/addresses removed. The brand's copy is unchanged. |
+| Medium | **Draft products were public**: their pages rendered by slug, and their variants could be ordered and coupon-priced. | PDP, checkout, coupon pricing, size-guide lookup and back-in-stock all require `status: ACTIVE`. |
+| Medium | Production would mark orders **PAID with no payment** if an online method were re-enabled without gateway credentials. | Refused in production (§9.7). |
+| Low | Order numbers from `Math.random()`; unbounded inputs on public forms (huge strings/quantities, array query params crashing `/order-status`); `inviteStaff` kept capital letters (that login could never be found); seed could create known-password accounts in a remote database; `X-Powered-By` header; per-visitor `/api/account/me` without `no-store`; an empty `ADMIN_PASSWORD` seeded an admin with an empty password. | `crypto.randomInt`; max lengths/counts everywhere; lowercase; seed guards (§18); header off; `private, no-store`; empty treated as unset. |
+
+Checked and found sound: every admin page, route and action re-checks the role from the database; customer actions are scoped by `customerId`; all raw SQL is parameterised; no `dangerouslySetInnerHTML`; no open redirects; uploads reject SVG and are size-capped; the CSV export escapes formulas; the purchase cost is omitted from every query by default; no other secret in git history.
+
+Still open (needs the owner, not code): rotate the ImgBB key; make sure `SESSION_SECRET` is a long random value (the app now warns if it's under 32 characters) and `SITE_URL` is set; if the production database was ever seeded, remove or re-password `staff@invertedcrayon.com` and `rex@example.com`.
 
 ---
 
@@ -827,9 +886,10 @@ Every non-trivial claim in this document — the stock-race guard actually preve
 - **Message sending is mocked until a provider is set** — every email lands in its outbox (§13); the admin edits wording and on/off switches at `/admin/templates` (§10.16), but nothing leaves the building until the SMTP / Resend variables are set.
 - **Free-delivery tag is presentational only** — it doesn't currently zero out the shipping line at checkout.
 - **No preorder ship dates at all** — neither tag-based (pre-launch) nor per-size preorders carry one; the product page banner and the add-to-cart note use fixed wording ("our sales agent will reach out").
-- **OAuth account linking is by email match** — a Google account with a different email than an existing password account creates a second, separate customer record rather than prompting a merge.
+- **No account merging** — Google sign-in never attaches to an existing password account (§7.3, a deliberate security choice), and a Google account with a different email creates a separate customer record. There's no "link Google to my account" button for a signed-in customer yet.
+- **No email verification for password sign-ups** — which is why they no longer claim guest orders (§18.1).
 - **No session revocation** beyond cookie expiry or rotating `SESSION_SECRET` (§7.1).
-- **No CSP** (security headers stop short of one — §7.4).
+- **Only a narrow CSP** (§7.4) — no `script-src`/`style-src` policy, since that needs per-request nonces and would make every page dynamic.
 - **Inventory costing is one flat cost per product** (§10.4a, `Product.purchaseCost`; the Inventory page's "at buying cost" figure uses the same number) — no weighted average, FIFO or LIFO lot tracking; a product with no purchase cost has no cost basis and is explicitly excluded from COGS/inventory-value rather than assumed to be zero-cost.
 - **2FA has no recovery path beyond backup codes** — if an admin loses both their authenticator app and their backup codes, another `ADMIN` must disable 2FA for them via direct database access (there's no admin-to-admin "reset this user's 2FA" UI today).
 
@@ -842,9 +902,10 @@ Every non-trivial claim in this document — the stock-race guard actually preve
 | `DATABASE_URL` | Yes | Postgres connection string — what the running app actually connects with (`src/lib/db.ts`) |
 | `DIRECT_URL` | Yes, for Prisma CLI commands | `prisma7.config.ts`'s datasource — `migrate`/`studio`/`db seed` read this, not `DATABASE_URL`; not in `.env.example`, set it (same value as `DATABASE_URL` works for a single local Postgres) before running those commands if it's missing |
 | `DB_CONNECT_TIMEOUT_MS`, `DB_CONNECT_ATTEMPTS` | No | How long (default 7000 ms) and how many times (default 3) the app tries to connect to a sleeping/slow database — §6.1 |
-| `SESSION_SECRET` | Yes in production | JWT signing key for both session cookies |
+| `SESSION_SECRET` | Yes in production | JWT signing key for every session cookie — use a long random value (32+ characters; the app warns below that) |
 | `ADMIN_EMAIL`, `ADMIN_PASSWORD` | No (seed only) | Seed script's admin account credentials |
 | `ALLOW_PRODUCTION_SEED` | No | Must be `true` to let the seed script run when `NODE_ENV=production` |
+| `ALLOW_REMOTE_SEED` | No | Must be `true` to let the seed script run against a database that isn't on this machine — and then `ADMIN_PASSWORD` must be set (§18) |
 | `SITE_URL` | Recommended in production | Base URL for payment/OAuth callback links; derived from request headers if unset |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | No | Google OAuth |
 | `BKASH_APP_KEY`, `BKASH_APP_SECRET`, `BKASH_USERNAME`, `BKASH_PASSWORD`, `BKASH_BASE_URL` | No | Real bKash payments (base URL defaults to bKash's sandbox) |
@@ -863,7 +924,7 @@ For "what touches what" at a glance:
 
 - **A price appears anywhere** → traces back to `deriveProductDisplay()` in `product-view.ts`, or — at checkout specifically — to the same `variantUnitPrice()` re-run server-side in `checkout.ts`.
 - **An order is created** → `checkout.ts` → decrements `Variant.stockQty`, claims a coupon use (`Discount.usedCount` + a `DiscountRedemption` row) when one was applied, creates `Order`+`OrderItem`, optionally calls out to `lib/payments/*`. Once it's actually confirmed (immediately for instant-paid/COD, or from the payment callback route once a live gateway redirect resolves) it calls `notifyOrderPlaced()` (`notifications.ts`) → the customer's email and the brand's new-order email, each through `messages.ts` → `mail.ts` → `EmailLog` (+ the real SMTP / Resend send if configured), §13.
-- **Stock changes** → only through `src/lib/stock.ts` (§10.4): `checkout.ts` (a sale), `payments/rollback.ts` (a failed/abandoned payment puts it back), `admin-orders.ts` (cancel/refund restock), `admin-sales.ts` (recorded sales: take, edit by net delta, delete/restock), `admin-stock.ts` (Inventory add/remove/stock-take and the product editor's stepper — which also fire the back-in-stock/wishlist emails through `afterStockChanged`), and `admin-products.ts` (opening count of a new size, history when a size or product is deleted). Nothing else writes `Variant.stockQty`; the seed writes its own `OPENING` movements.
+- **Stock changes** → only through `src/lib/stock.ts` (§10.4): `checkout.ts` (a sale), `payments/settle.ts` (a failed/abandoned payment puts it back), `admin-orders.ts` (cancel/refund restock), `admin-sales.ts` (recorded sales: take, edit by net delta, delete/restock), `admin-stock.ts` (Inventory add/remove/stock-take and the product editor's stepper — which also fire the back-in-stock/wishlist emails through `afterStockChanged`), and `admin-products.ts` (opening count of a new size, history when a size or product is deleted). Nothing else writes `Variant.stockQty`; the seed writes its own `OPENING` movements.
 - **A product is saved** → `admin-products.ts`'s `saveProduct` → looks up the chosen `Category` to derive `gender`, touches `Product` (including `sizeGuide`, §10.3), `Variant` (upsert/delete), `ProductTag` (replace), defensively re-runs `ensureMirrorCategories` if that category is Unisex.
 - **An image is uploaded** (product, site, category tile, or gender-hub hero) → uploads to ImgBB and a `ProductImage` row, the `home_hero`/`men_hero`/`women_hero` `ContentBlock`'s own field, or `Category.imageUrl` stores the returned CDN URL — same validation/upload pattern either way (`§12`).
 - **The homepage renders** → `(storefront)/layout.tsx` and `(storefront)/page.tsx` both independently read the same `home_hero` `ContentBlock` (layout for Header/Footer branding, page for the hero itself) — editing it in `/admin/content` invalidates both via `revalidatePath("/")`.

@@ -779,3 +779,15 @@ model StockMovement {
   @@index([variantId, createdAt])
   @@index([createdAt])
 }
+
+// Fixed-window request counters for the public forms and endpoints (logins, sign-up, contact,
+// newsletter, coupons, checkout, order lookups) — see src/lib/rate-limit.ts. One row per
+// "<rule>:<subject>" key (subject = client IP, account id or email), reset when the window ends.
+// Rows past their window are deleted opportunistically.
+model RateLimit {
+  key     String   @id
+  count   Int
+  resetAt DateTime @db.Timestamptz(3)
+
+  @@index([resetAt])
+}

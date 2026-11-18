@@ -12,9 +12,11 @@ async function requireOwnAdmin() {
 }
 
 const schema = z.object({
-  email: z.email(),
-  name: z.string().min(1),
-  password: z.string().min(8),
+  // Stored lowercased: login looks accounts up by the lowercased address, so an invite typed with
+  // capitals would otherwise create an account nobody can sign in to.
+  email: z.email().max(254).transform((e) => e.trim().toLowerCase()),
+  name: z.string().trim().min(1).max(80),
+  password: z.string().min(8).max(128),
   role: z.enum(["ADMIN", "STAFF"]),
 });
 

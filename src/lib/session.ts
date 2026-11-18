@@ -13,6 +13,12 @@ if (!SESSION_SECRET_ENV) {
   console.warn(
     "[session] SESSION_SECRET is not set — using an insecure development-only default. Set SESSION_SECRET before deploying.",
   );
+} else if (SESSION_SECRET_ENV.length < 32) {
+  // Every session cookie is an HS256 token signed with this secret, so anyone holding one (any
+  // customer's own cookie will do) can try guesses offline — and a guessed secret mints admin sessions.
+  console.warn(
+    "[session] SESSION_SECRET is shorter than 32 characters — replace it with a long random value (e.g. `openssl rand -base64 48`).",
+  );
 }
 const secret = new TextEncoder().encode(SESSION_SECRET_ENV ?? "dev-only-insecure-secret-change-me");
 
@@ -44,26 +50,45 @@ export type CustomerSessionPayload = {
   avatarUrl: string | null;
 };
 
-async function sign(payload: Record<string, unknown>): Promise<string> {
+// Every token is stamped with the one cookie it was issued for and checked against it on read. All
+// three share a signing secret, so without this a token could be moved into another cookie — the
+// 5-minute "password OK, code still owed" token passed as a full admin session would skip 2FA, and
+// an admin token passed as a customer one would arrive with no customerId (a query filtering on
+// `customerId: undefined` matches every customer's rows). The shape checks below are the second lock.
+const AUDIENCE = {
+  admin: "ic:admin-session",
+  customer: "ic:customer-session",
+  admin2faPending: "ic:admin-2fa-pending",
+} as const;
+type Audience = (typeof AUDIENCE)[keyof typeof AUDIENCE];
+
+async function sign(payload: Record<string, unknown>, audience: Audience, maxAgeSeconds = MAX_AGE_SECONDS): Promise<string> {
   return new SignJWT(payload)
     .setProtectedHeader({ alg: "HS256" })
+    .setAudience(audience)
     .setIssuedAt()
-    .setExpirationTime(`${MAX_AGE_SECONDS}s`)
+    .setExpirationTime(`${maxAgeSeconds}s`)
     .sign(secret);
 }
 
-async function verify<T>(token: string | undefined): Promise<T | null> {
+async function verify<T>(token: string | undefined, audience: Audience, isValid: (p: Record<string, unknown>) => boolean): Promise<T | null> {
   if (!token) return null;
   try {
-    const { payload } = await jwtVerify(token, secret);
-    return payload as T;
+    const { payload } = await jwtVerify(token, secret, { audience, algorithms: ["HS256"] });
+    return isValid(payload) ? (payload as T) : null;
   } catch {
     return null;
   }
 }
 
+const nonEmpty = (v: unknown): v is string => typeof v === "string" && v.length > 0;
+const isAdminPayload = (p: Record<string, unknown>) =>
+  nonEmpty(p.adminId) && nonEmpty(p.email) && typeof p.name === "string" && (p.role === "ADMIN" || p.role === "STAFF");
+const isCustomerPayload = (p: Record<string, unknown>) => nonEmpty(p.customerId) && nonEmpty(p.email);
+const isPendingPayload = (p: Record<string, unknown>) => nonEmpty(p.adminId);
+
 export async function setAdminSession(payload: AdminSessionPayload) {
-  const token = await sign(payload);
+  const token = await sign(payload, AUDIENCE.admin);
   const store = await cookies();
   store.set(ADMIN_COOKIE, token, {
     httpOnly: true,
@@ -76,7 +101,7 @@ export async function setAdminSession(payload: AdminSessionPayload) {
 
 export async function getAdminSession(): Promise<AdminSessionPayload | null> {
   const store = await cookies();
-  return verify<AdminSessionPayload>(store.get(ADMIN_COOKIE)?.value);
+  return verify<AdminSessionPayload>(store.get(ADMIN_COOKIE)?.value, AUDIENCE.admin, isAdminPayload);
 }
 
 export async function clearAdminSession() {
@@ -85,7 +110,7 @@ export async function clearAdminSession() {
 }
 
 export async function setCustomerSession(payload: CustomerSessionPayload) {
-  const token = await sign(payload);
+  const token = await sign(payload, AUDIENCE.customer);
   const store = await cookies();
   store.set(CUSTOMER_COOKIE, token, {
     httpOnly: true,
@@ -108,7 +133,7 @@ export async function setCustomerSession(payload: CustomerSessionPayload) {
 
 export async function getCustomerSession(): Promise<CustomerSessionPayload | null> {
   const store = await cookies();
-  return verify<CustomerSessionPayload>(store.get(CUSTOMER_COOKIE)?.value);
+  return verify<CustomerSessionPayload>(store.get(CUSTOMER_COOKIE)?.value, AUDIENCE.customer, isCustomerPayload);
 }
 
 export async function clearCustomerSession() {
@@ -122,11 +147,7 @@ export async function clearCustomerSession() {
  * naming who's mid-login without yet granting them a real session — the code step still has to pass.
  */
 export async function setAdmin2FAPending(payload: Admin2FAPendingPayload) {
-  const token = await new SignJWT(payload)
-    .setProtectedHeader({ alg: "HS256" })
-    .setIssuedAt()
-    .setExpirationTime(`${PENDING_2FA_MAX_AGE_SECONDS}s`)
-    .sign(secret);
+  const token = await sign(payload, AUDIENCE.admin2faPending, PENDING_2FA_MAX_AGE_SECONDS);
   const store = await cookies();
   store.set(ADMIN_2FA_PENDING_COOKIE, token, {
     httpOnly: true,
@@ -139,7 +160,7 @@ export async function setAdmin2FAPending(payload: Admin2FAPendingPayload) {
 
 export async function getAdmin2FAPending(): Promise<Admin2FAPendingPayload | null> {
   const store = await cookies();
-  return verify<Admin2FAPendingPayload>(store.get(ADMIN_2FA_PENDING_COOKIE)?.value);
+  return verify<Admin2FAPendingPayload>(store.get(ADMIN_2FA_PENDING_COOKIE)?.value, AUDIENCE.admin2faPending, isPendingPayload);
 }
 
 export async function clearAdmin2FAPending() {

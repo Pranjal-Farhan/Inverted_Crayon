@@ -20,19 +20,9 @@ export const DEFAULT_SHIPPING_RATES: ShippingRates = {
   OUTSIDE_DHAKA: { label: "Outside Dhaka", cost: 120, etaDays: "3–5 days" },
 };
 
-export type StoreInfo = {
-  name: string;
-  email: string;
-  phone: string;
-  address: string;
-};
+import { DEFAULT_STORE_INFO, type StoreInfo } from "@/lib/store-info-defaults";
 
-export const DEFAULT_STORE_INFO: StoreInfo = {
-  name: "Inverted Crayon",
-  email: "invertedcrayonofficial@gmail.com",
-  phone: "+880 17725-46800",
-  address: "Dhaka, Bangladesh",
-};
+export { DEFAULT_STORE_INFO, type StoreInfo };
 
 export type ChatWidgetSettings = {
   enabled: boolean;

@@ -10,7 +10,7 @@ import { CANCELLABLE_STATUSES } from "@/lib/order-status";
 export type CancellationResult = { ok: true } | { ok: false; error: string };
 
 const schema = z.object({
-  orderNumber: z.string().min(1),
+  orderNumber: z.string().min(1).max(40),
   reason: z.string().trim().max(500, "Please keep the reason under 500 characters."),
 });
 

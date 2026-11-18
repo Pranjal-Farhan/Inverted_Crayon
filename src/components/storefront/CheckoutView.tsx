@@ -22,6 +22,8 @@ const PAYMENT_ERROR_MESSAGES: Record<string, string> = {
   failed: "Your payment didn't go through. Your bag has been restored — please try again.",
   cancelled: "Payment was cancelled. Your bag has been restored.",
   error: "Something went wrong starting your payment. Please try again.",
+  review:
+    "We couldn't confirm your payment yet. If money left your account, please don't pay again — contact us with your order number and we'll sort it out.",
 };
 
 type CheckoutCustomer = {

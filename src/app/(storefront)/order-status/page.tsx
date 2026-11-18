@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { formatTaka, toNumber } from "@/lib/money";
 import { OrderTimeline } from "@/components/storefront/OrderTimeline";
 import { parseVariantLabel } from "@/lib/order-status";
+import { RATE_LIMITED_MESSAGE, RATE_LIMITS, consumeRateLimitForClient } from "@/lib/rate-limit";
 
 export const metadata: Metadata = { title: "Order status" };
 
@@ -19,15 +20,17 @@ type Props = { searchParams: Promise<{ number?: string }> };
  */
 export default async function OrderStatusPage({ searchParams }: Props) {
   const { number } = await searchParams;
-  const trimmed = number?.trim();
+  const trimmed = typeof number === "string" ? number.trim().slice(0, 40) : undefined;
+  // Lookups are capped per client, so the number space can't be walked by a script.
+  const limited = Boolean(trimmed) && !(await consumeRateLimitForClient(RATE_LIMITS.orderLookupIp));
 
-  const order = trimmed
+  const order = trimmed && !limited
     ? await db.order.findFirst({
         where: { number: trimmed, source: "ONLINE" }, // sales recorded by hand are never looked up by customers
         include: { items: { include: { product: { select: { slug: true } } } } },
       })
     : null;
-  const notFoundMsg = Boolean(trimmed) && !order;
+  const notFoundMsg = Boolean(trimmed) && !limited && !order;
 
   const zoneLabel = order
     ? order.shippingZone === "INSIDE_DHAKA"
@@ -81,6 +84,7 @@ export default async function OrderStatusPage({ searchParams }: Props) {
         <p className="crumb my-1.5 mb-3.5">Enter your order number.</p>
       )}
       {notFoundMsg && <p className="mt-2 text-[13px] text-error">Invalid order number.</p>}
+      {limited && <p className="mt-2 text-[13px] text-error">{RATE_LIMITED_MESSAGE}</p>}
 
       <form className="mt-4 flex gap-2.5" action="/order-status" method="get">
         <input

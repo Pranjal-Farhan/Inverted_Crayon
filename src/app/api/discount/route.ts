@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { evaluateCoupon, isFirstOrder, priceCartLines } from "@/lib/coupon";
 import { getCustomerSession } from "@/lib/session";
+import { RATE_LIMITED_MESSAGE, RATE_LIMITS, consumeRateLimitForClient } from "@/lib/rate-limit";
 
 // Lines, not a subtotal: whether a product-locked coupon applies depends on *which* products are
 // in the bag, and the amounts are priced here from the variants themselves — the client's own
@@ -9,12 +10,16 @@ import { getCustomerSession } from "@/lib/session";
 const schema = z.object({
   code: z.string().min(1).max(64),
   lines: z
-    .array(z.object({ variantId: z.string().min(1), qty: z.number().int().positive() }))
+    .array(z.object({ variantId: z.string().min(1).max(64), qty: z.number().int().positive().max(999) }))
     .min(1)
     .max(100),
 });
 
 export async function POST(request: Request) {
+  // Capped per client: unthrottled, this endpoint lets a script try coupon codes until one works.
+  if (!(await consumeRateLimitForClient(RATE_LIMITS.couponCheckIp))) {
+    return NextResponse.json({ ok: false, kind: "UNAVAILABLE", reason: RATE_LIMITED_MESSAGE }, { status: 429 });
+  }
   const body = await request.json().catch(() => null);
   const parsed = schema.safeParse(body);
   if (!parsed.success) {

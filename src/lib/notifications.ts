@@ -159,15 +159,56 @@ export async function notifyReturnRequested(orderId: string, orderItemIds: strin
 // ---------------------------------------------------------------------------- contact, newsletter, notify-me
 
 /** Contact form: acknowledge to the sender, and forward the message to the brand. */
-export async function notifyContactMessage(input: { name: string; email: string; message: string }) {
+export async function notifyContactMessage(
+  input: { name: string; email: string; message: string },
+  options: { acknowledge: boolean } = { acknowledge: true },
+) {
   const vars = {
-    customerName: input.name,
+    customerName: oneLine(input.name),
     customerEmail: input.email,
     message: input.message,
     receivedAt: formatDhaka(new Date()),
   };
-  await sendTemplatedEmail({ key: "CONTACT_RECEIVED", to: input.email, vars });
+  if (options.acknowledge) {
+    // The acknowledgement goes, from the brand's own address, to whatever address was typed into a
+    // public form — so it must not repeat what the sender wrote word for word, or a "name" like
+    // "You've won! Claim at prize-site.example" would make the form a spam/phishing relay with the
+    // brand's name on it. The brand's own copy below keeps everything exactly as typed.
+    await sendTemplatedEmail({
+      key: "CONTACT_RECEIVED",
+      to: input.email,
+      vars: { ...vars, customerName: echoSafeName(input.name), message: echoSafeMessage(input.message) },
+    });
+  }
   await sendTemplatedEmail({ key: "ADMIN_CONTACT_MESSAGE", vars });
+}
+
+/** Control characters and line breaks out, for text that ends up in a subject line. */
+function oneLine(text: string): string {
+  return text.replace(/[\p{Cc}\p{Cf}\u2028\u2029]+/gu, " ").replace(/\s+/g, " ").trim();
+}
+
+/**
+ * A name safe to repeat back to an address nobody has verified: letters (any script), spaces,
+ * apostrophes and hyphens only — no digits, dots or symbols, so no links, domains or phone numbers —
+ * and short. Falls back to "there" ("Hey there — …").
+ */
+function echoSafeName(name: string): string {
+  const cleaned = name.normalize("NFKC").replace(/[^\p{L}\p{M}' -]+/gu, " ").replace(/\s+/g, " ").trim().slice(0, 40).trim();
+  return cleaned || "there";
+}
+
+/** The sender's message with links, domains and email addresses taken out, shortened — see echoSafeName. */
+function echoSafeMessage(message: string): string {
+  const cleaned = message
+    .normalize("NFKC")
+    .replace(/[\p{Cc}\p{Cf}\u2028\u2029]+/gu, " ")
+    .replace(/\b(?:[a-z][a-z0-9+.-]*:\/\/|www\.)\S+/giu, "[link removed]")
+    .replace(/\S+@\S+/gu, "[address removed]")
+    .replace(/\b[\p{L}\p{N}-]+(?:\.[\p{L}\p{N}-]+)*\.[\p{L}]{2,}\b\S*/gu, "[link removed]")
+    .replace(/\s+/g, " ")
+    .trim();
+  return cleaned.length > 280 ? `${cleaned.slice(0, 279).trimEnd()}…` : cleaned;
 }
 
 /** Someone joined the newsletter. */

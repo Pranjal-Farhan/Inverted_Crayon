@@ -1,6 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // No "X-Powered-By: Next.js" on every response — it only tells a scanner which exploits to try.
+  poweredByHeader: false,
   images: {
     remotePatterns: [
       { protocol: "https", hostname: "i.ibb.co" },
@@ -45,6 +47,10 @@ const nextConfig: NextConfig = {
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
           { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
           { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains" },
+          // Deliberately narrow: only directives that can't break the storefront's own scripts,
+          // styles, images or the payment/OAuth redirects — no framing by other sites (the modern
+          // form of X-Frame-Options), no plugin content, and no <base> tag re-pointing relative URLs.
+          { key: "Content-Security-Policy", value: "frame-ancestors 'none'; object-src 'none'; base-uri 'self'" },
         ],
       },
     ];

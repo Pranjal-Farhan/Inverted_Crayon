@@ -21,6 +21,7 @@ export function OAuthErrorBanner({ code }: { code: string | null }) {
   const messages: Record<string, string> = {
     not_configured: "That sign-in method isn't set up yet — use email and password.",
     no_account: "No staff account exists for that email yet — ask an admin to create one first.",
+    password_account: "That email already has an account with a password — log in with your email and password instead.",
     error: "That sign-in attempt didn't go through. Please try again.",
   };
   const message = messages[code];

@@ -12,35 +12,41 @@ import { getCustomerSession } from "@/lib/session";
 import { variantUnitPrice } from "@/lib/product-view";
 import { notifyOrderPlaced } from "@/lib/notifications";
 import { getSiteOrigin } from "@/lib/site-url";
-import { restockAndCancelOrder } from "@/lib/payments/rollback";
+import { cancelUnpaidGatewayOrder, type GatewayMethod } from "@/lib/payments/settle";
 import { bkashConfigured, createBkashPayment } from "@/lib/payments/bkash";
 import { sslcommerzConfigured, initSslcommerzSession } from "@/lib/payments/sslcommerz";
 import { afterStockChanged, changeStock, StockError, type StockChange } from "@/lib/stock";
+import { RATE_LIMITED_MESSAGE, RATE_LIMITS, consumeRateLimitForClient } from "@/lib/rate-limit";
 
 const MAX_ORDER_NUMBER_ATTEMPTS = 5;
+/** Same cap the product page puts on a preorder line (AddToCartForm) — in-stock lines are capped by stock. */
+const MAX_PREORDER_QTY = 99;
 
 /** Thrown inside the checkout transaction for expected, user-facing failures (stock/discount raced out from under this order) — rolls back and surfaces as a normal error, not a crash. */
 class CheckoutConflictError extends Error {}
 
+// Upper bounds as well as lower ones: this is a public endpoint, and everything here ends up in the
+// database, the admin screens and the order emails.
 const checkoutSchema = z.object({
-  email: z.email(),
-  phone: z.string().min(6),
+  email: z.email().max(254),
+  phone: z.string().min(6).max(30),
   shipping: z.object({
-    fullName: z.string().min(2),
-    phone: z.string().min(6),
-    line1: z.string().min(4),
-    area: z.string().min(2),
-    district: z.string().min(2),
-    postcode: z.string().min(3),
-    country: z.string().min(2),
+    fullName: z.string().min(2).max(100),
+    phone: z.string().min(6).max(30),
+    line1: z.string().min(4).max(200),
+    area: z.string().min(2).max(100),
+    district: z.string().min(2).max(100),
+    postcode: z.string().min(3).max(20),
+    country: z.string().min(2).max(60),
   }),
   shippingZone: z.enum(["INSIDE_DHAKA", "OUTSIDE_DHAKA"]),
   paymentMethod: z.enum(["BKASH", "SSLCOMMERZ", "COD"]),
-  promoCode: z.string().nullable().optional(),
+  promoCode: z.string().max(64).nullable().optional(),
   preorderShipMode: z.enum(["together", "split"]).default("together"),
   lines: z
-    .array(z.object({ variantId: z.string().min(1), qty: z.number().int().positive() }))
-    .min(1),
+    .array(z.object({ variantId: z.string().min(1).max(64), qty: z.number().int().positive().max(999) }))
+    .min(1)
+    .max(50),
 });
 
 export type CheckoutInput = z.infer<typeof checkoutSchema>;
@@ -49,6 +55,11 @@ export type CheckoutResult =
   | { ok: false; error: string; fieldErrors?: Record<string, string> };
 
 export async function placeOrder(input: CheckoutInput): Promise<CheckoutResult> {
+  // Every order holds stock until someone deals with it, so a script placing fake cash-on-delivery
+  // orders could empty the shop — capped per client (loosely: shoppers share mobile-carrier IPs).
+  if (!(await consumeRateLimitForClient(RATE_LIMITS.placeOrderIp))) {
+    return { ok: false, error: RATE_LIMITED_MESSAGE };
+  }
   const parsed = checkoutSchema.safeParse(input);
   if (!parsed.success) {
     return { ok: false, error: "That didn't go through. Check the fields in red and try again." };
@@ -62,8 +73,10 @@ export async function placeOrder(input: CheckoutInput): Promise<CheckoutResult> 
     return { ok: false, error: "That payment method isn't available right now — please choose cash on delivery." };
   }
 
+  // Only products that are actually on sale: a draft (unpublished) product can't be bought, even by
+  // someone who has got hold of its variant ids.
   const variants = await db.variant.findMany({
-    where: { id: { in: data.lines.map((l) => l.variantId) } },
+    where: { id: { in: data.lines.map((l) => l.variantId) }, product: { status: "ACTIVE" } },
     include: { product: true },
   });
   if (variants.length !== data.lines.length) {
@@ -98,6 +111,9 @@ export async function placeOrder(input: CheckoutInput): Promise<CheckoutResult> 
 
     if (!isPreorder && variant.stockQty < line.qty) {
       return { ok: false, error: `Not enough stock for ${product.title} (${variant.size}/${variant.color}).` };
+    }
+    if (isPreorder && line.qty > MAX_PREORDER_QTY) {
+      return { ok: false, error: `You can preorder up to ${MAX_PREORDER_QTY} of ${product.title} (${variant.size}/${variant.color}).` };
     }
 
     const unitPrice = variantUnitPrice(variant, product);
@@ -183,6 +199,11 @@ export async function placeOrder(input: CheckoutInput): Promise<CheckoutResult> 
   const usesLiveGateway =
     ((data.paymentMethod as string) === "BKASH" && bkashConfigured()) ||
     ((data.paymentMethod as string) === "SSLCOMMERZ" && sslcommerzConfigured());
+  // The mocked instant-paid flow is a development convenience only: in production an online method
+  // with no gateway behind it would hand out orders marked paid that nobody paid for.
+  if ((data.paymentMethod as string) !== "COD" && !usesLiveGateway && process.env.NODE_ENV === "production") {
+    return { ok: false, error: "That payment method isn't available right now — please choose cash on delivery." };
+  }
   const initialStatus = data.paymentMethod === "COD" || usesLiveGateway ? "PENDING" : "PAID";
 
   let orderNumber = "";
@@ -310,7 +331,7 @@ export async function placeOrder(input: CheckoutInput): Promise<CheckoutResult> 
       }
     } catch (e) {
       console.error("payment gateway session init failed", e);
-      await restockAndCancelOrder(order.id);
+      await cancelUnpaidGatewayOrder(order.id, data.paymentMethod as GatewayMethod);
       return { ok: false, error: "Payment couldn't be started right now. Please try again." };
     }
   }

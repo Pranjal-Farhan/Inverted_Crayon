@@ -73,7 +73,7 @@ export function AuthForm({ initialTab = "login" }: { initialTab?: "login" | "reg
       )}
 
       <p className="font-label mt-3.5 text-center text-[13px] tracking-[1.4px] text-muted">
-        Guest orders auto-claim by email when you register.
+        Ordered as a guest? Track it anytime with your order number and email.
       </p>
     </div>
   );

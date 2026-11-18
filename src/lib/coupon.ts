@@ -109,12 +109,12 @@ export async function evaluateCoupon(input: {
   return { ok: true, coupon, itemDiscount, freeShipping: coupon.type === "FREE_SHIPPING", capApplied };
 }
 
-/** Prices cart lines exactly as placeOrder will charge them. Null when a variant no longer exists. */
+/** Prices cart lines exactly as placeOrder will charge them. Null when a variant no longer exists (or its product isn't on sale). */
 export async function priceCartLines(
   lines: { variantId: string; qty: number }[],
 ): Promise<{ priced: CouponLine[]; subtotal: number } | null> {
   const variants = await db.variant.findMany({
-    where: { id: { in: lines.map((l) => l.variantId) } },
+    where: { id: { in: lines.map((l) => l.variantId) }, product: { status: "ACTIVE" } },
     include: { product: true },
   });
   const byId = new Map(variants.map((v) => [v.id, v]));

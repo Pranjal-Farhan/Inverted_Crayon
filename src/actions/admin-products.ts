@@ -9,7 +9,7 @@ import { db } from "@/lib/db";
 import { Prisma } from "@/generated/prisma/client";
 import { requireAdminArea } from "@/lib/admin-guard";
 import { canAccessArea } from "@/lib/admin-areas";
-import { ensureMirrorCategories } from "@/actions/admin-categories";
+import { ensureMirrorCategories } from "@/lib/categories";
 import { slugify } from "@/lib/slugify";
 import { APPAREL_SIZES, ONE_SIZE } from "@/lib/sizes";
 import { MAX_SIZE_GUIDE_COLUMNS } from "@/lib/size-guide";

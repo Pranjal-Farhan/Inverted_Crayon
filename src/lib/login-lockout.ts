@@ -22,3 +22,13 @@ export function nextLockoutState(currentFailedCount: number): { failedLoginCount
   const lockedUntil = failedLoginCount >= MAX_LOGIN_ATTEMPTS ? new Date(Date.now() + LOCKOUT_MINUTES * 60_000) : null;
   return { failedLoginCount, lockedUntil };
 }
+
+/**
+ * A real bcrypt hash (cost 10, same as every stored password) of a random string nobody knows. Login
+ * compares against it when the email has no account, or no password, so those answers take as long as
+ * a wrong password on a real account and the response time can't reveal which emails are registered.
+ */
+export const STAND_IN_PASSWORD_HASH = "$2b$10$fNRxVFaYGyIrV/QdnP/UauSDm6elkbdtEpExAzSWcXMvBh3rqVcDe";
+
+/** Shown when the per-account attempt budget (src/lib/rate-limit.ts) runs out. */
+export const TOO_MANY_LOGIN_ATTEMPTS = "Too many failed attempts. Try again in a few minutes.";

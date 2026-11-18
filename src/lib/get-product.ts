@@ -5,8 +5,10 @@ import { bestSalePrice, deriveProductDisplay } from "@/lib/product-view";
 import { toNumber } from "@/lib/money";
 
 export async function getProductForPDP(slug: string) {
+  // ACTIVE only: a draft is unreleased — its page, price and variant ids (which are all it takes to
+  // order it) stay private until an admin publishes it.
   const product = await db.product.findUnique({
-    where: { slug },
+    where: { slug, status: "ACTIVE" },
     include: {
       variants: true,
       images: { orderBy: { position: "asc" } },

@@ -78,14 +78,43 @@ export async function createBkashPayment(params: {
 
 export async function executeBkashPayment(
   paymentID: string,
-): Promise<{ ok: true; trxID: string; amount: number } | { ok: false; reason: string }> {
-  const res = await fetch(`${BASE_URL}/tokenized/checkout/execute/${paymentID}`, {
-    method: "POST",
-    headers: await authedHeaders(),
-  });
-  const data = await res.json();
-  if (data.transactionStatus === "Completed") {
-    return { ok: true, trxID: data.trxID, amount: Number(data.amount) };
+): Promise<{ ok: true; trxID: string; amount: number; merchantInvoiceNumber: string | null } | { ok: false; reason: string }> {
+  try {
+    const res = await fetch(`${BASE_URL}/tokenized/checkout/execute/${encodeURIComponent(paymentID)}`, {
+      method: "POST",
+      headers: await authedHeaders(),
+    });
+    const data = await res.json();
+    if (data.transactionStatus === "Completed") {
+      return { ok: true, trxID: data.trxID, amount: Number(data.amount), merchantInvoiceNumber: data.merchantInvoiceNumber ?? null };
+    }
+    return { ok: false, reason: data.statusMessage || "Payment was not completed." };
+  } catch (e) {
+    return { ok: false, reason: e instanceof Error ? e.message : "bKash execute request failed." };
   }
-  return { ok: false, reason: data.statusMessage || "Payment was not completed." };
+}
+
+/**
+ * Where bKash itself says a payment stands ("Initiated", "Completed", …), asked server-to-server —
+ * the callback's own ?status= is just part of a URL anyone can type. null when bKash couldn't be asked.
+ */
+export async function queryBkashPayment(
+  paymentID: string,
+): Promise<{ transactionStatus: string; amount: number; merchantInvoiceNumber: string | null } | null> {
+  try {
+    const res = await fetch(`${BASE_URL}/tokenized/checkout/payment/status`, {
+      method: "POST",
+      headers: await authedHeaders(),
+      body: JSON.stringify({ paymentID }),
+    });
+    const data = await res.json();
+    if (typeof data.transactionStatus !== "string") return null;
+    return {
+      transactionStatus: data.transactionStatus,
+      amount: Number(data.amount),
+      merchantInvoiceNumber: data.merchantInvoiceNumber ?? null,
+    };
+  } catch {
+    return null;
+  }
 }

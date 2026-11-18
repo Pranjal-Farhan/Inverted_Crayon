@@ -10,7 +10,9 @@ import { getCustomerSession } from "@/lib/session";
  * already sitting in the signed session cookie from login time.
  */
 export async function GET() {
+  // Per-visitor data: never to be stored by a browser cache or any shared cache in between.
+  const headers = { "Cache-Control": "private, no-store" };
   const session = await getCustomerSession();
-  if (!session) return NextResponse.json(null, { status: 401 });
-  return NextResponse.json({ name: session.name, email: session.email, avatarUrl: session.avatarUrl });
+  if (!session) return NextResponse.json(null, { status: 401, headers });
+  return NextResponse.json({ name: session.name, email: session.email, avatarUrl: session.avatarUrl }, { headers });
 }

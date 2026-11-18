@@ -55,19 +55,64 @@ export async function initSslcommerzSession(params: {
   return { gatewayPageURL: data.GatewayPageURL };
 }
 
+/**
+ * Asks SSLCommerz (server-to-server) whether `valId` is a real, completed payment, and for what.
+ * The caller must still check that it is for *this* order and amount: a valid val_id only proves
+ * that some payment happened — on its own it would let a payment for one order settle another.
+ */
 export async function validateSslcommerzTransaction(
   valId: string,
-): Promise<{ ok: true; amount: number; tranId: string } | { ok: false; reason: string }> {
+): Promise<{ ok: true; amount: number; currency: string; tranId: string } | { ok: false; reason: string }> {
   const params = new URLSearchParams({
     val_id: valId,
     store_id: process.env.SSLCOMMERZ_STORE_ID!,
     store_passwd: process.env.SSLCOMMERZ_STORE_PASSWORD!,
     format: "json",
   });
-  const res = await fetch(`${BASE_URL}/validator/api/validationserverAPI.php?${params}`);
-  const data = await res.json();
-  if (data.status === "VALID" || data.status === "VALIDATED") {
-    return { ok: true, amount: Number(data.amount), tranId: data.tran_id };
+  try {
+    const res = await fetch(`${BASE_URL}/validator/api/validationserverAPI.php?${params}`, { cache: "no-store" });
+    const data = await res.json();
+    if (data.status === "VALID" || data.status === "VALIDATED") {
+      // currency_type/currency_amount are what we sent at initiation (BDT); amount is the fallback.
+      return {
+        ok: true,
+        amount: Number(data.currency_amount ?? data.amount),
+        currency: String(data.currency_type ?? data.currency ?? ""),
+        tranId: String(data.tran_id ?? ""),
+      };
+    }
+    return { ok: false, reason: data.status || "Validation failed." };
+  } catch (e) {
+    return { ok: false, reason: e instanceof Error ? e.message : "Validation request failed." };
   }
-  return { ok: false, reason: data.status || "Validation failed." };
+}
+
+/**
+ * The statuses SSLCommerz holds for one of our order numbers (tran_id), asked server-to-server — so
+ * a request to our fail/cancel URLs, which anyone can send, can be checked against what the gateway
+ * itself recorded. null when the gateway couldn't be asked.
+ */
+export async function querySslcommerzTransactionStatuses(tranId: string): Promise<string[] | null> {
+  const params = new URLSearchParams({
+    tran_id: tranId,
+    store_id: process.env.SSLCOMMERZ_STORE_ID!,
+    store_passwd: process.env.SSLCOMMERZ_STORE_PASSWORD!,
+    format: "json",
+  });
+  try {
+    const res = await fetch(`${BASE_URL}/validator/api/merchantTransIDvalidationAPI.php?${params}`, { cache: "no-store" });
+    const data = await res.json();
+    if (data.APIConnect !== "DONE") return null;
+    const elements: { status?: unknown }[] = Array.isArray(data.element) ? data.element : [];
+    return elements.map((e) => String(e.status ?? "").toUpperCase());
+  } catch {
+    return null;
+  }
+}
+
+/** True only when SSLCommerz records this order's payment as failed/cancelled and never as paid. */
+export function sslcommerzSaysUnpaid(statuses: string[]): boolean {
+  const paid = statuses.some((s) => s === "VALID" || s === "VALIDATED");
+  const failed = statuses.some((s) => s === "FAILED" || s === "CANCELLED" || s === "EXPIRED" || s === "UNATTEMPTED");
+  return failed && !paid;
 }
