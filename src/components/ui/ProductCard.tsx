@@ -63,10 +63,13 @@ export function ProductCard({ product }: { product: ProductDisplay }) {
     if (frameRef.current) frameRef.current.style.transform = "";
   }
 
-  const soldOutButPreorderable = product.soldOut && product.hasPreorderableVariant;
-  const primaryTag = product.soldOut && !soldOutButPreorderable
-    ? "soldout"
-    : product.isPreorder || soldOutButPreorderable
+  // Out of stock never dims the photo: it is shown exactly like any other product, with a small tag
+  // saying so — "open to preorder" when a size can still be reserved, plain "out of stock" when not.
+  const primaryTag = product.soldOut
+    ? product.hasPreorderableVariant
+      ? "preorder-open"
+      : "soldout"
+    : product.isPreorder
       ? "preorder"
       : product.onSale
         ? "sale"
@@ -107,40 +110,20 @@ export function ProductCard({ product }: { product: ProductDisplay }) {
                 fill
                 sizes="(min-width: 1024px) 25vw, 50vw"
                 quality={90}
-                className={`absolute inset-0 h-full w-full object-cover transition duration-300 ease-out ${!product.soldOut
-                    ? "group-hover:scale-[1.05] group-hover:outline group-hover:outline-2 group-hover:outline-offset-[-2px] group-hover:outline-lime"
-                    : ""
-                  }`}
+                className="absolute inset-0 h-full w-full object-cover transition duration-300 ease-out group-hover:scale-[1.05] group-hover:outline group-hover:outline-2 group-hover:outline-offset-[-2px] group-hover:outline-lime"
               />
-              {product.soldOut && (
-                <div className="absolute inset-0 z-[5] grid place-items-center bg-[rgba(8,8,9,.55)]">
-                  <span className="font-impact text-[22px] tracking-[2px] text-paper">
-                    {soldOutButPreorderable ? "PREORDER" : "SOLD OUT"}
-                  </span>
-                </div>
-              )}
             </>
           ) : (
             <PlaceholderFrame
               accentColor={accent.color}
               shape={accent.shape}
               label={product.title.toUpperCase()}
-              soldOut={product.soldOut}
-              soldOutLabel={soldOutButPreorderable ? "PREORDER" : "SOLD OUT"}
-              className={`absolute inset-0 h-full w-full transition duration-300 ease-out ${!product.soldOut
-                  ? "group-hover:scale-[1.05] group-hover:outline group-hover:outline-2 group-hover:outline-offset-[-2px] group-hover:outline-lime"
-                  : ""
-                }`}
+              className="absolute inset-0 h-full w-full transition duration-300 ease-out group-hover:scale-[1.05] group-hover:outline group-hover:outline-2 group-hover:outline-offset-[-2px] group-hover:outline-lime"
             />
           )}
           {primaryTag && (
             <span className="absolute left-2 top-2 z-[4] -rotate-2">
               <TagPill kind={primaryTag} />
-            </span>
-          )}
-          {product.soldOut && (
-            <span className="absolute inset-x-0 bottom-3 z-[6] hidden text-center font-label text-xs tracking-[1px] text-paper group-hover:block">
-              {soldOutButPreorderable ? "Preorder →" : "Notify me →"}
             </span>
           )}
         </div>

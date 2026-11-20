@@ -87,9 +87,13 @@ export function deriveProductDisplay(
   const basePrice = toNumber(product.basePrice);
   const totalStock = product.variants.reduce((sum, v) => sum + v.stockQty, 0);
   const soldOut = product.variants.length > 0 && totalStock === 0;
+  const hasPreorderableVariant = product.variants.some(variantPreorderEligible);
 
   const bestPrice = bestSalePrice(product, basePrice);
-  const onSale = bestPrice != null && bestPrice < basePrice && !soldOut;
+  // A sold-out product that can still be preordered is still being sold, so its markdown still
+  // shows — checkout charges the marked-down price for a preorder either way (variantUnitPrice),
+  // and a page showing the full price above a "৳2,500 · Preorder" line would contradict itself.
+  const onSale = bestPrice != null && bestPrice < basePrice && (!soldOut || hasPreorderableVariant);
   const salePrice = onSale ? bestPrice : null;
 
   const preorderTag = product.tags.find((t) => t.tag.type === "PREORDER");
@@ -100,8 +104,6 @@ export function deriveProductDisplay(
   const publishedRecently =
     product.publishedAt != null &&
     now.getTime() - new Date(product.publishedAt).getTime() < NEW_WINDOW_DAYS * 24 * 60 * 60 * 1000;
-
-  const hasPreorderableVariant = product.variants.some(variantPreorderEligible);
 
   return {
     id: product.id,

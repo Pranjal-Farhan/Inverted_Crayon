@@ -121,6 +121,7 @@ export function AddToCartForm({
               key={s}
               onClick={() => !disabled && setSize(s)}
               disabled={disabled}
+              title={v && v.stockQty <= 0 ? (vEligible ? "Out of stock — open to preorder" : "Out of stock") : undefined}
               className={`grid h-[46px] w-[46px] place-items-center border font-label text-[17px] ${
                 size === s ? "border-lime bg-lime text-ink" : vEligible && v!.stockQty <= 0 ? "border-yellow text-yellow" : "border-line-2"
               } ${disabled ? "text-muted-2 line-through border-dashed" : ""}`}
@@ -135,7 +136,7 @@ export function AddToCartForm({
         <div key={variant?.id ?? "none"} className="preorder-pulse mb-4 flex items-center gap-2.5 border border-dashed border-yellow bg-yellow/[0.07] px-3.5 py-2.5 text-sm">
           <Crown className="h-[22px] w-6 shrink-0 text-yellow" />
           <span>
-            This size just sold out — preorder it and our sales agent will reach out.{" "}
+            Out of stock in this size, but open to preorder — our sales agent will reach out.{" "}
           </span>
         </div>
       )}

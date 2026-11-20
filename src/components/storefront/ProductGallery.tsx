@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useEffect, useRef, useState, type MouseEvent, type PointerEvent, type TouchEvent } from "react";
 import { PlaceholderFrame } from "@/components/ui/PlaceholderFrame";
+import { TagPill } from "@/components/ui/TagPill";
 import { pickAccent } from "@/lib/accent-color";
 
 type GalleryImage = { id: string; url?: string; accentColor: string | null; alt: string | null };
@@ -15,11 +16,12 @@ const SWIPE_THRESHOLD_PX = 40;
 export function ProductGallery({
   images,
   fallbackAccent,
-  soldOut,
+  stockTag = null,
 }: {
   images: GalleryImage[];
   fallbackAccent: { color: string; shape: "x" | "circle" | "square" };
-  soldOut: boolean;
+  /** A small tag over the main photo when the product is out of stock. The photo itself is never dimmed. */
+  stockTag?: "preorder-open" | "soldout" | null;
 }) {
   const [active, setActive] = useState(0);
   const [zoomed, setZoomed] = useState(false);
@@ -138,37 +140,35 @@ export function ProductGallery({
           onMouseLeave={() => setZoomed(false)}
         >
           {activeSlide.url ? (
-            <>
-              <Image
-                src={activeSlide.url}
-                alt={activeSlide.alt ?? ""}
-                fill
-                // 110vw/220vw, not 50vw/100vw — the click-to-zoom below stretches this same
-                // <Image> 2.2x via a CSS transform, which `sizes` otherwise has no way to know
-                // about. Without the multiplier, the browser picks a srcset candidate sized for
-                // the un-zoomed box and that bitmap gets visibly upscaled on zoom. Scaling the
-                // `sizes` value by the same 2.2x makes the browser request enough real pixels
-                // up front (capped at the source image's own resolution — up to 2000x2500px —
-                // so this never asks for more than the upload actually has).
-                sizes="(min-width: 1024px) 110vw, 220vw"
-                quality={90}
-                className={`object-contain transition-transform duration-150 ease-out ${zoomed ? "scale-[2.2]" : ""}`}
-                style={zoomed ? { transformOrigin: `${zoomOrigin.x}% ${zoomOrigin.y}%` } : undefined}
-              />
-              {soldOut && (
-                <div className="absolute inset-0 z-[5] grid place-items-center bg-[rgba(8,8,9,.55)]">
-                  <span className="font-impact text-[22px] tracking-[2px] text-paper">SOLD OUT</span>
-                </div>
-              )}
-            </>
+            <Image
+              src={activeSlide.url}
+              alt={activeSlide.alt ?? ""}
+              fill
+              // 110vw/220vw, not 50vw/100vw — the click-to-zoom below stretches this same
+              // <Image> 2.2x via a CSS transform, which `sizes` otherwise has no way to know
+              // about. Without the multiplier, the browser picks a srcset candidate sized for
+              // the un-zoomed box and that bitmap gets visibly upscaled on zoom. Scaling the
+              // `sizes` value by the same 2.2x makes the browser request enough real pixels
+              // up front (capped at the source image's own resolution — up to 2000x2500px —
+              // so this never asks for more than the upload actually has).
+              sizes="(min-width: 1024px) 110vw, 220vw"
+              quality={90}
+              className={`object-contain transition-transform duration-150 ease-out ${zoomed ? "scale-[2.2]" : ""}`}
+              style={zoomed ? { transformOrigin: `${zoomOrigin.x}% ${zoomOrigin.y}%` } : undefined}
+            />
           ) : (
             <PlaceholderFrame
               accentColor={activeSlide.accentColor ?? activeAccent.color}
               shape={activeAccent.shape}
               label="PRODUCT · FRONT"
-              soldOut={soldOut}
               className="h-full w-full"
             />
+          )}
+
+          {stockTag && (
+            <span className="pointer-events-none absolute left-2 top-2 z-[5] -rotate-2">
+              <TagPill kind={stockTag} />
+            </span>
           )}
 
           {/* Desktop's click already drives the pan-zoom above, so the full-screen viewer gets

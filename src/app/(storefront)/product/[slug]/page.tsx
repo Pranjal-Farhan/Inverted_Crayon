@@ -69,7 +69,8 @@ export default async function ProductPage({ params }: Props) {
           <ProductGallery
             images={product.images.map((img) => ({ id: img.id, url: img.url || undefined, accentColor: img.accentColor, alt: img.alt }))}
             fallbackAccent={accent}
-            soldOut={display.soldOut}
+            // Out of stock is a small tag on the photo, never a dimmed photo.
+            stockTag={display.soldOut ? (display.hasPreorderableVariant ? "preorder-open" : "soldout") : null}
           />
         </div>
 
