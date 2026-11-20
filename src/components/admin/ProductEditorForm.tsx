@@ -60,12 +60,18 @@ function previewSku(title: string, size: string, color: string, seed: string): s
 type VariantRow = {
   id?: string;
   /** The real, persisted SKU — only meaningful once `id` is set (an existing variant). For a
-   * not-yet-saved row this is ignored in favor of a live previewSku() computed from the current
-   * title/size/color, so it stays accurate even if those change before the product is saved. */
+   * not-yet-saved row this is ignored in favor of `skuOverride` (when the admin typed one) or a
+   * live previewSku() computed from the current title/size/color, so it stays accurate even if
+   * those change before the product is saved. */
   sku: string;
   /** Assigned once, the instant an unsaved row is created — see previewSku(). Unused once the
    * row has a real `id`. */
   skuSeed?: string;
+  /** What the admin typed into the SKU box of an unsaved row (the box starts out showing the
+   * auto-generated preview). Absent = use the preview. Ignored once the row has an `id` — a saved
+   * variant's SKU never changes. Client-only: zod strips it before the server sees the row, and
+   * the server still cleans and de-duplicates whatever SKU it is sent (ensureUniqueSku). */
+  skuOverride?: string;
   /** Fixed at creation (one of APPAREL_SIZES, or ONE_SIZE) — never admin-editable per row, see
    * addColor(). */
   size: string;
@@ -90,7 +96,7 @@ type VariantRow = {
  * row). backfillColorGroups() turns this into real VariantRows, assigning one groupId per
  * distinct `color` string found — at load time, two rows sharing a color string genuinely are
  * the same saved color, so grouping by the text itself is correct here specifically. */
-type IncomingVariantRow = Omit<VariantRow, "groupId" | "skuSeed">;
+type IncomingVariantRow = Omit<VariantRow, "groupId" | "skuSeed" | "skuOverride">;
 
 /** A product's variants are grouped into one block per color, each block always holding exactly
  * the sizes its sizing mode calls for (6 apparel sizes, or the single "One Size"). Existing data
@@ -468,11 +474,13 @@ export function ProductEditorForm({
       // defense for anything truly unexpected (a network drop mid-request, etc.) so the admin
       // always gets a message instead of a mysterious no-op.
       try {
-        // Freeze each unsaved row's live SKU preview into a real value at the moment of
-        // submission — matches exactly what was last on screen, computed from the same
-        // title/size/color the admin was looking at.
+        // Freeze each unsaved row's SKU into a real value at the moment of submission — matches
+        // exactly what was last on screen: the SKU the admin typed into the box, or else the
+        // live preview computed from the same title/size/color they were looking at.
         const variantsPayload = variants.map((v) =>
-          v.id ? v : { ...v, sku: previewSku(title, v.size, v.color, v.skuSeed ?? nextSkuSeed()) },
+          v.id
+            ? v
+            : { ...v, sku: v.skuOverride?.trim() || previewSku(title, v.size, v.color, v.skuSeed ?? nextSkuSeed()) },
         );
         const res = await saveProduct({
           id: initial?.id,
@@ -756,8 +764,28 @@ export function ProductEditorForm({
                       const key = variantKey(v);
                       return (
                         <tr key={key}>
-                          <td className="pr-1.5 py-1 text-muted" title="Auto-generated — not editable.">
-                            {v.id ? v.sku : previewSku(title, v.size, v.color, v.skuSeed ?? "")}
+                          <td
+                            className={`min-w-[11rem] pr-1.5 py-1 ${v.id ? "text-muted" : ""}`}
+                            title={
+                              v.id
+                                ? "A saved SKU can't be changed."
+                                : "Auto-generated — type your own to replace it. Letters, numbers and dashes only; if it's already taken, a short code is added."
+                            }
+                          >
+                            {v.id ? (
+                              v.sku
+                            ) : (
+                              <input
+                                value={v.skuOverride ?? previewSku(title, v.size, v.color, v.skuSeed ?? "")}
+                                onChange={(e) => updateVariant(key, { skuOverride: e.target.value })}
+                                // Cleared and left empty = go back to the auto-generated one.
+                                onBlur={(e) => {
+                                  if (!e.target.value.trim()) updateVariant(key, { skuOverride: undefined });
+                                }}
+                                aria-label={`SKU for ${v.color} ${v.size}`}
+                                className={`${cellClass} w-44 font-mono uppercase`}
+                              />
+                            )}
                           </td>
                           <td className="pr-1.5 py-1 font-label">{v.size}</td>
                           <td className="pr-1.5 py-1">
