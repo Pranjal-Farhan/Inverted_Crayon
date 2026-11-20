@@ -7,7 +7,6 @@ import { ProductEditorForm } from "@/components/admin/ProductEditorForm";
 import { parseSizeGuide, type SizeGuideTemplateOption } from "@/lib/size-guide";
 import { getProductLockedCouponOptions } from "@/lib/coupon-options";
 import { getShippingRates } from "@/lib/store-settings";
-import { getSiteOrigin } from "@/lib/site-url";
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -93,8 +92,6 @@ export default async function EditProductPage({ params }: Props) {
       couponOptions={couponOptions}
       standardDelivery={{ insideDhaka: rates.INSIDE_DHAKA.cost, outsideDhaka: rates.OUTSIDE_DHAKA.cost }}
       canSeePurchaseCost={canSeePurchaseCost}
-      // The storefront's own address — the editor shows this product's public link under its images.
-      publicOrigin={await getSiteOrigin()}
     />
   );
 }
