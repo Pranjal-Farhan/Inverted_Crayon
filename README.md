@@ -238,6 +238,10 @@ In the admin, the product editor has a **Description — three sections** panel 
 
 Products that existed before this change keep their old description as their **Mood**; Build and How n when to wear start empty, so those products show only the Mood card until you write the others — nothing forces you to. (`Product.description` is still kept in step with Mood.)
 
+## Copying a product's public link
+
+In **Products**, every product has a **Copy link** button under its image. Click it and that product's public page address (`https://<your site>/product/<slug>`) is on your clipboard, ready to paste into a message or a post; the button says **Copied ✓** for a moment. The address starts from the `SITE_URL` setting (or the address you're browsing, if that isn't set). A **Draft** has no public page yet, so its button still copies the link but turns yellow — the link shows "not found" until the product is set to **Active**. A saved product's own page shows the same link, with the same button, under its photos.
+
 ## Importing products (JSON)
 
 **Products → Import** (`/admin/products/import`) creates products from pasted JSON — the quick way to add several products, or one with many colours, without filling the form by hand. Anyone who can use Products can use it (staff included).

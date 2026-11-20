@@ -17,6 +17,8 @@ import { DESCRIPTION_SECTIONS, SectionHeading, type DescriptionSectionKey } from
 import { VariantStockStepper } from "@/components/admin/VariantStockStepper";
 import { SizeGuideTable } from "@/components/admin/SizeGuideTable";
 import { ManufacturerLinksPanel } from "@/components/admin/ManufacturerLinksPanel";
+import { CopyProductLink } from "@/components/admin/CopyProductLink";
+import { publicProductUrl } from "@/lib/product-url";
 import type { ManufacturerLinkRow } from "@/actions/admin-manufacturer-links";
 import { DEFAULT_SIZE_GUIDE_COLUMNS, type SizeGuideRow, type SizeGuideTemplateOption } from "@/lib/size-guide";
 import { slugify } from "@/lib/slugify";
@@ -151,6 +153,7 @@ export function ProductEditorForm({
   couponOptions = [],
   standardDelivery,
   canSeePurchaseCost = false,
+  publicOrigin,
 }: {
   initial:
     | (ProductFormInput & {
@@ -167,6 +170,8 @@ export function ProductEditorForm({
   standardDelivery: { insideDhaka: number; outsideDhaka: number };
   /** Admins only (anyone who can open Finance). Staff never get the field, nor the saved figure. */
   canSeePurchaseCost?: boolean;
+  /** The storefront's own address (getSiteOrigin) — with a saved product it gives the "Public link" row under the images. */
+  publicOrigin?: string;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -659,6 +664,32 @@ export function ProductEditorForm({
                   </div>
                 </div>
               ))}
+            </div>
+          )}
+          {/* Saved products only — a new one has no public address until it exists. This is the address as
+              last saved (initial.slug), not whatever is typed into the Slug field. */}
+          {initial?.id && publicOrigin && (
+            <div className="mt-3 border border-line bg-panel-2/40 px-3 py-2.5">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                <span className="font-label text-[13px] tracking-[0.8px] text-muted">Public link</span>
+                <a
+                  href={publicProductUrl(publicOrigin, initial.slug)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="min-w-0 flex-1 truncate text-[13px] text-cyan hover:underline"
+                >
+                  {publicProductUrl(publicOrigin, initial.slug)}
+                </a>
+                <CopyProductLink
+                  url={publicProductUrl(publicOrigin, initial.slug)}
+                  name={initial.title}
+                  live={initial.status === "ACTIVE"}
+                  layout="row"
+                />
+              </div>
+              {initial.status !== "ACTIVE" && (
+                <p className="mt-1.5 text-[12px] text-yellow">Draft — customers see “not found” at this link until Status is set to Active.</p>
+              )}
             </div>
           )}
         </Panel>

@@ -4,8 +4,11 @@ import Link from "next/link";
 import { db } from "@/lib/db";
 import { formatTaka, toNumber } from "@/lib/money";
 import { manufacturerHref, manufacturerLabel } from "@/lib/manufacturer-link";
+import { getSiteOrigin } from "@/lib/site-url";
+import { publicProductUrl } from "@/lib/product-url";
 import { Panel } from "@/components/admin/Panel";
 import { StatusBadge } from "@/components/admin/StatusBadge";
+import { CopyProductLink } from "@/components/admin/CopyProductLink";
 
 type Props = { searchParams: Promise<{ q?: string; gender?: string; category?: string }> };
 
@@ -16,6 +19,8 @@ export default async function AdminProductsPage({ searchParams }: Props) {
   await requireAdminPage("products");
   const { q, gender, category } = await searchParams;
   const categories = await db.category.findMany({ orderBy: { position: "asc" } });
+  // The storefront's own address, for each row's "Copy link" button (SITE_URL, else the address being browsed).
+  const origin = await getSiteOrigin();
 
   const products = await db.product.findMany({
     where: {
@@ -107,23 +112,26 @@ export default async function AdminProductsPage({ searchParams }: Props) {
                 return (
                   <tr key={p.id} className="border-b border-line hover:bg-panel-2/40">
                     <td className="px-3 py-4">
-                      <div className="flex items-center gap-3.5">
-                        <Link
-                          href={editHref}
-                          prefetch={false}
-                          aria-label={`Edit ${p.title}`}
-                          className="relative block h-[72px] w-[72px] shrink-0 overflow-hidden border border-line-2 bg-panel-2"
-                        >
-                          {cover ? (
-                            <Image src={cover} alt="" fill sizes="72px" quality={75} className="object-cover" />
-                          ) : (
-                            <span className="font-label grid h-full w-full place-items-center text-center text-[10px] leading-tight tracking-[1px] text-muted-2">
-                              NO
-                              <br />
-                              IMAGE
-                            </span>
-                          )}
-                        </Link>
+                      <div className="flex items-start gap-3.5">
+                        <div className="flex w-[72px] shrink-0 flex-col gap-1.5">
+                          <Link
+                            href={editHref}
+                            prefetch={false}
+                            aria-label={`Edit ${p.title}`}
+                            className="relative block h-[72px] w-[72px] overflow-hidden border border-line-2 bg-panel-2"
+                          >
+                            {cover ? (
+                              <Image src={cover} alt="" fill sizes="72px" quality={75} className="object-cover" />
+                            ) : (
+                              <span className="font-label grid h-full w-full place-items-center text-center text-[10px] leading-tight tracking-[1px] text-muted-2">
+                                NO
+                                <br />
+                                IMAGE
+                              </span>
+                            )}
+                          </Link>
+                          <CopyProductLink url={publicProductUrl(origin, p.slug)} name={p.title} live={p.status === "ACTIVE"} />
+                        </div>
                         <div className="min-w-0">
                           <Link href={editHref} prefetch={false} className="block max-w-[180px] text-[15px] font-medium leading-snug hover:text-lime">
                             {p.title}
