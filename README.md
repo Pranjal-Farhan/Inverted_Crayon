@@ -238,6 +238,10 @@ In the admin, the product editor has a **Description — three sections** panel 
 
 Products that existed before this change keep their old description as their **Mood**; Build and How n when to wear start empty, so those products show only the Mood card until you write the others — nothing forces you to. (`Product.description` is still kept in step with Mood.)
 
+## Copying a photo's link
+
+On a product's page in the admin, every uploaded photo has a **Copy link** button directly under it. Click it and that photo's own web address (the `https://i.ibb.co/…` link it is hosted at) is on your clipboard; the button says **Copied ✓** for a moment. A product with five photos has five buttons, each copying its own photo's link, and they stay with their photos when you reorder or delete. A placeholder frame (no photo uploaded) shows a greyed-out **No link**. Photos you've chosen on the *new product* page but haven't saved yet have no link until the product is saved.
+
 ## Importing products (JSON)
 
 **Products → Import** (`/admin/products/import`) creates products from pasted JSON — the quick way to add several products, or one with many colours, without filling the form by hand. Anyone who can use Products can use it (staff included).

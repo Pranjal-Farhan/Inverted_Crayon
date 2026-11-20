@@ -17,6 +17,7 @@ import { DESCRIPTION_SECTIONS, SectionHeading, type DescriptionSectionKey } from
 import { VariantStockStepper } from "@/components/admin/VariantStockStepper";
 import { SizeGuideTable } from "@/components/admin/SizeGuideTable";
 import { ManufacturerLinksPanel } from "@/components/admin/ManufacturerLinksPanel";
+import { CopyImageLink } from "@/components/admin/CopyImageLink";
 import type { ManufacturerLinkRow } from "@/actions/admin-manufacturer-links";
 import { DEFAULT_SIZE_GUIDE_COLUMNS, type SizeGuideRow, type SizeGuideTemplateOption } from "@/lib/size-guide";
 import { slugify } from "@/lib/slugify";
@@ -584,41 +585,45 @@ export function ProductEditorForm({
           {(images.length > 0 || staged.length > 0) && (
             <div className="mt-3 grid grid-cols-4 gap-2">
               {images.map((img, i) => (
-                <div key={img.id} className="group relative aspect-square overflow-hidden border border-line">
-                  <Image src={img.url} alt={img.alt ?? ""} fill sizes="25vw" quality={90} className="object-cover" />
-                  {i === 0 && (
-                    <span className="absolute left-1 top-1 bg-lime px-1.5 py-0.5 font-label text-[9px] tracking-[1px] text-ink">
-                      COVER
-                    </span>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => removeImage(img.id)}
-                    aria-label="Remove image"
-                    className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-ink/80 text-xs text-paper"
-                  >
-                    ✕
-                  </button>
-                  <div className="absolute inset-x-1 bottom-1 flex items-center justify-between">
+                <div key={img.id} className="flex flex-col gap-1.5">
+                  <div className="group relative aspect-square overflow-hidden border border-line">
+                    <Image src={img.url} alt={img.alt ?? ""} fill sizes="25vw" quality={90} className="object-cover" />
+                    {i === 0 && (
+                      <span className="absolute left-1 top-1 bg-lime px-1.5 py-0.5 font-label text-[9px] tracking-[1px] text-ink">
+                        COVER
+                      </span>
+                    )}
                     <button
                       type="button"
-                      onClick={() => moveImage(i, -1)}
-                      disabled={i === 0}
-                      aria-label="Move earlier"
-                      className="grid h-5 w-5 place-items-center rounded-full bg-ink/80 text-xs text-paper disabled:opacity-30"
+                      onClick={() => removeImage(img.id)}
+                      aria-label="Remove image"
+                      className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-ink/80 text-xs text-paper"
                     >
-                      ‹
+                      ✕
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => moveImage(i, 1)}
-                      disabled={i === images.length - 1}
-                      aria-label="Move later"
-                      className="grid h-5 w-5 place-items-center rounded-full bg-ink/80 text-xs text-paper disabled:opacity-30"
-                    >
-                      ›
-                    </button>
+                    <div className="absolute inset-x-1 bottom-1 flex items-center justify-between">
+                      <button
+                        type="button"
+                        onClick={() => moveImage(i, -1)}
+                        disabled={i === 0}
+                        aria-label="Move earlier"
+                        className="grid h-5 w-5 place-items-center rounded-full bg-ink/80 text-xs text-paper disabled:opacity-30"
+                      >
+                        ‹
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => moveImage(i, 1)}
+                        disabled={i === images.length - 1}
+                        aria-label="Move later"
+                        className="grid h-5 w-5 place-items-center rounded-full bg-ink/80 text-xs text-paper disabled:opacity-30"
+                      >
+                        ›
+                      </button>
+                    </div>
                   </div>
+                  {/* Under its own tile: copies THIS photo's link (its ImgBB address), not the product page's. */}
+                  <CopyImageLink url={img.url} position={i + 1} total={images.length} />
                 </div>
               ))}
               {staged.map((s, i) => (
