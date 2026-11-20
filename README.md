@@ -238,6 +238,26 @@ In the admin, the product editor has a **Description — three sections** panel 
 
 Products that existed before this change keep their old description as their **Mood**; Build and How n when to wear start empty, so those products show only the Mood card until you write the others — nothing forces you to. (`Product.description` is still kept in step with Mood.)
 
+## Importing products (JSON)
+
+**Products → Import** (`/admin/products/import`) creates products from pasted JSON — the quick way to add several products, or one with many colours, without filling the form by hand. Anyone who can use Products can use it (staff included).
+
+1. Paste the JSON (or **Load a .json file**) and press **Preview**. Nothing is saved: for each product you see its category, price, colour × size count, SKUs and tags, plus anything wrong, in plain words.
+2. Press **Create N drafts**. Products are created one at a time, always as **Drafts**, through the same save code as the product form — so SKUs, stock history, tags and the shop's cached pages come out exactly as if they'd been typed in.
+3. Open each draft, add its photos, set **Status** to Active and Save. (A draft has no public page, so review it in the admin.)
+
+How it behaves:
+
+- **Safe to repeat.** A product whose slug already exists is skipped, so importing the same file twice changes nothing.
+- **Problems are per product.** An unknown category (the real ones are listed), a misspelt field name, a bad hex colour, a SKU already used by another product, duplicate slugs or SKUs inside the paste, a markdown that isn't below the price… each marks only that product "Needs fixing"; the rest still import.
+- **Forgiving about pasting.** ```` ```json ```` fences and a stray byte-order mark are removed; curly quotes are called out by name.
+- **Limits.** Up to 30 products and 1 MB per paste. Staff can't set `purchaseCost` (they're told it was ignored).
+- **Not included (yet):** photos — add them in the editor. Collections aren't stored (the form has no such field).
+
+The format, with a copyable example, is on the page itself (the "JSON format" panel); it lives in `src/lib/product-import-example.ts`. In short: `gender` + `category` by name, `price` (+ `salePrice` or `discount`), `mood`, `build` and `howToWear` (lists are fine), `colors` (`name`, `hex`, optional `code`/`stock`/`price`/`preorderAdvance`), `skuPattern` like `SCRIB-{COLOR}-{SIZE}`, and top-level `stock` / `preorderAdvance` for every variant. Every colour gets all six sizes, or One Size with `"sizing": "ONE_SIZE"`.
+
+SKUs of a product made by hand can also be typed now: the SKU box of a new variant row is an input pre-filled with the generated value.
+
 ## Admin product editor reliability fixes
 
 Three bugs made the product editor feel unreliable, on top of the slug/SKU work above:

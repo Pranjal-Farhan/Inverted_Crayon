@@ -65,9 +65,14 @@ export default async function AdminProductsPage({ searchParams }: Props) {
         <button type="submit" className="border border-line-2 px-3 py-2 text-sm hover:border-lime">
           Filter
         </button>
-        <Link href="/admin/products/new" className="btn-primary ml-auto bg-lime px-4 py-2 font-impact text-sm text-ink">
-          + New product
-        </Link>
+        <div className="ml-auto flex items-center gap-2.5">
+          <Link href="/admin/products/import" className="border border-line-2 px-3 py-2 text-sm hover:border-lime">
+            Import
+          </Link>
+          <Link href="/admin/products/new" className="btn-primary bg-lime px-4 py-2 font-impact text-sm text-ink">
+            + New product
+          </Link>
+        </div>
       </form>
 
       <Panel className="!p-0">

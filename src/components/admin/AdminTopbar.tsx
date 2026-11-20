@@ -9,6 +9,7 @@ const TITLES: [string, string][] = [
   ["/admin/dashboard", "Dashboard"],
   ["/admin/orders", "Orders"],
   ["/admin/products/new", "New product"],
+  ["/admin/products/import", "Import products"],
   ["/admin/products", "Products"],
   ["/admin/inventory", "Inventory"],
   ["/admin/categories", "Categories"],
