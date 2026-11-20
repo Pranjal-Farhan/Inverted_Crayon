@@ -13,7 +13,7 @@ export const variantSchema = z.object({
   id: z.string().optional(),
   // Only meaningful for a brand-new variant (no id yet) — the client generates an instant
   // title/size/color-derived preview the moment the row is created (ProductEditorForm.tsx);
-  // the server re-verifies/disambiguates it (ensureUniqueSku) rather than trusting it outright.
+  // the server re-verifies/disambiguates it (ensureUniqueSkus) rather than trusting it outright.
   // Ignored entirely for an existing variant, whose real sku is left untouched on update.
   sku: z.string().trim().min(1, "SKU is required."),
   // The admin editor only ever generates a full color block from APPAREL_SIZES or [ONE_SIZE]

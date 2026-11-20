@@ -12,7 +12,7 @@ import { ensureMirrorCategories } from "@/lib/categories";
 import { slugify } from "@/lib/slugify";
 import { formatProductValidationError, productSchema, type ProductFormInput } from "@/lib/product-schema";
 import { invalidateProduct } from "@/lib/invalidate";
-import { recordOpening, recordRemoval } from "@/lib/stock";
+import { recordOpenings, recordRemoval } from "@/lib/stock";
 import { describeError } from "@/lib/action-errors";
 
 async function requireAdmin() {
@@ -25,21 +25,50 @@ function randomToken(len: number, upper: boolean): string {
 }
 
 /** The client already builds a title/size/color-derived SKU the instant a variant row is
- * created (ProductEditorForm.tsx) — this just sanitizes it defensively and re-verifies it's
- * actually unique against the database before it's ever written, appending a short random
- * suffix (and retrying) only if that exact value is already taken by some other variant.
- * Globally unique by schema, so even an admin reusing an identical title/size/color combo
- * across two different products can't collide. */
-async function ensureUniqueSku(tx: Prisma.TransactionClient, candidate: string): Promise<string> {
-  const base = candidate.trim().replace(/[^a-zA-Z0-9-]/g, "").toUpperCase().slice(0, 40) || "SKU";
-  for (let attempt = 0; attempt < 5; attempt++) {
-    const sku = attempt === 0 ? base : `${base}-${randomToken(4, true)}`;
-    if (!(await tx.variant.findUnique({ where: { sku } }))) return sku;
+ * created (ProductEditorForm.tsx), and the admin can type over it — this sanitizes every one
+ * defensively and re-verifies they are actually unique against the database before anything is
+ * written, appending a short random suffix (and re-checking) only to the ones whose exact value is
+ * already taken by some other variant, or repeated within this very batch. Globally unique by
+ * schema, so even an admin reusing an identical title/size/color combo across two different
+ * products can't collide. One query for the whole batch — not one per size — because this runs
+ * inside the save transaction, where every round trip to the database counts against its time limit. */
+async function ensureUniqueSkus(tx: Prisma.TransactionClient, candidates: string[]): Promise<string[]> {
+  const bases = candidates.map((c) => c.trim().replace(/[^a-zA-Z0-9-]/g, "").toUpperCase().slice(0, 40) || "SKU");
+  const inDb = new Set((await tx.variant.findMany({ where: { sku: { in: [...new Set(bases)] } }, select: { sku: true } })).map((r) => r.sku));
+  const used = new Set(inDb);
+  const result: string[] = [];
+  let pending: number[] = [];
+  bases.forEach((base, i) => {
+    if (used.has(base)) pending.push(i);
+    else {
+      used.add(base);
+      result[i] = base;
+    }
+  });
+  // Only the (rare) taken ones need a suffix: try a few rounds, checking the suffixed values too.
+  for (let round = 0; pending.length > 0 && round < 5; round++) {
+    const tries = pending.map((i) => `${bases[i]}-${randomToken(round < 4 ? 4 : 8, true)}`);
+    const clash = new Set((await tx.variant.findMany({ where: { sku: { in: tries } }, select: { sku: true } })).map((r) => r.sku));
+    const still: number[] = [];
+    pending.forEach((i, k) => {
+      if (clash.has(tries[k]) || used.has(tries[k])) still.push(i);
+      else {
+        used.add(tries[k]);
+        result[i] = tries[k];
+      }
+    });
+    pending = still;
   }
-  return `${base}-${randomToken(8, true)}`;
+  for (const i of pending) result[i] = `${bases[i]}-${randomToken(10, true)}`; // practically unreachable
+  return result;
 }
 
-/** Same idea as ensureUniqueSku, for Product.slug — re-slugifies the admin's intended slug
+/** A stored price (Decimal or null) equals what the form sent (number, null or absent). */
+function sameMoney(stored: { toNumber(): number } | null, sent: number | null | undefined): boolean {
+  return stored === null ? sent == null : sent != null && stored.toNumber() === sent;
+}
+
+/** Same idea as ensureUniqueSkus, for Product.slug — re-slugifies the admin's intended slug
  * (defensive: the Slug field is free text, so this guarantees a URL-safe result no matter what
  * was typed into it) and appends a short random suffix only if that exact slug already belongs
  * to a *different* product. excludeId lets an already-saved product keep its own slug as a
@@ -54,7 +83,7 @@ async function ensureUniqueSlug(tx: Prisma.TransactionClient, candidate: string,
   return `${base}-${randomToken(8, false)}`;
 }
 
-/** ensureUniqueSlug/ensureUniqueSku check-then-write inside their own transaction, which closes
+/** ensureUniqueSlug/ensureUniqueSkus check-then-write inside their own transaction, which closes
  * the gap for a single save but not for two saves landing in the exact same instant — each
  * transaction's uniqueness check runs under Postgres's normal read-committed isolation, so it
  * can't see the other's still-uncommitted insert, and the slower one to commit hits a real
@@ -95,21 +124,18 @@ export async function saveProduct(input: ProductFormInput): Promise<ProductSaveR
   // this is what made the Save button feel like it randomly failed. Now every path here either
   // returns a normal {ok:false, error} or really is an unexpected bug worth logging.
   try {
-    const category = await db.category.findUnique({ where: { id: data.categoryId } });
+    // Independent of each other, so asked at the same time — each is a round trip to the database.
+    const [category, tags, existing] = await Promise.all([
+      db.category.findUnique({ where: { id: data.categoryId } }),
+      db.tag.findMany(),
+      data.id ? db.product.findUnique({ where: { id: data.id }, include: { variants: true } }) : Promise.resolve(null),
+    ]);
     if (!category) return { ok: false, error: "Select a valid category." };
     // Self-healing: a Unisex category created before its Men/Women mirrors existed (or one
     // that predates this feature) gets them backfilled here too, not just at creation time.
     if (category.gender === "UNISEX") await ensureMirrorCategories(category.name, category.slug);
 
-    const tags = await db.tag.findMany();
     const tagByType = Object.fromEntries(tags.map((t) => [t.type, t]));
-
-    const existing = data.id
-      ? await db.product.findUnique({
-        where: { id: data.id },
-        include: { variants: true },
-      })
-      : null;
     const existingVariants = existing?.variants ?? [];
     const variants = data.variants.map((variant) => {
       if (variant.id) return variant;
@@ -180,56 +206,76 @@ export async function saveProduct(input: ProductFormInput): Promise<ProductSaveR
         },
       });
 
-      // variants: upsert provided, delete removed
+      // ---- variants
       //
-      // Every existing variant is parked on a temporary, per-variant-unique (size, color)
-      // first, before any real value is written. Without this, two existing rows that swap
+      // Round trips are the cost that matters in here: the whole save is one transaction with a
+      // time limit, and the database may be far away. Saving used to make several calls PER SIZE
+      // (a "park" update, an uniqueness check, an upsert, an opening-balance row) — about 250 calls
+      // for a product with 54 variants, which at 200 ms apiece ran out of time and rolled back
+      // ("The database took too long to finish this"). Now the number of calls doesn't grow with
+      // the number of sizes:
+      //   - existing sizes are compared with what is stored, in memory, and only the ones that
+      //     really changed are written (identical changes share one statement);
+      //   - new sizes get their SKUs checked in one query, are created in one insert, and their
+      //     opening-balance rows go in with one more.
+      const existingById = new Map(existingVariants.map((e) => [e.id, e]));
+      const kept = variants.filter((v) => v.id !== undefined && existingById.has(v.id));
+      // A size with no id — or an id that isn't one of THIS product's variants, which must never
+      // be able to touch another product's rows — is a new size.
+      const fresh = variants.filter((v) => v.id === undefined || !existingById.has(v.id));
+
+      const patches = new Map<string, { ids: string[]; data: Prisma.VariantUpdateManyMutationInput }>();
+      const moving: string[] = [];
+      for (const v of kept) {
+        const e = existingById.get(v.id!)!;
+        const data: Prisma.VariantUpdateManyMutationInput = {};
+        const moves = e.size !== v.size || e.color !== v.color;
+        // A size whose (size, color) changes is written with both, because it is parked first (below).
+        if (moves) {
+          data.size = v.size;
+          data.color = v.color;
+          moving.push(v.id!);
+        }
+        if (v.colorHex !== undefined && e.colorHex !== v.colorHex) data.colorHex = v.colorHex;
+        if (e.lowStockThreshold !== v.lowStockThreshold) data.lowStockThreshold = v.lowStockThreshold;
+        if (!sameMoney(e.priceOverride, v.priceOverride)) data.priceOverride = v.priceOverride ?? null;
+        // sku deliberately never changes after creation, and stockQty is left alone: this form loads
+        // stock at page-open time, and a customer purchase (or a stepper edit) between then and save
+        // would get silently overwritten by that stale value. Stock changes go through the editor's
+        // VariantStockStepper (setVariantStock) instead; new variants still get their initial count below.
+        if (!sameMoney(e.preorderAdvanceAmount, v.preorderAdvanceAmount)) data.preorderAdvanceAmount = v.preorderAdvanceAmount ?? null;
+        if (Object.keys(data).length === 0) continue;
+        const key = JSON.stringify(data);
+        const group = patches.get(key);
+        if (group) group.ids.push(v.id!);
+        else patches.set(key, { ids: [v.id!], data });
+      }
+
+      // Every size that is changing (size, color) is parked on a temporary, per-variant-unique
+      // value first, before any real value is written. Without this, two existing rows that swap
       // sizes (A: M→L, B: L→M — a perfectly valid *final* state, no duplicate anywhere) can
       // still fail: Postgres checks @@unique([productId, size, color]) immediately after each
       // UPDATE, not deferred to commit, so writing A's new size while B still holds the old one
       // collides mid-transaction even though nothing is actually wrong once both rows have
       // landed. `__tmp_<id>` is unique by construction (variant ids are unique and real
-      // size/color values never contain one), so this first pass can never collide with
-      // anything, vacating every slot before the real pass risks touching one that's still "in
-      // use" by a row that hasn't been updated yet.
-      for (const v of variants) {
-        if (!v.id) continue;
-        await tx.variant.update({
-          where: { id: v.id },
-          data: { size: `__tmp_${v.id}`, color: `__tmp_${v.id}` },
-        });
+      // size/color values never contain one), so this pass can never collide with anything,
+      // vacating every slot before the real pass risks touching one that's still "in use" by a
+      // row that hasn't been updated yet. One statement for all of them.
+      if (moving.length > 0) {
+        await tx.$executeRaw`UPDATE "Variant" SET "size" = '__tmp_' || "id", "color" = '__tmp_' || "id" WHERE "productId" = ${productRecord.id} AND "id" IN (${Prisma.join(moving)})`;
+      }
+      for (const { ids, data: patch } of patches.values()) {
+        await tx.variant.updateMany({ where: { productId: productRecord.id, id: { in: ids } }, data: patch });
       }
 
-      const keepIds: string[] = [];
-      for (const v of variants) {
-        // Only new variants need their SKU verified (an existing one keeps whatever it
-        // already has) — skip the uniqueness-check query entirely for updates.
-        const newSku = v.id ? null : await ensureUniqueSku(tx, v.sku);
-        const record = await tx.variant.upsert({
-          where: { id: v.id ?? "__new__" },
-          update: {
-            // sku deliberately omitted — auto-generated once at creation (below) and left
-            // alone after that, same reasoning as stockQty just below.
-            size: v.size,
-            color: v.color,
-            colorHex: v.colorHex,
-            // stockQty deliberately omitted: this form loads stock at page-open time, and a
-            // customer purchase (or a stepper edit) between then and save would get silently
-            // overwritten by that stale value. Stock changes go through the editor's
-            // VariantStockStepper (setVariantStock) instead; new variants still get their
-            // initial count below.
-            lowStockThreshold: v.lowStockThreshold,
-            priceOverride: v.priceOverride ?? null,
-            preorderAdvanceAmount: v.preorderAdvanceAmount ?? null,
-          },
-          create: {
+      const keepIds = new Set(kept.map((v) => v.id!));
+      if (fresh.length > 0) {
+        // Only new variants need their SKU verified (an existing one keeps whatever it already has).
+        const skus = await ensureUniqueSkus(tx, fresh.map((v) => v.sku));
+        const created = await tx.variant.createManyAndReturn({
+          data: fresh.map((v, i) => ({
             productId: productRecord.id,
-            // Prisma validates the shape of the whole upsert payload up front, including the
-            // branch that won't actually run — for an existing variant (v.id set, newSku left
-            // null above) this `create` object is dead code that never executes, but it still
-            // has to satisfy the schema's non-null sku, so it falls back to the variant's own
-            // already-real sku rather than literally writing null and failing validation.
-            sku: newSku ?? v.sku,
+            sku: skus[i],
             size: v.size,
             color: v.color,
             colorHex: v.colorHex,
@@ -237,50 +283,54 @@ export async function saveProduct(input: ProductFormInput): Promise<ProductSaveR
             lowStockThreshold: v.lowStockThreshold,
             priceOverride: v.priceOverride ?? null,
             preorderAdvanceAmount: v.preorderAdvanceAmount ?? null,
-          },
+          })),
+          select: { id: true, sku: true, size: true, color: true, stockQty: true },
         });
-        keepIds.push(record.id);
+        for (const c of created) keepIds.add(c.id);
         // A brand-new size/colour starts with the count typed in the form — record it as its opening balance.
-        if (!v.id) await recordOpening(tx, record.id, { actorEmail: actor.email });
+        await recordOpenings(tx, created, productRecord.title, { actorEmail: actor.email });
       }
+
       // Sizes removed from the form go with whatever stock they still had — written to the stock history first.
-      const removedVariants = await tx.variant.findMany({ where: { productId: productRecord.id, id: { notIn: keepIds } }, select: { id: true } });
-      await recordRemoval(tx, removedVariants.map((r) => r.id), { actorEmail: actor.email });
-      await tx.variant.deleteMany({ where: { productId: productRecord.id, id: { notIn: keepIds } } });
+      const removedIds = existingVariants.filter((e) => !keepIds.has(e.id)).map((e) => e.id);
+      if (removedIds.length > 0) {
+        await recordRemoval(tx, removedIds, { actorEmail: actor.email });
+        await tx.variant.deleteMany({ where: { productId: productRecord.id, id: { in: removedIds } } });
+      }
 
       // tags
-      await tx.productTag.deleteMany({ where: { productId: productRecord.id } });
-      const tagInserts: { type: string; enabled: boolean }[] = [
-        { type: "NEW", enabled: data.tagNew },
-        { type: "PREORDER", enabled: data.tagPreorder },
-        { type: "LIMITED", enabled: data.tagLimited },
-        { type: "BESTSELLER", enabled: data.tagBestseller },
-      ];
-      for (const t of tagInserts) {
-        if (t.enabled && tagByType[t.type]) {
-          await tx.productTag.create({
-            data: { productId: productRecord.id, tagId: tagByType[t.type].id },
-          });
-        }
-      }
+      if (existing) await tx.productTag.deleteMany({ where: { productId: productRecord.id } });
+      const tagRows = (
+        [
+          ["NEW", data.tagNew],
+          ["PREORDER", data.tagPreorder],
+          ["LIMITED", data.tagLimited],
+          ["BESTSELLER", data.tagBestseller],
+        ] as const
+      )
+        .filter(([type, enabled]) => enabled && tagByType[type])
+        .map(([type]) => ({ productId: productRecord.id, tagId: tagByType[type].id }));
+      if (tagRows.length > 0) await tx.productTag.createMany({ data: tagRows });
 
       // product-locked coupons: only PRODUCT-scope coupons are ever (dis)connected, so a coupon
       // that's been switched to global and back keeps its attachments rather than losing them to
-      // an editor that couldn't show it.
-      const productLocked = await tx.discount.findMany({ where: { scope: "PRODUCT" }, select: { id: true } });
-      const wanted = new Set(data.couponIds);
-      await tx.product.update({
-        where: { id: productRecord.id },
-        data: {
-          coupons: {
-            connect: productLocked.filter((c) => wanted.has(c.id)).map((c) => ({ id: c.id })),
-            disconnect: productLocked.filter((c) => !wanted.has(c.id)).map((c) => ({ id: c.id })),
+      // an editor that couldn't show it. (A new product with none ticked has nothing to connect.)
+      if (existing || data.couponIds.length > 0) {
+        const productLocked = await tx.discount.findMany({ where: { scope: "PRODUCT" }, select: { id: true } });
+        const wanted = new Set(data.couponIds);
+        await tx.product.update({
+          where: { id: productRecord.id },
+          data: {
+            coupons: {
+              connect: productLocked.filter((c) => wanted.has(c.id)).map((c) => ({ id: c.id })),
+              disconnect: productLocked.filter((c) => !wanted.has(c.id)).map((c) => ({ id: c.id })),
+            },
           },
-        },
-      });
+        });
+      }
 
       return productRecord;
-    }, { timeout: 15000 }));
+    }, { timeout: 30000, maxWait: 10000 }));
 
     revalidatePath("/admin/products");
     revalidatePath(`/admin/products/${product.id}`);
@@ -288,7 +338,7 @@ export async function saveProduct(input: ProductFormInput): Promise<ProductSaveR
     if (existing && existing.slug !== product.slug) invalidateProduct({ slug: existing.slug });
     return { ok: true, id: product.id };
   } catch (e) {
-    // ensureUniqueSlug/ensureUniqueSku already resolve the overwhelming majority of collisions
+    // ensureUniqueSlug/ensureUniqueSkus already resolve the overwhelming majority of collisions
     // before anything is written — this is the last-resort safety net for the sliver that can
     // still race past them (two saves landing on the exact same retried value in the same
     // instant), using Prisma's actual error code rather than sniffing the message text, which

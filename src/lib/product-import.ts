@@ -215,7 +215,7 @@ function paragraphText(v: string | string[] | undefined): string {
 
 const SIZE_TOKEN: Record<string, string> = { S: "S", M: "M", L: "L", XL: "XL", XXL: "XXL", XXXL: "XXXL", [ONE_SIZE]: "OS" };
 
-/** The same cleaning the server applies to every SKU (ensureUniqueSku): A-Z, 0-9 and dashes, 40 characters. */
+/** The same cleaning the server applies to every SKU (ensureUniqueSkus): A-Z, 0-9 and dashes, 40 characters. */
 const cleanSku = (s: string) => s.replace(/[^a-zA-Z0-9-]/g, "").toUpperCase().slice(0, 40);
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -253,10 +253,14 @@ function convertOne(raw: unknown, index: number, ctx: ImportContext): Draft {
   // ---- category
   const sameGender = ctx.categories.filter((c) => c.gender === p.gender);
   const wanted = p.category.trim().toLowerCase();
-  const category = sameGender.find((c) => c.slug === slugify(p.category) || c.name.toLowerCase() === wanted);
+  // The name as shown wins; the category's web name (slug) is the fallback — a category that was later
+  // renamed in the admin keeps its old slug, so "Outerwear" can still find "Winter-wear".
+  const category = sameGender.find((c) => c.name.toLowerCase() === wanted) ?? sameGender.find((c) => c.slug === slugify(p.category));
   if (!category) {
     const have = sameGender.map((c) => c.name).join(", ");
     errors.push(`There is no "${p.category}" category under ${p.gender}.${have ? ` Available: ${have}.` : " That branch has no categories yet."}`);
+  } else if (category.name.toLowerCase() !== wanted) {
+    warnings.push(`"${p.category}" matched the category called "${category.name}" (its web name is "${category.slug}") — check that's the right shelf.`);
   }
 
   // ---- price and markdown

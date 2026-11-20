@@ -70,7 +70,7 @@ type VariantRow = {
   /** What the admin typed into the SKU box of an unsaved row (the box starts out showing the
    * auto-generated preview). Absent = use the preview. Ignored once the row has an `id` — a saved
    * variant's SKU never changes. Client-only: zod strips it before the server sees the row, and
-   * the server still cleans and de-duplicates whatever SKU it is sent (ensureUniqueSku). */
+   * the server still cleans and de-duplicates whatever SKU it is sent (ensureUniqueSkus). */
   skuOverride?: string;
   /** Fixed at creation (one of APPAREL_SIZES, or ONE_SIZE) — never admin-editable per row, see
    * addColor(). */

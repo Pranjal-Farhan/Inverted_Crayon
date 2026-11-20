@@ -119,6 +119,36 @@ export async function recordOpening(tx: Tx, variantId: string, ctx: Omit<Context
   if (v && v.stockQty > 0) await writeMovement(tx, variantId, v, v.stockQty, v.stockQty, { ...ctx, reason: "OPENING", note: ctx.note ?? "Starting stock when the size was added" });
 }
 
+/**
+ * recordOpening for a whole batch of just-created variants in ONE insert. A product with dozens of
+ * sizes would otherwise cost a query per size inside the save transaction — on a database that is
+ * not next door, the difference between a second and a timed-out save. Only variants that start
+ * with stock get a row (a count of 0 has nothing to record), exactly like recordOpening.
+ */
+export async function recordOpenings(
+  tx: Tx,
+  variants: { id: string; sku: string; size: string; color: string; stockQty: number }[],
+  productTitle: string,
+  ctx: Omit<Context, "reason"> = {},
+) {
+  const rows = variants
+    .filter((v) => v.stockQty > 0)
+    .map((v) => ({
+      variantId: v.id,
+      productTitle,
+      variantLabel: label(v),
+      sku: v.sku,
+      delta: v.stockQty,
+      qtyAfter: v.stockQty,
+      reason: "OPENING" as const,
+      orderId: ctx.orderId ?? null,
+      orderNumber: ctx.orderNumber ?? null,
+      note: (ctx.note ?? "Starting stock when the size was added").trim() || null,
+      actorEmail: ctx.actorEmail ?? null,
+    }));
+  if (rows.length > 0) await tx.stockMovement.createMany({ data: rows });
+}
+
 /** Writes the history for variants that are about to be deleted with stock on them (the rows can't be changed after). */
 export async function recordRemoval(tx: Tx, variantIds: string[], ctx: Omit<Context, "reason"> = {}) {
   if (variantIds.length === 0) return;
