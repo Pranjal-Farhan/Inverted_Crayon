@@ -46,6 +46,8 @@ const SWALLOW_MS = 800;
 const TOUCH_ECHO_MS = 700;
 /** How far the wheel tucks over the card's own edge, so there is never a hairline gap between them. */
 const TUCK = 3;
+/** A circle whose picture fails to load tries again after each of these pauses, then shows the placeholder. */
+const RETRY_DELAYS_MS = [700, 1800, 4000];
 
 export type WheelImage = { id: string; url: string; accentColor: string | null };
 
@@ -99,10 +101,10 @@ export function useWheelHover({ enabled, warm }: { enabled: boolean; warm: () =>
   const swallowTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const finger = useRef<{ x: number; y: number } | null>(null);
   const swallow = useRef(false);
-  // True from the moment a held finger has opened the wheel until it lifts: the finger may then drift
-  // or slide without closing it, and the page is kept from scrolling under it.
+  // True from the moment a held finger has opened the wheel until it lifts: the finger may then drift,
+  // slide or scroll the page without closing it — the wheel rides along with its card.
   const peeking = useRef(false);
-  const unlock = useRef<(() => void) | null>(null);
+  const [touching, setTouching] = useState(false);
   const lastTouch = useRef(0);
 
   const clearTimers = () => {
@@ -117,7 +119,6 @@ export function useWheelHover({ enabled, warm }: { enabled: boolean; warm: () =>
       if (openTimer.current) clearTimeout(openTimer.current);
       if (warmTimer.current) clearTimeout(warmTimer.current);
       if (swallowTimer.current) clearTimeout(swallowTimer.current);
-      unlock.current?.();
     },
     [],
   );
@@ -133,6 +134,10 @@ export function useWheelHover({ enabled, warm }: { enabled: boolean; warm: () =>
 
   return {
     open,
+    /** A finger is holding the card with the wheel open (the wheel then rides along if the page scrolls). */
+    touching,
+    /** For the card's own touch handlers: while peeking, the finger sliding off the card must not drop the crayon circle either. */
+    isPeeking: () => peeking.current,
     // ---- mouse
     enter() {
       if (!enabled || typeof window === "undefined" || !window.matchMedia("(hover: hover) and (pointer: fine)").matches) return;
@@ -155,8 +160,7 @@ export function useWheelHover({ enabled, warm }: { enabled: boolean; warm: () =>
         // A second finger (a pinch) is not a hold.
         finger.current = null;
         peeking.current = false;
-        unlock.current?.();
-        unlock.current = null;
+        setTouching(false);
         clearTimers();
         setOpen(false);
         return;
@@ -167,11 +171,7 @@ export function useWheelHover({ enabled, warm }: { enabled: boolean; warm: () =>
         if (!finger.current) return;
         swallow.current = true;
         peeking.current = true;
-        const block = (ev: Event) => {
-          if (ev.cancelable) ev.preventDefault();
-        };
-        document.addEventListener("touchmove", block, { passive: false });
-        unlock.current = () => document.removeEventListener("touchmove", block);
+        setTouching(true);
       });
     },
     touchMove(e: TouchEvent) {
@@ -191,8 +191,7 @@ export function useWheelHover({ enabled, warm }: { enabled: boolean; warm: () =>
       lastTouch.current = Date.now();
       finger.current = null;
       peeking.current = false;
-      unlock.current?.();
-      unlock.current = null;
+      setTouching(false);
       clearTimers();
       setOpen(false);
       // The click for this touch (if the browser sends one) arrives right after; after that, forget it.
@@ -216,13 +215,22 @@ export function useWheelHover({ enabled, warm }: { enabled: boolean; warm: () =>
  */
 function WheelPhoto({ src, size, fallback }: { src: string | null; size: number; fallback: ReactNode }) {
   const [state, setState] = useState<"loading" | "ready" | "failed">("loading");
+  // A circle that fails to load tries again a few times before giving up: the usual cause is a hiccup
+  // (a cold server, a sleeping database, a busy image host), not a photo that will never load. A failed
+  // answer is never cached, so a retry — the address with a throwaway query, to make the browser ask again —
+  // gets a fresh one.
+  const [attempt, setAttempt] = useState(0);
+  const retry = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (retry.current) clearTimeout(retry.current); }, []);
   if (!src || state === "failed") return <>{fallback}</>;
+  const shown = attempt > 0 && !src.startsWith("data:") ? `${src}?r=${attempt}` : src;
   return (
     // A plain <img>, on purpose: this is a few-KB thumbnail from our own endpoint, and next/image's
     // resize-on-demand (which downloads the multi-MB original first) is exactly what is being avoided.
     // eslint-disable-next-line @next/next/no-img-element
     <img
-      src={src}
+      key={attempt}
+      src={shown}
       alt=""
       width={size}
       height={size}
@@ -230,17 +238,21 @@ function WheelPhoto({ src, size, fallback }: { src: string | null; size: number;
       loading="eager"
       draggable={false}
       onLoad={() => setState("ready")}
-      onError={() => setState("failed")}
+      onError={() => {
+        if (src.startsWith("data:") || attempt >= RETRY_DELAYS_MS.length) return setState("failed");
+        retry.current = setTimeout(() => setAttempt((n) => n + 1), RETRY_DELAYS_MS[attempt]);
+      }}
       className="absolute inset-0 h-full w-full object-cover"
       style={{ opacity: state === "ready" ? 1 : 0, transition: "opacity 180ms ease-out" }}
     />
   );
 }
 
-type Placement = { side: "left" | "right"; left: number; top: number; layout: WheelLayout };
+/** `pin`: how far the wheel was nudged off dead-centre to fit the window when it opened (a finger holding the card keeps that offset as the page scrolls). */
+type Placement = { side: "left" | "right"; left: number; top: number; layout: WheelLayout; pin: number };
 
 /** Where the wheel goes: beside the card, on whichever side has the room, centred on it, kept on screen. */
-function place(rect: DOMRect, layout: WheelLayout): Placement {
+function place(rect: DOMRect, layout: WheelLayout, pinned: number | null = null): Placement {
   const vw = document.documentElement.clientWidth;
   const vh = window.innerHeight;
   const side = rect.left + rect.width / 2 < vw / 2 ? "right" : "left";
@@ -249,10 +261,13 @@ function place(rect: DOMRect, layout: WheelLayout): Placement {
   // Centred on the card, but never under the sticky header (the site already exposes its height as
   // scroll-padding-top, which every in-page jump respects too) and never off the bottom of the window.
   const topMin = Math.max(8, parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop) || 0);
-  let y = rect.top + rect.height / 2 - layout.height / 2;
-  y = Math.min(Math.max(y, topMin), Math.max(topMin, vh - layout.height - 8));
+  const ideal = rect.top + rect.height / 2 - layout.height / 2;
+  const clamped = Math.min(Math.max(ideal, topMin), Math.max(topMin, vh - layout.height - 8));
+  // While a finger holds the card the page may scroll under it: the wheel then goes wherever its card
+  // goes (off the window with it, if need be) instead of sticking to the window's edge.
+  const y = pinned === null ? clamped : ideal + pinned;
   // Page coordinates, so the wheel scrolls with the page it is attached to.
-  return { side, left: x + window.scrollX, top: y + window.scrollY, layout };
+  return { side, left: x + window.scrollX, top: y + window.scrollY, layout, pin: clamped - ideal };
 }
 
 export function ProductWheel({
@@ -263,9 +278,12 @@ export function ProductWheel({
   accent,
   shape,
   seed,
+  touching = false,
 }: {
   /** Whether the pointer is resting on the card (see useWheelHover). */
   open: boolean;
+  /** A finger is holding the card: the wheel follows it freely if the page scrolls. */
+  touching?: boolean;
   /** The card's photo box — the wheel is centred on it and attached to its edge. */
   anchorRef: RefObject<HTMLElement | null>;
   images: WheelImage[];
@@ -335,16 +353,18 @@ export function ProductWheel({
     const follow = () => {
       const el = anchorRef.current;
       if (el) {
-        const next = place(el.getBoundingClientRect(), layout);
-        setPlacement((cur) =>
-          cur && cur.side === next.side && Math.abs(cur.left - next.left) < 0.5 && Math.abs(cur.top - next.top) < 0.5 ? cur : next,
-        );
+        const rect = el.getBoundingClientRect();
+        setPlacement((cur) => {
+          const next = place(rect, layout, touching && cur ? cur.pin : null);
+          if (touching && cur) next.pin = cur.pin;
+          return cur && cur.side === next.side && Math.abs(cur.left - next.left) < 0.5 && Math.abs(cur.top - next.top) < 0.5 ? cur : next;
+        });
       }
       raf = requestAnimationFrame(follow);
     };
     raf = requestAnimationFrame(follow);
     return () => cancelAnimationFrame(raf);
-  }, [open, mounted, layout, anchorRef]);
+  }, [open, mounted, layout, anchorRef, touching]);
 
   if (!mounted || !placement) return null;
 

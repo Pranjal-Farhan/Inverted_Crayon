@@ -2,7 +2,7 @@ import { requireAdminPage } from "@/lib/admin-guard";
 import Image from "next/image";
 import Link from "next/link";
 import { db } from "@/lib/db";
-import { photosNeedingThumbs } from "@/lib/image-thumb";
+import { thumbStats } from "@/lib/image-thumb";
 import { formatTaka, toNumber } from "@/lib/money";
 import { manufacturerHref, manufacturerLabel } from "@/lib/manufacturer-link";
 import { Panel } from "@/components/admin/Panel";
@@ -20,11 +20,7 @@ const SKUS_SHOWN = 3;
 export default async function AdminProductsPage({ searchParams }: Props) {
   await requireAdminPage("products");
   const { q, gender, category } = await searchParams;
-  const [categories, missingThumbs] = await Promise.all([
-    db.category.findMany({ orderBy: { position: "asc" } }),
-    // Photos of live products with no small thumbnail yet that could have one made.
-    db.productImage.count({ where: photosNeedingThumbs() }),
-  ]);
+  const [categories, thumbs] = await Promise.all([db.category.findMany({ orderBy: { position: "asc" } }), thumbStats()]);
 
   const products = await db.product.findMany({
     where: {
@@ -55,7 +51,7 @@ export default async function AdminProductsPage({ searchParams }: Props) {
 
   return (
     <div>
-      {missingThumbs > 0 && <PrepareThumbsButton missing={missingThumbs} />}
+      <PrepareThumbsButton {...thumbs} />
       <form className="mb-3.5 flex flex-wrap items-center gap-2.5" method="get">
         <input name="q" defaultValue={q} placeholder="Search products…" className="border border-line-2 bg-panel px-2.5 py-2 text-sm outline-none focus:border-lime" />
         <select name="gender" defaultValue={gender ?? ""} className="border border-line-2 bg-panel px-2.5 py-2 text-sm">

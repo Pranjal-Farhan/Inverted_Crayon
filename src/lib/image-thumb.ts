@@ -175,12 +175,26 @@ export function createThumb(imageId: string, url: string, options: { capped?: bo
  * isn't counted or attempted. The admin page counts these and prepareMissingThumbs works through
  * them, so what the button promises and what it does always agree.
  */
-export function photosNeedingThumbs(): Prisma.ProductImageWhereInput {
+export function thumbCandidates(): Prisma.ProductImageWhereInput {
   return {
-    thumb: { is: null },
     product: { status: "ACTIVE" },
     OR: [{ url: { startsWith: "https://" } }, { url: { startsWith: "http://" } }, { url: { startsWith: "data:image/" } }],
   };
+}
+
+export function photosNeedingThumbs(): Prisma.ProductImageWhereInput {
+  return { ...thumbCandidates(), thumb: { is: null } };
+}
+
+/** The numbers behind the admin's thumbnail bar. */
+export async function thumbStats() {
+  const [total, missing, unsupported] = await Promise.all([
+    db.productImage.count({ where: thumbCandidates() }),
+    db.productImage.count({ where: photosNeedingThumbs() }),
+    // Live photos whose address isn't a web address at all (an old local-file path): no thumbnail can be made from them.
+    db.productImage.count({ where: { product: { status: "ACTIVE" }, NOT: { OR: [{ url: "" }, ...(thumbCandidates().OR as Prisma.ProductImageWhereInput[])] } } }),
+  ]);
+  return { total, missing, unsupported, checkedAt: Date.now() };
 }
 
 /**

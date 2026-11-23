@@ -110,7 +110,8 @@ export function ProductCard({ product }: { product: ProductDisplay }) {
         wheel.touchStart(e);
       }}
       onTouchMove={(e) => {
-        handlers.onTouchMove(e);
+        // While the wheel is held open the finger may slide or scroll off the card: the circle stays too.
+        if (!wheel.isPeeking()) handlers.onTouchMove(e);
         wheel.touchMove(e);
       }}
       onTouchEnd={() => {
@@ -192,6 +193,7 @@ export function ProductCard({ product }: { product: ProductDisplay }) {
         accent={accent.color}
         shape={accent.shape}
         seed={product.id}
+        touching={wheel.touching}
       />
     </Link>
   );
