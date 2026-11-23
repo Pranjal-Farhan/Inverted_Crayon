@@ -26,8 +26,10 @@ export function ProductCard({ product }: { product: ProductDisplay }) {
   // a mouse rests on it) is centred on and attached to — see ProductWheel.tsx.
   const photoRef = useRef<HTMLDivElement>(null);
   // A product with fewer than two photos has nothing to overview: no wheel, and the card is a plain link.
-  const hasWheel = product.images.length >= WHEEL_MIN_IMAGES;
-  const wheel = useWheelHover({ enabled: hasWheel, warm: () => warmWheelThumbs(product.images) });
+  // Slots with no picture (the empty placeholder rows) aren't worth a circle of their own.
+  const wheelImages = product.images.filter((img) => img.url.trim() !== "");
+  const hasWheel = wheelImages.length >= WHEEL_MIN_IMAGES;
+  const wheel = useWheelHover({ enabled: hasWheel, warm: () => warmWheelThumbs(wheelImages) });
   // Mouse/focus for desktop, touch for phones — same hover-driven circle mark either way
   // (see useMarkHover's doc comment in HandDrawnMarks.tsx).
   const { hovered, handlers } = useMarkHover<HTMLAnchorElement>();
@@ -185,7 +187,7 @@ export function ProductCard({ product }: { product: ProductDisplay }) {
       <ProductWheel
         open={wheel.open}
         anchorRef={photoRef}
-        images={product.images}
+        images={wheelImages}
         color={hoverColor}
         accent={accent.color}
         shape={accent.shape}

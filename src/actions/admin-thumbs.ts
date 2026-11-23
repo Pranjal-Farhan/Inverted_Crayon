@@ -15,7 +15,7 @@ import { describeError } from "@/lib/action-errors";
  * the next call is told to skip).
  */
 
-export type PrepareThumbsResult = { ok: true; made: number; failed: string[]; remaining: number } | { ok: false; error: string };
+export type PrepareThumbsResult = { ok: true; made: number; failed: string[]; remaining: number; reasons: string[] } | { ok: false; error: string };
 
 export async function prepareThumbnails(skip: string[] = []): Promise<PrepareThumbsResult> {
   if (!(await getAdminForArea("products"))) return { ok: false, error: "Your session has ended — log in again, then try once more." };

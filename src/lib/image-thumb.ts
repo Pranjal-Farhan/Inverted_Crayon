@@ -32,7 +32,8 @@ const MAX_ORIGINAL_BYTES = 30 * 1024 * 1024;
  * IMAGE_FETCH_HOSTS adds more (comma-separated host[:port]), used by the tests' local mock host.
  */
 function allowedFetch(url: URL): boolean {
-  if (url.protocol === "https:" && url.host === "i.ibb.co") return true;
+  // ImgBB's own hosts: i.ibb.co and its newer i.ibb.co.com (and any subdomain of either).
+  if (url.protocol === "https:" && /(^|\.)ibb\.co(\.com)?$/i.test(url.hostname) && !url.port) return true;
   const extra = (process.env.IMAGE_FETCH_HOSTS ?? "").split(",").map((h) => h.trim()).filter(Boolean);
   return extra.includes(url.host);
 }
@@ -50,8 +51,11 @@ export async function makeThumb(input: Uint8Array): Promise<Buffer> {
     .toBuffer();
 }
 
-/** The bytes of a photo's original, or null when it can't be had (a host we won't fetch from, a dead link, too big). */
-async function readOriginal(url: string): Promise<Buffer | null> {
+/** Why the last attempt for a photo failed, for the admin's "couldn't be prepared" message. */
+export const thumbFailures = new Map<string, string>();
+
+/** The bytes of a photo's original; throws with a plain reason when it can't be had (a host we won't fetch from, a dead link, too big). */
+async function readOriginal(url: string): Promise<Buffer> {
   const u = url.trim();
   // The oldest uploads were stored inline as data: URLs — the bytes are already here.
   const inline = u.match(/^data:image\/(?:png|jpe?g|webp|gif|avif);base64,(.+)$/i);
@@ -60,24 +64,33 @@ async function readOriginal(url: string): Promise<Buffer | null> {
   try {
     parsed = new URL(u);
   } catch {
-    return null;
+    throw new Error("the photo's address isn't a web address");
   }
-  if (!allowedFetch(parsed)) return null;
-  try {
-    const res = await fetch(parsed, {
+  if (!allowedFetch(parsed)) throw new Error(`photo is on ${parsed.host}, not the image host`);
+  // Redirects are followed by hand, a few hops at most, and only ever to another image-host address:
+  // a redirect to anywhere else is never requested.
+  let res: Response | null = null;
+  for (let hop = 0; hop < 4 && parsed; hop++) {
+    res = await fetch(parsed, {
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-      redirect: "error",
+      redirect: "manual",
       cache: "no-store",
-      headers: { Accept: "image/*" },
+      headers: { Accept: "image/*", "User-Agent": "Mozilla/5.0 (compatible; InvertedCrayonThumbs/1.0)" },
+    }).catch((e: unknown) => {
+      throw new Error(`image host didn't answer (${e instanceof Error ? e.name : "error"})`);
     });
-    if (!res.ok) return null;
-    const declared = Number(res.headers.get("content-length"));
-    if (declared > MAX_ORIGINAL_BYTES) return null;
-    const bytes = Buffer.from(await res.arrayBuffer());
-    return bytes.length <= MAX_ORIGINAL_BYTES ? bytes : null;
-  } catch {
-    return null;
+    const next = res.status >= 300 && res.status < 400 ? res.headers.get("location") : null;
+    if (!next) break;
+    parsed = new URL(next, parsed);
+    if (!allowedFetch(parsed)) throw new Error("redirected away from the image host");
   }
+  if (!res) throw new Error("no answer from the image host");
+  if (!res.ok) throw new Error(`image host answered ${res.status}`);
+  const declared = Number(res.headers.get("content-length"));
+  if (declared > MAX_ORIGINAL_BYTES) throw new Error("photo is too large");
+  const bytes = Buffer.from(await res.arrayBuffer());
+  if (bytes.length > MAX_ORIGINAL_BYTES) throw new Error("photo is too large");
+  return bytes;
 }
 
 // Several visitors (or one product's nine circles) asking for the same missing thumbnail at once
@@ -130,16 +143,21 @@ export function createThumb(imageId: string, url: string, options: { capped?: bo
     try {
       if (capped) {
         held = await acquire();
-        if (!held) return null;
+        if (!held) {
+          thumbFailures.set(imageId, "too many being made at once");
+          return null;
+        }
       }
       const original = await readOriginal(url);
-      if (!original) return null;
       const data = await makeThumb(original);
+      thumbFailures.delete(imageId);
       // A second instance may have made it a moment earlier: that is fine, keep theirs.
       await db.productImageThumb.createMany({ data: [{ imageId, data: new Uint8Array(data) }], skipDuplicates: true });
       return data;
     } catch (e) {
-      console.warn(`[image-thumb] couldn't make a thumbnail for photo ${imageId}:`, e instanceof Error ? e.message : e);
+      const why = e instanceof Error ? e.message : String(e);
+      thumbFailures.set(imageId, why);
+      console.warn(`[image-thumb] couldn't make a thumbnail for photo ${imageId}: ${why}`);
       return null;
     } finally {
       if (held) release();
@@ -161,7 +179,7 @@ export function photosNeedingThumbs(): Prisma.ProductImageWhereInput {
   return {
     thumb: { is: null },
     product: { status: "ACTIVE" },
-    OR: [{ url: { startsWith: "https://i.ibb.co/" } }, { url: { startsWith: "data:image/" } }],
+    OR: [{ url: { startsWith: "https://" } }, { url: { startsWith: "http://" } }, { url: { startsWith: "data:image/" } }],
   };
 }
 
@@ -171,7 +189,7 @@ export function photosNeedingThumbs(): Prisma.ProductImageWhereInput {
  * until `remaining` reaches 0 (or nothing more can be made: `failed` counts the photos whose original
  * couldn't be fetched, which are skipped for the rest of that run).
  */
-export async function prepareMissingThumbs(options: { budgetMs: number; skip?: string[] }): Promise<{ made: number; failed: string[]; remaining: number }> {
+export async function prepareMissingThumbs(options: { budgetMs: number; skip?: string[] }): Promise<{ made: number; failed: string[]; remaining: number; reasons: string[] }> {
   const started = Date.now();
   let made = 0;
   const failed: string[] = [];
@@ -192,5 +210,6 @@ export async function prepareMissingThumbs(options: { budgetMs: number; skip?: s
     }
   }
   const remaining = await db.productImage.count({ where: missing() });
-  return { made, failed, remaining };
+  const reasons = [...new Set(failed.map((id) => thumbFailures.get(id)).filter((r): r is string => !!r))].slice(0, 4);
+  return { made, failed, remaining, reasons };
 }

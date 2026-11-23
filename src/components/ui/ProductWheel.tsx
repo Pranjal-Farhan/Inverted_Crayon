@@ -99,6 +99,10 @@ export function useWheelHover({ enabled, warm }: { enabled: boolean; warm: () =>
   const swallowTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const finger = useRef<{ x: number; y: number } | null>(null);
   const swallow = useRef(false);
+  // True from the moment a held finger has opened the wheel until it lifts: the finger may then drift
+  // or slide without closing it, and the page is kept from scrolling under it.
+  const peeking = useRef(false);
+  const unlock = useRef<(() => void) | null>(null);
   const lastTouch = useRef(0);
 
   const clearTimers = () => {
@@ -113,6 +117,7 @@ export function useWheelHover({ enabled, warm }: { enabled: boolean; warm: () =>
       if (openTimer.current) clearTimeout(openTimer.current);
       if (warmTimer.current) clearTimeout(warmTimer.current);
       if (swallowTimer.current) clearTimeout(swallowTimer.current);
+      unlock.current?.();
     },
     [],
   );
@@ -149,6 +154,9 @@ export function useWheelHover({ enabled, warm }: { enabled: boolean; warm: () =>
       if (e.touches.length !== 1 || !t) {
         // A second finger (a pinch) is not a hold.
         finger.current = null;
+        peeking.current = false;
+        unlock.current?.();
+        unlock.current = null;
         clearTimers();
         setOpen(false);
         return;
@@ -156,10 +164,19 @@ export function useWheelHover({ enabled, warm }: { enabled: boolean; warm: () =>
       finger.current = { x: t.clientX, y: t.clientY };
       schedule(HOLD_MS, () => {
         // From here this touch is a peek: its click must not open the product.
-        if (finger.current) swallow.current = true;
+        if (!finger.current) return;
+        swallow.current = true;
+        peeking.current = true;
+        const block = (ev: Event) => {
+          if (ev.cancelable) ev.preventDefault();
+        };
+        document.addEventListener("touchmove", block, { passive: false });
+        unlock.current = () => document.removeEventListener("touchmove", block);
       });
     },
     touchMove(e: TouchEvent) {
+      // Once the wheel is open the finger may slide freely: it stays until the finger lifts.
+      if (peeking.current) return;
       const start = finger.current;
       const t = e.touches[0];
       if (!start || !t) return;
@@ -173,6 +190,9 @@ export function useWheelHover({ enabled, warm }: { enabled: boolean; warm: () =>
       if (!enabled) return;
       lastTouch.current = Date.now();
       finger.current = null;
+      peeking.current = false;
+      unlock.current?.();
+      unlock.current = null;
       clearTimers();
       setOpen(false);
       // The click for this touch (if the browser sends one) arrives right after; after that, forget it.

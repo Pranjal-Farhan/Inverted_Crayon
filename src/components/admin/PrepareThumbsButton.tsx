@@ -14,6 +14,7 @@ export function PrepareThumbsButton({ missing }: { missing: number }) {
   const [made, setMade] = useState(0);
   const [stuck, setStuck] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [reasons, setReasons] = useState<string[]>([]);
 
   async function run() {
     setPhase("running");
@@ -39,6 +40,7 @@ export function PrepareThumbsButton({ missing }: { missing: number }) {
       setMade(total);
       setLeft(r.remaining);
       setStuck(skip.length);
+      setReasons((old) => [...new Set([...old, ...r.reasons])].slice(0, 4));
       if (r.remaining === 0 || r.made === 0) break;
     }
     setPhase("done");
@@ -63,7 +65,7 @@ export function PrepareThumbsButton({ missing }: { missing: number }) {
         {phase === "running" && <div className="mt-1 text-[13px] text-lime">Preparing… {made} done, {left} to go (keep this page open)</div>}
         {phase === "done" && !error && (
           <div className="mt-1 text-[13px] text-lime">
-            Made {made}.{stuck > 0 && <span className="text-yellow"> {stuck} couldn&apos;t be prepared — the image host didn&apos;t answer for them.</span>}
+            Made {made}.{stuck > 0 && <span className="text-yellow"> {stuck} couldn&apos;t be prepared{reasons.length > 0 ? ` (${reasons.join("; ")})` : ""}.</span>}
           </div>
         )}
         {error && (
