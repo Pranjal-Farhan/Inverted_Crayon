@@ -19,8 +19,8 @@ import { WHEEL_MAX_IMAGES, WHEEL_MIN_IMAGES, layoutWheel, type WheelLayout } fro
  * still gets the hover — which is also what makes it close the moment the pointer moves on.
  *
  * On a phone there is no hovering, so the wheel is a peek: hold a finger still on a card for a
- * moment and it opens; lift the finger (or slide it off the card) and it closes. Any real movement
- * is a scroll, not a hold, so it never opens while scrolling the page.
+ * moment — or as soon as it starts to scroll — and it opens together with the card's crayon circle; it
+ * stays, riding along with its card, until the finger lifts.
  *
  * The circles show small thumbnails from /api/product-images/[id]/thumb (a few KB each, made once
  * and cached for a year — src/lib/image-thumb.ts), not the photos through next/image: shrinking a
@@ -36,7 +36,7 @@ const EXIT_MS = DRAW_MS + 200;
 const OPEN_DELAY_MS = 120;
 /** A finger has to rest this long, without moving, before the wheel opens (a tap or the start of a scroll must not open one). */
 const HOLD_MS = 220;
-/** A finger that moves further than this is scrolling or dragging, not holding. */
+/** A finger that moves further than this before the hold time is up is scrolling, not holding (and opens the wheel at once). */
 const HOLD_SLOP_PX = 10;
 /** The thumbnails start loading this long after the pointer or finger arrives — soon enough to be ready as the wheel opens, late enough that sweeping past a card fetches nothing. */
 const WARM_DELAY_MS = 50;
@@ -180,10 +180,16 @@ export function useWheelHover({ enabled, warm }: { enabled: boolean; warm: () =>
       const start = finger.current;
       const t = e.touches[0];
       if (!start || !t) return;
+      // A finger that moves before the hold time is up is scrolling, which is no tap either, so there is
+      // nothing to wait for: the wheel opens now, together with the card's crayon circle (which is
+      // already drawn), and rides along with its card as the page scrolls. It then stays until the finger lifts.
       if (Math.hypot(t.clientX - start.x, t.clientY - start.y) > HOLD_SLOP_PX) {
-        finger.current = null;
         clearTimers();
-        setOpen(false);
+        swallow.current = true;
+        peeking.current = true;
+        setTouching(true);
+        warm();
+        setOpen(true);
       }
     },
     touchEnd() {
