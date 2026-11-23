@@ -276,6 +276,18 @@ button {
   transform: translateY(0);
 }
 
+/* A product card with a photo wheel is peeked at on a phone by holding a finger on it
+   (ProductWheel.tsx). Holding a finger on a link is also how a phone opens its own link menu, image
+   callout or text selection — all of which would land on top of the wheel — so they are switched off
+   for touch screens, on these cards only (a card with fewer than two photos is a plain link). */
+@media (hover: none) and (pointer: coarse) {
+  .wheel-card {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+}
+
 /* Glitch / RGB-split hover — applied directly via className + data-text where needed.
    Deliberately doesn't set `position` itself: the ::before/::after below just need *some*
    positioning context on this element, and forcing `relative` here would override an

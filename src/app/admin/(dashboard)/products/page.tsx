@@ -2,12 +2,17 @@ import { requireAdminPage } from "@/lib/admin-guard";
 import Image from "next/image";
 import Link from "next/link";
 import { db } from "@/lib/db";
+import { photosNeedingThumbs } from "@/lib/image-thumb";
 import { formatTaka, toNumber } from "@/lib/money";
 import { manufacturerHref, manufacturerLabel } from "@/lib/manufacturer-link";
 import { Panel } from "@/components/admin/Panel";
 import { StatusBadge } from "@/components/admin/StatusBadge";
+import { PrepareThumbsButton } from "@/components/admin/PrepareThumbsButton";
 
 type Props = { searchParams: Promise<{ q?: string; gender?: string; category?: string }> };
+
+// "Prepare photo thumbnails" (below) works through photos a batch per call, up to ~40s each.
+export const maxDuration = 60;
 
 const COLUMNS = ["Product", "SKU", "Category", "Price", "Stock", "Current vendor", "Tags"];
 const SKUS_SHOWN = 3;
@@ -15,7 +20,11 @@ const SKUS_SHOWN = 3;
 export default async function AdminProductsPage({ searchParams }: Props) {
   await requireAdminPage("products");
   const { q, gender, category } = await searchParams;
-  const categories = await db.category.findMany({ orderBy: { position: "asc" } });
+  const [categories, missingThumbs] = await Promise.all([
+    db.category.findMany({ orderBy: { position: "asc" } }),
+    // Photos of live products with no small thumbnail yet that could have one made.
+    db.productImage.count({ where: photosNeedingThumbs() }),
+  ]);
 
   const products = await db.product.findMany({
     where: {
@@ -46,6 +55,7 @@ export default async function AdminProductsPage({ searchParams }: Props) {
 
   return (
     <div>
+      {missingThumbs > 0 && <PrepareThumbsButton missing={missingThumbs} />}
       <form className="mb-3.5 flex flex-wrap items-center gap-2.5" method="get">
         <input name="q" defaultValue={q} placeholder="Search products…" className="border border-line-2 bg-panel px-2.5 py-2 text-sm outline-none focus:border-lime" />
         <select name="gender" defaultValue={gender ?? ""} className="border border-line-2 bg-panel px-2.5 py-2 text-sm">

@@ -3,6 +3,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { invalidateProduct } from "@/lib/invalidate";
 import { uploadToImgBb } from "@/lib/imgbb";
+import { makeThumb } from "@/lib/image-thumb";
 
 // ImgBB's own free-tier cap is ~32MB/image — 20MB leaves headroom under that while still
 // comfortably covering a high-resolution (up to 2000x2500px) product photo, PNG included (a
@@ -38,6 +39,18 @@ export async function addProductImage(productId: string, file: File): Promise<Ad
     return fail(409, `A product can have at most ${MAX_IMAGES_PER_PRODUCT} images (${existingCount} already uploaded).`);
   }
 
+  // The small copy the storefront's hover wheel shows is made now, from the bytes already in hand,
+  // while the original is on its way to the image host: it costs the admin no extra waiting, and the
+  // wheel never has to fetch the original back to make one. A failure here is not the upload's failure —
+  // the photo still goes up, and its thumbnail is made on first request instead (image-thumb.ts).
+  const thumbJob = file
+    .arrayBuffer()
+    .then((bytes) => makeThumb(new Uint8Array(bytes)))
+    .catch((e) => {
+      console.warn(`[product-images] no thumbnail made at upload for ${file.name}:`, e instanceof Error ? e.message : e);
+      return null;
+    });
+
   let url: string;
   try {
     url = await uploadToImgBb(file);
@@ -50,7 +63,16 @@ export async function addProductImage(productId: string, file: File): Promise<Ad
   try {
     // Position = how many images exist right now, so each photo lands last whatever order the
     // requests finish in; two photos racing for the same slot is harmless (order is editable).
-    image = await db.productImage.create({ data: { productId, url, alt: product.title, position: existingCount } });
+    const thumb = await thumbJob;
+    image = await db.productImage.create({
+      data: {
+        productId,
+        url,
+        alt: product.title,
+        position: existingCount,
+        ...(thumb ? { thumb: { create: { data: new Uint8Array(thumb) } } } : {}),
+      },
+    });
   } catch (e) {
     console.error(`[product-images] saving the image row failed for product ${productId}:`, e);
     return fail(500, "The photo uploaded but couldn't be saved to the product. Please try again.");

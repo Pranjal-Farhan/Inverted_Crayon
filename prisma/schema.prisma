@@ -208,8 +208,23 @@ model ProductImage {
   alt         String?
   position    Int     @default(0)
   accentColor String?
+  thumb       ProductImageThumb?
 
   @@index([productId, position])
+}
+
+// A small WebP copy of one product photo, for the places that show photos at thumbnail size (the
+// hover wheel). The full-size original lives on the image host and can be several MB; shrinking it on
+// demand (what next/image does) means downloading all of it first, which is what made the wheel's
+// circles slow to fill. Made when the photo is uploaded; photos from before that get theirs the first
+// time one is asked for, or from the admin's "Prepare photo thumbnails" button (src/lib/image-thumb.ts).
+// A table of its own rather than a column on ProductImage: the photo rows travel in every product
+// list the storefront renders, and image bytes must never go along with them.
+model ProductImageThumb {
+  imageId   String       @id
+  image     ProductImage @relation(fields: [imageId], references: [id], onDelete: Cascade)
+  data      Bytes
+  createdAt DateTime     @default(now())
 }
 
 // A category always belongs to exactly one main branch (gender). Men/Women/Unisex each

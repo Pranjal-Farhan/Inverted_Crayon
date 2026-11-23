@@ -4,7 +4,8 @@ import Link from "next/link";
 import Image from "next/image";
 import { useEffect, useRef, useState, type PointerEvent } from "react";
 import { PlaceholderFrame } from "@/components/ui/PlaceholderFrame";
-import { ProductWheel, useWheelHover } from "@/components/ui/ProductWheel";
+import { ProductWheel, useWheelHover, warmWheelThumbs } from "@/components/ui/ProductWheel";
+import { WHEEL_MIN_IMAGES } from "@/lib/product-wheel";
 import { TagPill } from "@/components/ui/TagPill";
 import { formatTaka } from "@/lib/money";
 import { pickAccent } from "@/lib/accent-color";
@@ -24,7 +25,9 @@ export function ProductCard({ product }: { product: ProductDisplay }) {
   // The photo box the product wheel (every photo of this product, fanned out beside the card while
   // a mouse rests on it) is centred on and attached to — see ProductWheel.tsx.
   const photoRef = useRef<HTMLDivElement>(null);
-  const wheel = useWheelHover();
+  // A product with fewer than two photos has nothing to overview: no wheel, and the card is a plain link.
+  const hasWheel = product.images.length >= WHEEL_MIN_IMAGES;
+  const wheel = useWheelHover({ enabled: hasWheel, warm: () => warmWheelThumbs(product.images) });
   // Mouse/focus for desktop, touch for phones — same hover-driven circle mark either way
   // (see useMarkHover's doc comment in HandDrawnMarks.tsx).
   const { hovered, handlers } = useMarkHover<HTMLAnchorElement>();
@@ -90,7 +93,7 @@ export function ProductCard({ product }: { product: ProductDisplay }) {
     <Link
       ref={cardRef}
       href={href}
-      className={`card group block reveal-card ${revealed ? "in" : ""}`}
+      className={`card group block reveal-card ${revealed ? "in" : ""} ${hasWheel ? "wheel-card" : ""}`}
       {...handlers}
       onMouseEnter={() => {
         handlers.onMouseEnter();
@@ -100,6 +103,24 @@ export function ProductCard({ product }: { product: ProductDisplay }) {
         handlers.onMouseLeave();
         wheel.leave();
       }}
+      onTouchStart={(e) => {
+        handlers.onTouchStart();
+        wheel.touchStart(e);
+      }}
+      onTouchMove={(e) => {
+        handlers.onTouchMove(e);
+        wheel.touchMove(e);
+      }}
+      onTouchEnd={() => {
+        handlers.onTouchEnd();
+        wheel.touchEnd();
+      }}
+      onTouchCancel={() => {
+        handlers.onTouchCancel();
+        wheel.touchEnd();
+      }}
+      onClickCapture={wheel.clickCapture}
+      onContextMenu={wheel.contextMenu}
     >
       {/* This outer wrapper (not the frame below) carries the aspect ratio and has no
           overflow-hidden, so the hover/touch circle mark — a sibling of the frame, not a child —
