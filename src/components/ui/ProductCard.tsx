@@ -4,6 +4,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { useEffect, useRef, useState, type PointerEvent } from "react";
 import { PlaceholderFrame } from "@/components/ui/PlaceholderFrame";
+import { ProductWheel, useWheelHover } from "@/components/ui/ProductWheel";
 import { TagPill } from "@/components/ui/TagPill";
 import { formatTaka } from "@/lib/money";
 import { pickAccent } from "@/lib/accent-color";
@@ -20,6 +21,10 @@ export function ProductCard({ product }: { product: ProductDisplay }) {
 
   const cardRef = useRef<HTMLAnchorElement>(null);
   const frameRef = useRef<HTMLDivElement>(null);
+  // The photo box the product wheel (every photo of this product, fanned out beside the card while
+  // a mouse rests on it) is centred on and attached to — see ProductWheel.tsx.
+  const photoRef = useRef<HTMLDivElement>(null);
+  const wheel = useWheelHover();
   // Mouse/focus for desktop, touch for phones — same hover-driven circle mark either way
   // (see useMarkHover's doc comment in HandDrawnMarks.tsx).
   const { hovered, handlers } = useMarkHover<HTMLAnchorElement>();
@@ -87,6 +92,14 @@ export function ProductCard({ product }: { product: ProductDisplay }) {
       href={href}
       className={`card group block reveal-card ${revealed ? "in" : ""}`}
       {...handlers}
+      onMouseEnter={() => {
+        handlers.onMouseEnter();
+        wheel.enter();
+      }}
+      onMouseLeave={() => {
+        handlers.onMouseLeave();
+        wheel.leave();
+      }}
     >
       {/* This outer wrapper (not the frame below) carries the aspect ratio and has no
           overflow-hidden, so the hover/touch circle mark — a sibling of the frame, not a child —
@@ -94,7 +107,7 @@ export function ProductCard({ product }: { product: ProductDisplay }) {
           overflow-hidden (needed for the image crop + hover zoom). Keeping the mark scoped to
           this wrapper, rather than the whole card (image + caption text below), is what keeps it
           centered on the photo instead of sitting low over the caption too. */}
-      <div className="relative mb-2.5 aspect-[1/1.16]">
+      <div ref={photoRef} className="relative mb-2.5 aspect-[1/1.16]">
         <div
           ref={frameRef}
           onPointerMove={onFrameMove}
@@ -148,6 +161,15 @@ export function ProductCard({ product }: { product: ProductDisplay }) {
           formatTaka(product.basePrice)
         )}
       </div>
+      <ProductWheel
+        open={wheel.open}
+        anchorRef={photoRef}
+        images={product.images}
+        color={hoverColor}
+        accent={accent.color}
+        shape={accent.shape}
+        seed={product.id}
+      />
     </Link>
   );
 }

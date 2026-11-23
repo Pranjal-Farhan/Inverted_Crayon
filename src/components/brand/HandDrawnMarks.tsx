@@ -25,7 +25,10 @@ export type MarkKind =
   | "bracket"
   // Not in MARK_KINDS below on purpose — a single strike-through line, used only by
   // DiscountPriceTag.tsx to cross out an original price, never picked by pickMark's random choice.
-  | "strike";
+  | "strike"
+  // Also not in MARK_KINDS: the rim of ProductWheel's half-disc, drawn on stretched to the wheel's
+  // own box (radius wide, twice that tall — hence the 1:2 viewBox, which keeps the arc circular).
+  | "half-wheel";
 
 export const MARK_KINDS: MarkKind[] = [
   "arrow-straight",
@@ -104,6 +107,14 @@ const SHAPES: Record<MarkKind, { viewBox: string; paths: string[]; strokeWidth: 
     viewBox: "0 0 100 40",
     paths: ["M4,33 Q50,20 96,7"],
     strokeWidth: 5,
+  },
+  // A hand-drawn half circle bulging to the right, from the top of its flat edge round to the
+  // bottom, plus a shorter second pass inside it (the same "went over it twice" chalkiness the
+  // arrows have). The radius is 94 of the viewBox's 100 (WHEEL_ARC_FRACTION in product-wheel.ts).
+  "half-wheel": {
+    viewBox: "0 0 100 200",
+    paths: ["M3,7 C52,3 94,48 94,100 C94,152 52,197 3,193", "M8,20 C46,16 84,50 85,92 C85,114 79,134 70,152"],
+    strokeWidth: 3.4,
   },
 };
 
