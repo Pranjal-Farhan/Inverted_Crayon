@@ -23,7 +23,7 @@ export function DiscountPriceTag({
   const newSizeClass = size === "lg" ? "text-xl" : size === "sm" ? "text-[13px]" : "text-[15px]";
 
   return (
-    <span className="discount-tag relative inline-flex items-center gap-2.5">
+    <span className="discount-tag relative inline-flex max-w-full flex-wrap content-start items-center gap-x-2 gap-y-1">
       <span className={`relative inline-block text-muted-2 ${oldSizeClass}`}>
         {formatTaka(basePrice)}
         <HandDrawnMark
@@ -36,10 +36,10 @@ export function DiscountPriceTag({
         />
       </span>
       <span
-        className={`discount-tag-badge relative inline-flex items-center whitespace-nowrap font-sans font-bold text-ink ${newSizeClass}`}
+        className={`discount-tag-badge relative mx-2.5 my-1.5 inline-flex items-center whitespace-nowrap font-sans font-bold text-ink ${newSizeClass}`}
       >
-        <CrayonPatch id={`${id}-patch`} className="absolute -inset-x-1.5 -inset-y-1 -z-10" />
-        <span className="relative px-0.5">{formatTaka(salePrice)}</span>
+        <CrayonPatch id={`${id}-patch`} className="absolute left-1/2 top-1/2 -z-10 h-[calc(100%+12px)] w-[calc(100%+20px)] -translate-x-1/2 -translate-y-1/2" />
+        <span className="relative px-1.5 py-0.5 leading-tight">{formatTaka(salePrice)}</span>
       </span>
     </span>
   );
@@ -64,7 +64,7 @@ export function FreeDeliveryTag({
   const sizeClass = size === "lg" ? "text-xl" : size === "sm" ? "text-[13px]" : "text-[15px]";
 
   return (
-    <span className="discount-tag relative inline-flex items-center gap-2.5">
+    <span className="discount-tag relative inline-flex max-w-full flex-wrap content-start items-center gap-x-2 gap-y-1">
       {shippingCost > 0 && (
         <span className={`relative inline-block text-muted-2 ${sizeClass}`}>
           {formatTaka(shippingCost)}
@@ -79,10 +79,10 @@ export function FreeDeliveryTag({
         </span>
       )}
       <span
-        className={`discount-tag-badge relative inline-flex items-center whitespace-nowrap font-sans font-bold uppercase text-ink ${sizeClass}`}
+        className={`discount-tag-badge relative mx-2.5 my-1.5 inline-flex items-center whitespace-nowrap font-sans font-bold uppercase text-ink ${sizeClass}`}
       >
-        <CrayonPatch id={`${id}-patch`} className="absolute -inset-x-1.5 -inset-y-1 -z-10" />
-        <span className="relative px-0.5">Free delivery</span>
+        <CrayonPatch id={`${id}-patch`} className="absolute left-1/2 top-1/2 -z-10 h-[calc(100%+12px)] w-[calc(100%+20px)] -translate-x-1/2 -translate-y-1/2" />
+        <span className="relative px-1.5 py-0.5 leading-tight">Free delivery</span>
       </span>
     </span>
   );
@@ -97,10 +97,10 @@ function CrayonPatch({ id, className }: { id: string; className?: string }) {
       <defs>
         <filter id={filterId} x="-30%" y="-30%" width="160%" height="160%">
           <feTurbulence type="fractalNoise" baseFrequency="0.1 0.22" numOctaves="2" seed={h % 97} result="noise" />
-          <feDisplacementMap in="SourceGraphic" in2="noise" scale="9" xChannelSelector="R" yChannelSelector="G" />
+          <feDisplacementMap in="SourceGraphic" in2="noise" scale="5" xChannelSelector="R" yChannelSelector="G" />
         </filter>
       </defs>
-      <rect x="4" y="4" width="92" height="42" rx="4" fill="var(--color-ic-lime)" filter={`url(#${filterId})`} />
+      <rect x="3" y="3" width="94" height="44" rx="4" fill="var(--color-ic-lime)" filter={`url(#${filterId})`} />
     </svg>
   );
 }
