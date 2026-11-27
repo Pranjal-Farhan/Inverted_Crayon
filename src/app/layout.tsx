@@ -9,6 +9,12 @@ const marker = Permanent_Marker({ subsets: ["latin"], weight: "400", variable: "
 const bebas = Bebas_Neue({ subsets: ["latin"], weight: "400", variable: "--font-bebas" });
 const archivo = Archivo({ subsets: ["latin"], weight: ["400", "500", "700"], variable: "--font-archivo" });
 
+// How long a page may take to build before the host gives up on it. A sleeping database can need ~20s to
+// wake and the connection retries (src/lib/db-resilience.ts) are built to wait that long; with a shorter
+// limit the host would cut the request off first and the visitor would see a bare timeout page instead of
+// the shop's own "Warming up…" retry page. (Pages that finish in milliseconds are not affected.)
+export const maxDuration = 60;
+
 export const metadata: Metadata = {
   title: {
     default: "Inverted Crayon — Made to stand out.",

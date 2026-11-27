@@ -8,6 +8,8 @@ import { db } from "@/lib/db";
  * The query goes through the retrying pool, so a database that is waking up is waited for.
  */
 export const dynamic = "force-dynamic";
+// Waking a sleeping database can take ~20s (the retries wait for it); don't let the host cut the ping off first.
+export const maxDuration = 60;
 
 const NO_STORE = { "Cache-Control": "no-store, max-age=0" };
 
