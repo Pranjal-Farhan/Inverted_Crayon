@@ -24,6 +24,15 @@ export type PLPParams = {
 
 const PAGE_SIZE = 24;
 
+const PLP_INCLUDE = {
+  variants: true,
+  // See PRODUCT_CARD_INCLUDE in public-cache.ts: an unordered fetch can hand ProductCard
+  // any image in the gallery as the "cover" instead of the intended position-0 shot.
+  images: { orderBy: { position: "asc" } },
+  tags: { include: { tag: true } },
+  category: true,
+} satisfies Prisma.ProductInclude;
+
 /**
  * Category/search/new/sale pages all stay dynamic (they read searchParams for filtering, which
  * forces per-request rendering regardless — see the Fix 2e writeup in the perf report), but the
@@ -45,18 +54,20 @@ function getCachedCatalogForScope(gender: PLPParams["gender"], categorySlug: str
       // only; combined with the gender filter above it naturally picks up the right branch's row
       // (or, for a Unisex product under /men or /women, its own Unisex row by the same slug).
       if (categorySlug) where.category = { slug: categorySlug };
+      // A Unisex product can also be listed under a chosen Men / Women subcategory (Product.menCategoryId /
+      // womenCategoryId, picked in the product editor): on that branch's page for that subcategory it is
+      // included as well, even though its own category (a Unisex one) has a different slug.
+      if (gender && categorySlug) {
+        const alsoListed: Prisma.ProductWhereInput =
+          gender === "MEN" ? { menCategory: { slug: categorySlug } } : { womenCategory: { slug: categorySlug } };
+        const { category, ...base } = where;
+        return db.product.findMany({
+          where: { ...base, OR: [{ category }, { gender: "UNISEX", ...alsoListed }] },
+          include: PLP_INCLUDE,
+        });
+      }
 
-      return db.product.findMany({
-        where,
-        include: {
-          variants: true,
-          // See PRODUCT_CARD_INCLUDE in public-cache.ts: an unordered fetch can hand ProductCard
-          // any image in the gallery as the "cover" instead of the intended position-0 shot.
-          images: { orderBy: { position: "asc" } },
-          tags: { include: { tag: true } },
-          category: true,
-        },
-      });
+      return db.product.findMany({ where, include: PLP_INCLUDE });
     },
     ["public-plp-catalog", gender ?? "all", categorySlug ?? "all"],
     // revalidate: 300 — a safety net: this result carries every product's derived sale pricing.

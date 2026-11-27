@@ -125,12 +125,27 @@ export async function saveProduct(input: ProductFormInput): Promise<ProductSaveR
   // returns a normal {ok:false, error} or really is an unexpected bug worth logging.
   try {
     // Independent of each other, so asked at the same time — each is a round trip to the database.
-    const [category, tags, existing] = await Promise.all([
+    const [category, tags, existing, placementRows] = await Promise.all([
       db.category.findUnique({ where: { id: data.categoryId } }),
       db.tag.findMany(),
       data.id ? db.product.findUnique({ where: { id: data.id }, include: { variants: true } }) : Promise.resolve(null),
+      // The Men / Women subcategories a Unisex product is also listed under, if any were chosen.
+      data.menCategoryId || data.womenCategoryId
+        ? db.category.findMany({ where: { id: { in: [data.menCategoryId, data.womenCategoryId].filter((id): id is string => !!id) } } })
+        : Promise.resolve([]),
     ]);
     if (!category) return { ok: false, error: "Select a valid category." };
+    // Only a Unisex product is listed under a chosen Men / Women subcategory; for any other product the
+    // choice is dropped. A choice has to be a category of the matching branch (a Men category for the Men slot…).
+    const placedIn = (id: string | null, branch: "MEN" | "WOMEN") => {
+      if (category.gender !== "UNISEX" || !id) return { ok: true as const, id: null };
+      const row = placementRows.find((c) => c.id === id);
+      return row && row.gender === branch ? { ok: true as const, id } : { ok: false as const, id: null };
+    };
+    const menPlacement = placedIn(data.menCategoryId, "MEN");
+    const womenPlacement = placedIn(data.womenCategoryId, "WOMEN");
+    if (!menPlacement.ok) return { ok: false, error: "Select a valid Men sub category." };
+    if (!womenPlacement.ok) return { ok: false, error: "Select a valid Women sub category." };
     // Self-healing: a Unisex category created before its Men/Women mirrors existed (or one
     // that predates this feature) gets them backfilled here too, not just at creation time.
     if (category.gender === "UNISEX") await ensureMirrorCategories(category.name, category.slug);
@@ -166,6 +181,8 @@ export async function saveProduct(input: ProductFormInput): Promise<ProductSaveR
           howToWear: data.howToWear || null,
           gender: category.gender,
           categoryId: data.categoryId,
+          menCategoryId: menPlacement.id,
+          womenCategoryId: womenPlacement.id,
           basePrice: data.basePrice,
           ...(mayEditCost && data.purchaseCost !== undefined ? { purchaseCost: data.purchaseCost } : {}),
           discountType: data.discountType,
@@ -191,6 +208,8 @@ export async function saveProduct(input: ProductFormInput): Promise<ProductSaveR
           howToWear: data.howToWear || null,
           gender: category.gender,
           categoryId: data.categoryId,
+          menCategoryId: menPlacement.id,
+          womenCategoryId: womenPlacement.id,
           basePrice: data.basePrice,
           ...(mayEditCost && data.purchaseCost != null ? { purchaseCost: data.purchaseCost } : {}),
           discountType: data.discountType,

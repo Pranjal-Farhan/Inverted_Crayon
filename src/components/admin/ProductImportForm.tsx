@@ -196,6 +196,8 @@ export function ProductImportForm() {
             <ul className="list-disc space-y-1 pl-5">
               <li>
                 <code>gender</code> is MEN, WOMEN or UNISEX, and <code>category</code> is the category&apos;s name under it (e.g. Outerwear).
+                A UNISEX product can also be listed under a Men and a Women category: add <code>{'"menCategory": "Tees"'}</code> and/or{" "}
+                <code>{'"womenCategory": "Tops"'}</code>.
               </li>
               <li>
                 <code>price</code>, and optionally <code>salePrice</code> (what it sells for) — or <code>{'"discount": { "type": "PERCENT", "value": 20 }'}</code>.
@@ -254,6 +256,9 @@ function ItemCard({ item, outcome }: { item: ImportPreviewItem; outcome?: Outcom
       {s && (
         <dl className="mt-2.5 grid grid-cols-1 gap-x-6 gap-y-1 text-[13px] sm:grid-cols-2">
           <Row label="Category" value={`${GENDER_LABEL[s.gender]} → ${s.category}`} />
+          {(s.alsoMen || s.alsoWomen) && (
+            <Row label="Also listed under" value={[s.alsoMen && `Men → ${s.alsoMen}`, s.alsoWomen && `Women → ${s.alsoWomen}`].filter(Boolean).join(" · ")} />
+          )}
           <Row
             label="Price"
             value={

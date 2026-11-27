@@ -222,6 +222,9 @@ export function ProductEditorForm({
   const [categoryId, setCategoryId] = useState(
     initial?.categoryId ?? categories.find((c) => c.gender === "UNISEX")?.id ?? "",
   );
+  // Unisex products only: a Men and a Women subcategory to also list the product under ("" = none).
+  const [menCategoryId, setMenCategoryId] = useState(initial?.menCategoryId ?? "");
+  const [womenCategoryId, setWomenCategoryId] = useState(initial?.womenCategoryId ?? "");
   const [basePrice, setBasePrice] = useState(initial?.basePrice ?? 1000);
   const [purchaseCost, setPurchaseCost] = useState<number | "">(initial?.purchaseCost ?? "");
   const [discountType, setDiscountType] = useState<"PERCENT" | "AMOUNT" | null>(initial?.discountType ?? null);
@@ -361,6 +364,9 @@ export function ProductEditorForm({
   }
 
   const subcategories = categories.filter((c) => c.gender === branch);
+  const menSubcategories = categories.filter((c) => c.gender === "MEN");
+  const womenSubcategories = categories.filter((c) => c.gender === "WOMEN");
+  const unisexSubName = categories.find((c) => c.id === categoryId)?.name;
 
   function handleBranchChange(next: Branch) {
     setBranch(next);
@@ -491,6 +497,9 @@ export function ProductEditorForm({
           build: copy.build,
           howToWear: copy.wear,
           categoryId,
+          // Only a Unisex product is listed under a chosen Men / Women subcategory.
+          menCategoryId: branch === "UNISEX" && menCategoryId ? menCategoryId : null,
+          womenCategoryId: branch === "UNISEX" && womenCategoryId ? womenCategoryId : null,
           basePrice,
           // Only sent by accounts that can see the field; leaving it out tells the server "keep what's saved".
           ...(canSeePurchaseCost ? { purchaseCost: purchaseCost === "" ? null : purchaseCost } : {}),
@@ -930,6 +939,42 @@ export function ProductEditorForm({
               </p>
             )}
           </Field>
+          {branch === "UNISEX" && (
+            <div className="mb-3 border-l-2 border-lime/60 pl-3.5">
+              <p className="mb-2.5 text-[13px] leading-snug text-muted-2">
+                A Unisex product is listed under both <strong className="font-medium text-muted">Men</strong> and{" "}
+                <strong className="font-medium text-muted">Women</strong>
+                {unisexSubName ? (
+                  <>
+                    {" "}— automatically under the Men and Women category named <strong className="font-medium text-muted">{unisexSubName}</strong>
+                  </>
+                ) : null}
+                . Pick a Men and a Women sub category below to list it there too.
+              </p>
+              <Field label="Also list under Men → sub category">
+                <select value={menCategoryId} onChange={(e) => setMenCategoryId(e.target.value)} className={inputClass}>
+                  <option value="">— none —</option>
+                  {menSubcategories.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+                {menSubcategories.length === 0 && <NoSubcategoriesHint branch="Men" />}
+              </Field>
+              <Field label="Also list under Women → sub category" className="!mb-0">
+                <select value={womenCategoryId} onChange={(e) => setWomenCategoryId(e.target.value)} className={inputClass}>
+                  <option value="">— none —</option>
+                  {womenSubcategories.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+                {womenSubcategories.length === 0 && <NoSubcategoriesHint branch="Women" />}
+              </Field>
+            </div>
+          )}
           <Field label="Base price ৳">
             <input type="number" value={basePrice} onChange={(e) => setBasePrice(Number(e.target.value))} className={inputClass} />
           </Field>
@@ -1175,6 +1220,18 @@ function Field({ label, className = "", children }: { label: string; className?:
       <label className="font-label mb-1.5 block text-[13px] tracking-[1.2px] text-muted">{label}</label>
       {children}
     </div>
+  );
+}
+
+function NoSubcategoriesHint({ branch }: { branch: string }) {
+  return (
+    <p className="mt-1.5 text-[13px] text-muted-2">
+      No {branch} sub categories yet — add one from{" "}
+      <a href="/admin/categories" className="text-cyan hover:underline">
+        Categories
+      </a>
+      .
+    </p>
   );
 }
 

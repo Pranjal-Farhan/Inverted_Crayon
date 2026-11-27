@@ -113,22 +113,32 @@ export type ExplorerCategory = {
 // the extra rows cost nothing per visit, only once every 5 minutes at most.
 export const getHomeCategoryExplorerData = unstable_cache(
   async () => {
+    // A category is offered when a live product sits in it — directly, or (Men / Women categories) as a
+    // Unisex product that was also listed there from the product editor.
+    const live = { some: { status: "ACTIVE" as const } };
     const categoryRows = await db.category.findMany({
-      where: { products: { some: { status: "ACTIVE" } } },
+      where: { OR: [{ products: live }, { menProducts: live }, { womenProducts: live }] },
       orderBy: [{ gender: "asc" }, { position: "asc" }],
     });
     const men = categoryRows.filter((c) => c.gender === "MEN");
     const women = categoryRows.filter((c) => c.gender === "WOMEN");
     const unisex = categoryRows.filter((c) => c.gender === "UNISEX");
 
+    const ids = categoryRows.map((c) => c.id);
     const productRows = await db.product.findMany({
-      where: { status: "ACTIVE", categoryId: { in: categoryRows.map((c) => c.id) } },
+      where: {
+        status: "ACTIVE",
+        OR: [{ categoryId: { in: ids } }, { menCategoryId: { in: ids } }, { womenCategoryId: { in: ids } }],
+      },
       include: PRODUCT_CARD_INCLUDE,
       orderBy: { publishedAt: "desc" },
     });
     const productsByCategory: Record<string, typeof productRows> = {};
     for (const p of productRows) {
-      (productsByCategory[p.categoryId] ??= []).push(p);
+      // Its own category, plus the Men / Women ones a Unisex product was also listed under.
+      for (const id of new Set([p.categoryId, p.menCategoryId, p.womenCategoryId])) {
+        if (id && ids.includes(id)) (productsByCategory[id] ??= []).push(p);
+      }
     }
     for (const key of Object.keys(productsByCategory)) {
       productsByCategory[key] = productsByCategory[key].slice(0, 8);

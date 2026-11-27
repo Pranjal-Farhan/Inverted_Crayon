@@ -35,6 +35,9 @@ export type ImportContext = {
 export type ImportSummary = {
   gender: Gender;
   category: string;
+  /** UNISEX only: the Men / Women categories it is also listed under. */
+  alsoMen?: string;
+  alsoWomen?: string;
   price: number;
   /** What it sells for after the markdown, or null when there is none. */
   salePrice: number | null;
@@ -108,6 +111,9 @@ const importProductSchema = z.strictObject({
   gender: z.preprocess(norm, z.enum(["MEN", "WOMEN", "UNISEX"])),
   /** A category's name or slug, within that gender. */
   category: z.string().trim().min(1).max(60),
+  /** UNISEX products only: a Men / Women category (name or slug) to also list the product under. */
+  menCategory: z.string().trim().min(1).max(60).optional(),
+  womenCategory: z.string().trim().min(1).max(60).optional(),
   price: money,
   /** What it should sell for; becomes an "amount off" markdown. Use this or `discount`. */
   salePrice: money.optional(),
@@ -263,6 +269,27 @@ function convertOne(raw: unknown, index: number, ctx: ImportContext): Draft {
     warnings.push(`"${p.category}" matched the category called "${category.name}" (its web name is "${category.slug}") — check that's the right shelf.`);
   }
 
+  // ---- the Men / Women categories a Unisex product is also listed under
+  const alsoListedUnder = (value: string | undefined, branch: "MEN" | "WOMEN", key: "menCategory" | "womenCategory") => {
+    if (!value) return null;
+    if (p.gender !== "UNISEX") {
+      errors.push(`"${key}" is only for UNISEX products (a Men's or Women's product already sits in its own category).`);
+      return null;
+    }
+    const pool = ctx.categories.filter((c) => c.gender === branch);
+    const want = value.trim().toLowerCase();
+    const found = pool.find((c) => c.name.toLowerCase() === want) ?? pool.find((c) => c.slug === slugify(value));
+    if (!found) {
+      const have = pool.map((c) => c.name).join(", ");
+      errors.push(`There is no "${value}" category under ${branch}.${have ? ` Available: ${have}.` : " That branch has no categories yet."}`);
+      return null;
+    }
+    if (found.name.toLowerCase() !== want) warnings.push(`"${value}" matched the ${branch} category called "${found.name}" — check that's the right shelf.`);
+    return found;
+  };
+  const alsoMen = alsoListedUnder(p.menCategory, "MEN", "menCategory");
+  const alsoWomen = alsoListedUnder(p.womenCategory, "WOMEN", "womenCategory");
+
   // ---- price and markdown
   let discountType: "PERCENT" | "AMOUNT" | null = null;
   let discountValue: number | null = null;
@@ -381,6 +408,8 @@ function convertOne(raw: unknown, index: number, ctx: ImportContext): Draft {
     build: bulletText(p.build),
     howToWear: paragraphText(p.howToWear),
     categoryId: category.id,
+    menCategoryId: alsoMen?.id ?? null,
+    womenCategoryId: alsoWomen?.id ?? null,
     basePrice: p.price,
     ...(ctx.role === "ADMIN" && p.purchaseCost !== undefined ? { purchaseCost: p.purchaseCost } : {}),
     discountType,
@@ -409,6 +438,8 @@ function convertOne(raw: unknown, index: number, ctx: ImportContext): Draft {
   draft.summary = {
     gender: p.gender,
     category: category.name,
+    alsoMen: alsoMen?.name,
+    alsoWomen: alsoWomen?.name,
     price: p.price,
     salePrice,
     colors: p.colors.length,

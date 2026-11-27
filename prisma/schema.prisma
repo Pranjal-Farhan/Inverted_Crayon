@@ -152,6 +152,14 @@ model Product {
   categoryId String
   category   Category @relation(fields: [categoryId], references: [id])
 
+  // Only for Unisex products: a Men sub category and a Women sub category the product is *also* listed
+  // under (besides its own Unisex one and that one's same-name Men/Women mirrors). Optional — see the
+  // Category model's comment and src/lib/plp.ts for how they're read.
+  menCategoryId   String?
+  menCategory     Category? @relation("ProductMenCategory", fields: [menCategoryId], references: [id], onDelete: SetNull)
+  womenCategoryId String?
+  womenCategory   Category? @relation("ProductWomenCategory", fields: [womenCategoryId], references: [id], onDelete: SetNull)
+
   variants          Variant[]
   images            ProductImage[]
   tags              ProductTag[]
@@ -233,7 +241,9 @@ model ProductImageThumb {
 // name/slug, auto-created if missing — see ensureMirrorCategories in admin-categories.ts) so
 // it's browsable from every relevant branch; products stay on their own single categoryId
 // and are picked up under the mirrored branches at query time by matching gender + slug
-// (see getPLPResults in src/lib/plp.ts), not by duplicating rows.
+// (see getPLPResults in src/lib/plp.ts), not by duplicating rows. A Unisex product can also be
+// listed under one chosen Men and one chosen Women subcategory (Product.menCategoryId /
+// womenCategoryId), picked in the product editor.
 model Category {
   id       String    @id @default(cuid())
   name     String
@@ -242,6 +252,9 @@ model Category {
   position Int       @default(0)
   imageUrl String?
   products Product[]
+  // Unisex products that were explicitly also listed under this (Men / Women) category — see Product.menCategoryId.
+  menProducts   Product[] @relation("ProductMenCategory")
+  womenProducts Product[] @relation("ProductWomenCategory")
 
   @@unique([gender, slug])
 }

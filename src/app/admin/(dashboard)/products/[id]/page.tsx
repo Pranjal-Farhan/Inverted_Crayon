@@ -55,6 +55,8 @@ export default async function EditProductPage({ params }: Props) {
         build: product.build ?? "",
         howToWear: product.howToWear ?? "",
         categoryId: product.categoryId,
+        menCategoryId: product.menCategoryId,
+        womenCategoryId: product.womenCategoryId,
         basePrice: toNumber(product.basePrice),
         purchaseCost: canSeePurchaseCost && product.purchaseCost != null ? toNumber(product.purchaseCost) : null,
         discountType: product.discountType,

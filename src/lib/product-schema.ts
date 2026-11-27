@@ -40,6 +40,10 @@ export const productSchema = z.object({
   build: z.string().trim().max(2000, "Build is too long (2000 characters max).").default(""),
   howToWear: z.string().trim().max(2000, "How n when to wear is too long (2000 characters max).").default(""),
   categoryId: z.string().min(1, "Select a category."),
+  // Unisex products only: a Men and a Women subcategory the product is also listed under (null = none).
+  // saveProduct checks they really are a Men / Women category, and drops them for a non-Unisex product.
+  menCategoryId: z.string().nullable().default(null),
+  womenCategoryId: z.string().nullable().default(null),
   basePrice: z.number().positive(),
   // What one unit costs the business (admin-only; Finance prices cost of goods from it). Left out =
   // "don't touch the saved value", null = clear it. Ignored entirely unless the signed-in account

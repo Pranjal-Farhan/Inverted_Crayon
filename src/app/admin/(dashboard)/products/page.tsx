@@ -26,10 +26,13 @@ export default async function AdminProductsPage({ searchParams }: Props) {
     where: {
       title: q ? { contains: q, mode: "insensitive" } : undefined,
       gender: gender ? (gender as "MEN" | "WOMEN" | "UNISEX") : undefined,
-      categoryId: category || undefined,
+      // A category filter also finds Unisex products that were listed under that Men / Women category.
+      OR: category ? [{ categoryId: category }, { menCategoryId: category }, { womenCategoryId: category }] : undefined,
     },
     include: {
       category: true,
+      menCategory: { select: { name: true } },
+      womenCategory: { select: { name: true } },
       variants: { select: { sku: true, stockQty: true, lowStockThreshold: true }, orderBy: { sku: "asc" } },
       tags: { include: { tag: true } },
       // Same cover rule as the storefront's ProductCard: first image by position that has a real
@@ -165,6 +168,11 @@ export default async function AdminProductsPage({ searchParams }: Props) {
                       <div className="mt-0.5 text-[12px] text-muted">
                         {p.gender === "MEN" ? "Men" : p.gender === "WOMEN" ? "Women" : "Unisex"}
                       </div>
+                      {(p.menCategory || p.womenCategory) && (
+                        <div className="mt-0.5 text-[12px] text-muted-2">
+                          also: {[p.menCategory && `Men → ${p.menCategory.name}`, p.womenCategory && `Women → ${p.womenCategory.name}`].filter(Boolean).join(" · ")}
+                        </div>
+                      )}
                     </td>
 
                     <td className="whitespace-nowrap px-3 py-4">

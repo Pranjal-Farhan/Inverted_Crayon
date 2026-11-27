@@ -119,7 +119,8 @@ export async function removeCategoryImage(categoryId: string): Promise<CategoryA
 
 export async function deleteCategory(id: string): Promise<CategoryActionResult> {
   await requireAdmin();
-  const productCount = await db.product.count({ where: { categoryId: id } });
+  // Products in it: those whose own category it is, and Unisex products also listed under it (Men / Women).
+  const productCount = await db.product.count({ where: { OR: [{ categoryId: id }, { menCategoryId: id }, { womenCategoryId: id }] } });
   if (productCount > 0) {
     return {
       ok: false,
